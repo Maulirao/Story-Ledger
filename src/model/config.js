@@ -52,9 +52,15 @@ export const DEFAULT_RELATION_CONFIG = {
     ],
 };
 
+/** Numbers the state sections use (anything not part of the relationship engine). */
+export const DEFAULT_SECTION_CONFIG = {
+    lastBeats: 3,   // 🧾 LAST keeps this many newest beats
+};
+
 /** Deep-merge a reader's saved overrides onto the defaults. Unknown keys are ignored. */
 export function resolveConfig(overrides) {
     const base = JSON.parse(JSON.stringify(DEFAULT_RELATION_CONFIG));
+    base.sectionConfig = { ...DEFAULT_SECTION_CONFIG };
     if (!overrides || typeof overrides !== "object") return base;
     for (const [k, v] of Object.entries(overrides)) {
         if (!(k in base)) continue;
