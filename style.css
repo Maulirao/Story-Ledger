@@ -182,3 +182,11 @@
 .sl-theme-megumin > details > summary { font-weight: 600; color: #f59e0b; cursor: pointer; list-style: none; padding: 4px 0; }
 .sl-theme-megumin .sl-mg-hidden { display: none; }
 .sl-theme-megumin .sl-fk-has-bars > :not(summary):not(.sl-fk-pairs) { display: none; }
+/* line breaks SillyTavern leaves between sections would show as gaps (FF's regex collapses them too) */
+.sl-theme-megumin > br, .sl-theme-sola > br, .sl-theme-megumin > p:empty, .sl-theme-sola > p:empty { display: none; }
+/* the shared bars and chips read these colours in every theme */
+.sl-theme-sola, .sl-theme-megumin {
+    --sl-fk-teal: #94e2d5; --sl-fk-purple: #cba6f7; --sl-fk-orange: #fab387; --sl-fk-gold: #f9e2af;
+    --sl-fk-fond: #f38ba8; --sl-fk-friction: #89b4fa;
+}
+.sl-theme-sola { --sl-fk-fond: #E07A5F; --sl-fk-gold: #F4A261; }

@@ -48,7 +48,10 @@ the reply — FF's `<internal_states>` layout, folded under **🎬 INTERNAL STAT
   (`done · sent`), so editing the row works too.
 - **Settings → Check style**: DnD (locked DC, as in RF/FF) or Wind's Arrow (as in Sola).
 - **Settings → Sections** turns parts off (not tracked, not shown); **Theme** sets the look
-  of the block on screen without changing the message text.
+  of the block on screen without changing the message text: **Frankenstein** (FF5's folded
+  menus), **Sola** (a Now · Present · Fate strip, bond card, thought cabinet, director's note)
+  or **Megumin** (one card with Scene · People · Relationships · Story · Fate · Notes tabs).
+  Switching restyles every message at once.
 
 ## Install
 
@@ -61,10 +64,34 @@ Megumin's bond/state blocks, Sola's HUD notes — or the model will keep two set
 
 ## Switching from another preset
 
-When the newest state in the chat came from Freaky/Realistic Frankenstein, Megumin, Sola or
-Ancient Access, the next prompt carries a one-time handover: the model seeds the ledger
-from that state (time, threads, a NEW line per relationship, rules as proposals). An FF
-turn number carries over automatically so the schedules continue.
+Before a chat has its first Story Ledger block, the newest state block from the preset it ran
+under is read **by the extension**, not the model:
+
+- **Freaky / Realistic Frankenstein** `<internal_states>`: turn count, agendas, locations,
+  factions, quests, inventory, Chekhov's Gun (ages, hot flags, time locks), the GM's notebook
+  and Fate & Routine.
+- **Ancient Access** `<ledger>`: turn, last beats, agendas, notebook, the gun and fired list,
+  gear, quests, factions.
+- **Sola**: story notes and seeds, the date, the scene cast, wardrobe and inventory.
+
+The first reply then gets a short handover asking the model only for what could not be read —
+always the relationships (one number such as FF's BOND cannot become twelve axes), and the time
+or the cast when the old block lacked them. Rules (`[R]`) from the old notebook wait in the
+📜 Rules inbox for your approval.
+
+## Preset copies
+
+`tools/presets/convert.mjs` makes a "+ Story Ledger" copy of a preset from a recipe in
+`tools/presets/recipes/`: it switches off the machinery Story Ledger now runs (internal states,
+bonds, notebook, agendas, Chekhov, World Sim, Fate, Turn Dice, …) and rewrites the reasoning
+step that maintained it. It prints what it would change and writes nothing without `--write`
+(and never over an existing file without `--replace`); any prompt or text the recipe expects
+but the preset lacks aborts that preset.
+
+```
+node tools/presets/convert.mjs tools/presets/recipes/rf-glm-bolt.json            # dry run
+node tools/presets/convert.mjs tools/presets/recipes/rf-glm-bolt.json --write    # write the copy
+```
 
 ## Tests
 
