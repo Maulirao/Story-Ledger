@@ -2,7 +2,7 @@
    variables so it follows the user's theme; the look borrows from Megumin Suite's
    block card: a tinted card, a strip of tabs, warm accents for fondness, cool for friction. */
 
-.sl-card, .sl-popup {
+.sl-popup {
     --sl-fond: #f43f5e;
     --sl-friction: #38bdf8;
     --sl-accent: #eab308;
@@ -10,49 +10,66 @@
     --sl-line: var(--SmartThemeBorderColor);
 }
 
-/* ── card under a message ── */
-.sl-card {
-    margin: 8px 0 2px;
-    border: 1px solid var(--sl-line);
-    border-left: 3px solid var(--sl-accent);
-    border-radius: 8px;
-    background: color-mix(in srgb, var(--SmartThemeBlurTintColor) 70%, transparent);
-    font-size: 0.88em;
-    overflow: hidden;
+/* ── Frankenstein theme: FF5's look on the state block in a reply (display only) ── */
+.sl-theme-frankenstein {
+    --sl-fk-teal: #94e2d5; --sl-fk-purple: #cba6f7; --sl-fk-orange: #fab387; --sl-fk-gold: #f9e2af;
+    --sl-fk-fond: #f38ba8; --sl-fk-friction: #89b4fa;
+    background: rgba(20, 20, 30, 0.4); border-radius: 6px; margin: 6px 0 2px; font-size: 0.9em;
 }
-.sl-tabs { display: flex; flex-wrap: wrap; gap: 2px; padding: 4px 4px 0; border-bottom: 1px solid var(--sl-line); }
-.sl-tab {
-    background: transparent; border: 0; border-bottom: 2px solid transparent;
-    color: var(--sl-dim); padding: 4px 10px; cursor: pointer; font: inherit;
+.sl-theme-frankenstein > summary {
+    background: linear-gradient(90deg, #313244, #1e1e2e); color: #cdd6f4; padding: 8px 12px;
+    font-weight: bold; letter-spacing: 1px; text-transform: uppercase; cursor: pointer; list-style: none;
+    border-bottom: 2px solid #89b4fa; border-radius: 6px 6px 0 0;
 }
-.sl-tab:hover { color: var(--SmartThemeBodyColor); }
-.sl-tab.sl-on { color: var(--SmartThemeBodyColor); border-bottom-color: var(--sl-accent); }
-.sl-card .sl-tab span { display: none; }
-@media (min-width: 700px) { .sl-card .sl-tab span { display: inline; } }
-.sl-pane { display: none; padding: 8px 12px; }
-.sl-pane.sl-on { display: block; }
-.sl-now { font-weight: 600; margin-bottom: 4px; }
+.sl-theme-frankenstein .sl-rebuild { float: right; opacity: 0.55; padding: 0 4px; cursor: pointer; }
+.sl-theme-frankenstein .sl-rebuild:hover { opacity: 1; }
+.sl-theme-frankenstein .sl-fk-section { --sl-grp: var(--sl-fk-teal); margin: 3px 4px; border-radius: 4px;
+    border: 1px solid color-mix(in srgb, var(--sl-grp) 20%, transparent); border-left: 4px solid var(--sl-grp);
+    background: color-mix(in srgb, var(--sl-grp) 5%, transparent); padding: 0 10px 6px; }
+.sl-theme-frankenstein .sl-grp-memory { --sl-grp: var(--sl-fk-purple); }
+.sl-theme-frankenstein .sl-grp-sim { --sl-grp: var(--sl-fk-orange); }
+.sl-theme-frankenstein .sl-fk-section > summary {
+    margin: 0 -10px 4px; padding: 6px 10px; color: var(--sl-grp); font-weight: bold; letter-spacing: 0.5px;
+    text-transform: uppercase; cursor: pointer; list-style: none;
+    background: linear-gradient(90deg, color-mix(in srgb, var(--sl-grp) 25%, transparent), transparent);
+}
+.sl-theme-frankenstein .sl-fk-section b { color: var(--sl-fk-gold); font-weight: 600; }
+/* relationship rows: bars replace the raw numbers on screen; the raw rows stay in the message */
+.sl-theme-frankenstein .sl-fk-has-bars > :not(summary):not(.sl-fk-pairs) { display: none; }
+.sl-fk-pair { margin: 4px 0 8px; }
+.sl-fk-pair-name { color: var(--sl-fk-gold); font-weight: 600; margin-bottom: 2px; }
+.sl-fk-row { display: grid; grid-template-columns: minmax(90px, 1fr) 1fr 1fr minmax(90px, 1fr); gap: 6px; align-items: center; margin: 2px 0; }
+.sl-fk-lab { font-size: 0.85em; white-space: nowrap; }
+.sl-fk-lab small { opacity: 0.7; margin-left: 2px; }
+.sl-fk-lab.sl-fond { text-align: right; color: var(--sl-fk-fond); }
+.sl-fk-lab.sl-friction { color: var(--sl-fk-friction); }
+.sl-fk-bar { height: 7px; border-radius: 4px; background: rgba(205, 214, 244, 0.1); display: flex; overflow: hidden; }
+.sl-fk-bar i { display: block; height: 100%; border-radius: 4px; }
+.sl-fk-bar.sl-fond { justify-content: flex-end; }
+.sl-fk-bar.sl-fond i { background: linear-gradient(90deg, transparent, var(--sl-fk-fond)); }
+.sl-fk-bar.sl-friction i { background: linear-gradient(90deg, var(--sl-fk-friction), transparent); }
+.sl-fk-tag { display: inline-block; font-size: 0.75em; font-weight: 700; padding: 0 5px; border-radius: 4px; margin-right: 4px; }
+.sl-fk-R { color: #1e1e2e; background: var(--sl-fk-gold); }
+.sl-fk-T { color: #1e1e2e; background: var(--sl-fk-teal); }
+@media (max-width: 600px) {
+    .sl-fk-row { grid-template-columns: 1fr 1fr; }
+    .sl-fk-row .sl-fk-bar { display: none; }
+}
+
+/* ── popup ── */
+.sl-popup { text-align: left; }
+.sl-popup .sl-tabs { display: flex; flex-wrap: wrap; gap: 2px; padding: 4px 4px 0; border-bottom: 1px solid var(--sl-line); }
+.sl-popup .sl-tab { background: transparent; border: 0; border-bottom: 2px solid transparent; color: var(--sl-dim); padding: 4px 10px; cursor: pointer; font: inherit; }
+.sl-popup .sl-tab:hover { color: var(--SmartThemeBodyColor); }
+.sl-popup .sl-tab.sl-on { color: var(--SmartThemeBodyColor); border-bottom-color: var(--sl-accent); }
 .sl-list { margin: 0; padding-left: 18px; }
 .sl-list li { margin: 2px 0; }
-.sl-list i { color: var(--sl-dim); }
-.sl-unread { color: var(--sl-accent); }
 .sl-chips { display: flex; flex-wrap: wrap; gap: 4px; margin: 4px 0; }
-.sl-chip {
-    display: inline-flex; align-items: center; gap: 4px; padding: 1px 8px; border-radius: 999px;
-    border: 1px solid var(--sl-line); font-size: 0.9em;
-}
+.sl-chip { display: inline-flex; align-items: center; gap: 4px; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--sl-line); font-size: 0.9em; }
 .sl-chip.sl-ok { border-color: color-mix(in srgb, #22c55e 60%, transparent); color: #4ade80; }
 .sl-chip.sl-locked { color: var(--sl-dim); }
 .sl-chip.sl-wall { border-color: var(--sl-accent); color: var(--sl-accent); }
 .sl-chip.sl-pattern { border-color: color-mix(in srgb, #a855f7 60%, transparent); color: #c084fc; cursor: help; }
-.sl-tag { font-size: 0.75em; font-weight: 700; padding: 0 5px; border-radius: 4px; border: 1px solid var(--sl-line); }
-.sl-tag.sl-new { color: #4ade80; }
-.sl-tag.sl-direct { color: var(--sl-accent); }
-.sl-axis.sl-fond { color: var(--sl-fond); }
-.sl-axis.sl-friction { color: var(--sl-friction); }
-
-/* ── popup ── */
-.sl-popup { text-align: left; }
 .sl-popup h3 { text-align: center; margin: 0 0 6px; }
 .sl-popup h4 { margin: 14px 0 6px; }
 .sl-popup h4 small { font-weight: normal; color: var(--sl-dim); }
