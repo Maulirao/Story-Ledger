@@ -46,3 +46,12 @@ export function rowFields(row) {
 
 /** A comma/semicolon list, empties and "None" dropped. */
 export const listOf = s => (value(s) ? value(s).split(/\s*[,;]\s*/).map(x => x.trim()).filter(Boolean) : []);
+
+const HEADER = /^\s*\[\s*🕰️?\s*([^\]\n]+?)\s*\]\s*$/m;
+
+/** An FF/AA time-and-place header line as a Now line ("Day 3 - Tuesday | 9:42 PM | Lake - Lawn"), or "". */
+export function headerNow(mes) {
+    const h = String(mes || "").match(HEADER);
+    if (!h) return "";
+    return h[1].split("|").map(p => plain(p).replace(/^[^\w]*(Time\s+)?/i, "").trim()).filter(Boolean).join(" | ");
+}

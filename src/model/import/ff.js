@@ -8,7 +8,7 @@
 import { emptyState, nextId } from "../state.js";
 import { importFromLegacyNotebook } from "../notebook.js";
 import { lockTime, parseStoryTime } from "../storytime.js";
-import { plain, value, summarySections, rowsOf, rowFields, listOf } from "./util.js";
+import { plain, value, summarySections, rowsOf, rowFields, listOf, headerNow } from "./util.js";
 
 const PER_TURN = /THOUGHTS|DND|WORLD SIM|PHYSICS|INTERNAL STATES/;
 
@@ -139,20 +139,14 @@ function fate(rows, s) {
     return n;
 }
 
-const HEADER = /^\s*\[\s*🕰️?\s*([^\]\n]+?)\s*\]\s*$/m;
-
 /** The state an FF/RF reply's block holds, as far as it can be read. */
 export function parseFf(mes) {
     const s = emptyState();
     const imported = [], unread = [], rules = [];
     const turn = String(mes).match(/INTERNAL STATES\s*\(Turn:\s*(\d+)\)/i);
     if (turn) s.ct = Number(turn[1]);
-    const header = String(mes).match(HEADER);
-    if (header) {
-        const parts = header[1].split("|").map(p => plain(p).replace(/^[^\w]*(Time|Day)?\s*/i, m => (/Day/i.test(m) ? "Day " : "")).trim()).filter(Boolean);
-        s.scene.now = parts.join(" | ");
-        imported.push("scene");
-    }
+    const now = headerNow(mes);
+    if (now) { s.scene.now = now; imported.push("scene"); }
     const handlers = [
         [/NPC AGENDAS/, sec => agendas(rowsOf(sec.body), s), "agendas"],
         [/NPC LOCATIONS/, sec => locations(rowsOf(sec.body), s), "locations"],

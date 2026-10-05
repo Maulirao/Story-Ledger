@@ -48,3 +48,27 @@ export const FF_PARTIAL = `Prose.
 </details>
 </details>
 </internal_states>`;
+
+export const AA_LEDGER = `[ 🕰️ 21:40 | 🗓️ Day 7 — Friday, May 3, 2024 | 📍 Café — back room | 🌧️ Rain, 14°C ]
+
+Prose.
+
+<ledger>
+TURN: 41
+SCENE: Mara (by the window, grey coat, holding a mug) · Jan (at the table, wet hair)
+LAST: Mara said the café opens at ten / Jan dropped the key / Ana texted
+AGENDAS: Ana · close the café · step 1/2 · the café · off-screen
+Bo · fix the boat · step 0/3 · the dock · off-screen
+BONDS: Mara ↔ Jan: 18
+NOTEBOOK:
+- [R] Ana does not know about the key.
+- [T] Race after breakfast.
+GUN: the ladder by the window · weight 2 · age 5
+Ana's shift ends · weight 1 · age 0 · [LOCKED: Day 7 23:00]
+the letter · weight 3 · age 2 · [secret]
+FIRED: the broken cup
+GEAR: umbrella, spare key
+QUESTS: Main — find the spare key
+FACTIONS: Harbour Guild — wants the docks
+WORLD: —
+</ledger>`;
