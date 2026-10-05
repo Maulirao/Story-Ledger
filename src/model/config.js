@@ -55,12 +55,27 @@ export const DEFAULT_RELATION_CONFIG = {
 /** Numbers the state sections use (anything not part of the relationship engine). */
 export const DEFAULT_SECTION_CONFIG = {
     lastBeats: 3,   // 🧾 LAST keeps this many newest beats
+    chekhov: {
+        eligibleAge: 6,     // a bullet may fire from this age
+        pruneAge: 12,       // unfired bullets this old are pruned to Fired
+        cap: 20,            // at most this many active bullets
+        maxLoadsPerTurn: 1, // more loads in one reply are kept but warned about
+        firedKeep: 10,      // Fired keeps this many newest; 0 = all
+        firing: "model",    // "model": the model picks the moment · "fate": Fate's pick (phase 4)
+    },
 };
 
 /** Deep-merge a reader's saved overrides onto the defaults. Unknown keys are ignored. */
 export function resolveConfig(overrides) {
     const base = JSON.parse(JSON.stringify(DEFAULT_RELATION_CONFIG));
-    base.sectionConfig = { ...DEFAULT_SECTION_CONFIG };
+    base.sectionConfig = JSON.parse(JSON.stringify(DEFAULT_SECTION_CONFIG));
+    const sc = overrides && typeof overrides === "object" ? overrides.sectionConfig : null;
+    if (sc && typeof sc === "object") {
+        for (const [k, v] of Object.entries(sc)) {
+            if (k === "chekhov" && v && typeof v === "object") base.sectionConfig.chekhov = { ...base.sectionConfig.chekhov, ...v };
+            else if (k in base.sectionConfig && typeof v === typeof base.sectionConfig[k]) base.sectionConfig[k] = v;
+        }
+    }
     if (!overrides || typeof overrides !== "object") return base;
     for (const [k, v] of Object.entries(overrides)) {
         if (!(k in base)) continue;
