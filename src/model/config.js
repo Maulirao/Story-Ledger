@@ -61,7 +61,24 @@ export const DEFAULT_SECTION_CONFIG = {
         cap: 20,            // at most this many active bullets
         maxLoadsPerTurn: 1, // more loads in one reply are kept but warned about
         firedKeep: 10,      // Fired keeps this many newest; 0 = all
-        firing: "model",    // "model": the model picks the moment · "fate": Fate's pick (phase 4)
+        firing: "fate",     // Fate's pick; "model" keeps the reader-selected timing.
+    },
+    fate: {
+        modifiers: { recentMajor: -3, deferred3: 4, deferred12: 2, public: 2 },
+        ladder: [{ q: 0, minor: 16, major: 20 }, { q: 3, minor: 12, major: 19 }, { q: 7, minor: 8, major: 17 }],
+        newsMax: 6,
+        trueFloor: 3,
+        hpLadder: [{ hp: 1, weighted: 14 }, { hp: 3, weighted: 9 }, { hp: 5, weighted: 5 }],
+        collision: { minorDefer: 12, majorComplicate: 10 },
+        dangerC: 20,
+        deferredExpire: 6,
+        worldKeep: 5,
+        reach1Drop: 15,
+        minorWorld: { reach: 2, age: 4 },
+        majorWorld: { reach: 3, age: 8 },
+        ripe: { reach: 3, age: 12 },
+        pursuitLimit: 8,
+        residueKeep: 12,
     },
 };
 
@@ -73,6 +90,7 @@ export function resolveConfig(overrides) {
     if (sc && typeof sc === "object") {
         for (const [k, v] of Object.entries(sc)) {
             if (k === "chekhov" && v && typeof v === "object") base.sectionConfig.chekhov = validChekhov(v, base.sectionConfig.chekhov);
+            else if (k === "fate" && v && typeof v === "object") base.sectionConfig.fate = mergeKnown(base.sectionConfig.fate, v);
             else if (k in base.sectionConfig && typeof v === typeof base.sectionConfig[k]) base.sectionConfig[k] = v;
         }
     }
@@ -88,6 +106,20 @@ export function resolveConfig(overrides) {
 }
 
 export const axisByKey = (config, key) => config.axes.find(a => a.key === key);
+/** Merge only declared config keys, replacing arrays and recursively merging objects. */
+function mergeKnown(defaults, input) {
+    const out = JSON.parse(JSON.stringify(defaults));
+    for (const [key, value] of Object.entries(input || {})) {
+        if (!(key in defaults)) continue;
+        const initial = defaults[key];
+        if (Array.isArray(initial)) {
+            if (Array.isArray(value)) out[key] = JSON.parse(JSON.stringify(value));
+        } else if (initial && typeof initial === "object") {
+            if (value && typeof value === "object" && !Array.isArray(value)) out[key] = mergeKnown(initial, value);
+        } else if (typeof value === typeof initial && (typeof value !== "number" || Number.isFinite(value))) out[key] = value;
+    }
+    return out;
+}
 
 /** Saved Chekhov overrides, allowlisted and validated: anything unknown or out of range keeps the default. */
 function validChekhov(v, defaults) {

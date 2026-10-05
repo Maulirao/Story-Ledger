@@ -11,7 +11,7 @@ test("a partial Chekhov override keeps the other defaults", () => {
     const c = resolveConfig({ sectionConfig: { chekhov: { firedKeep: 0 } } });
     assert.equal(c.sectionConfig.chekhov.firedKeep, 0);
     assert.equal(c.sectionConfig.chekhov.cap, 20);
-    assert.equal(c.sectionConfig.chekhov.firing, "model");
+    assert.equal(c.sectionConfig.chekhov.firing, "fate");
     assert.equal(c.sectionConfig.lastBeats, 3);
 });
 

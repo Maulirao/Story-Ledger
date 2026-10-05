@@ -8,7 +8,7 @@ import { renderBlock, parseBlock } from "../src/model/block.js";
 import { postTurn, preTurnFacts } from "../src/model/turn.js";
 import { parseStoryTime } from "../src/model/storytime.js";
 
-const C = { ...resolveConfig(), userName: "Jan", sections: {} };
+const C = { ...resolveConfig({ sectionConfig: { chekhov: { firing: "model" } } }), userName: "Jan", sections: {} };
 const ch = body => parseChanges(`<!-- Story_Ledger\n${body}\n-->`);
 const bullet = (id, more = {}) => ({ id, desc: id, weight: 1, age: 0, hot: false, secret: false, lock: "", at: null, after: "", ...more });
 

@@ -125,5 +125,5 @@ test("rewriting quests stays inside the block and keeps CRLF line endings", () =
 
 test("Chekhov overrides are allowlisted and validated", () => {
     const c = resolveConfig({ sectionConfig: { chekhov: { cap: "abc", pruneAge: -4, firing: "chaos", bogus: 1, firedKeep: 0 } } });
-    assert.deepEqual(c.sectionConfig.chekhov, { eligibleAge: 6, pruneAge: 12, cap: 20, maxLoadsPerTurn: 1, firedKeep: 0, firing: "model" });
+    assert.deepEqual(c.sectionConfig.chekhov, { eligibleAge: 6, pruneAge: 12, cap: 20, maxLoadsPerTurn: 1, firedKeep: 0, firing: "fate" });
 });
