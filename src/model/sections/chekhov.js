@@ -151,7 +151,42 @@ export default {
         }
         if (cfg.firedKeep > 0 && state.chekhov.fired.length > cfg.firedKeep) state.chekhov.fired = state.chekhov.fired.slice(-cfg.firedKeep);
     },
-    prompt: () => "",
-    rules: () => "",
-    template: () => [],
+    facts(state, ctx) {
+        const cfg = cfgOf(ctx);
+        const out = [];
+        for (const b of state.chekhov.bullets.filter(x => isDue(x, state))) out.push(`Due now: ${b.id} "${b.desc}" [at ${timeText(b.at)}] — fire it this turn.`);
+        if (cfg.firing !== "fate") {
+            const ready = state.chekhov.bullets.filter(b => eligible(b, state, cfg))
+                .sort((a, z) => z.weight - a.weight || z.age - a.age)
+                .map(b => `${b.id} "${b.desc}" (w${b.weight}${b.hot ? ", hot" : ""})`);
+            if (ready.length) out.push(`Eligible to fire when the moment is right: ${ready.join("; ")}.`);
+        }
+        return out;
+    },
+    prompt(value, state, ctx) {
+        const cfg = cfgOf(ctx);
+        const rows = value.bullets.map(b => {
+            const tags = [`w${b.weight}`, `age ${b.age}/${cfg.pruneAge}`];
+            if (b.hot) tags.push("hot");
+            if (b.secret) tags.push("secret");
+            if (isDue(b, state)) tags.push("DUE");
+            else if (eligible(b, state, cfg)) tags.push("eligible");
+            else if (b.lock) tags.push(`locked: ${b.lock}`);
+            else if (b.at) tags.push(`at ${timeText(b.at)}`);
+            else if (b.after && isLocked(b, state)) tags.push(`after ${b.after}`);
+            return `- ${b.id} ${b.desc} · ${tags.join(" · ")}`;
+        });
+        return rows.length ? ["Chekhov (narrative debt — never name it in prose):", ...rows].join("\n") : "";
+    },
+    rules(ctx) {
+        const cfg = cfgOf(ctx);
+        return [
+            "Chekhov's Gun: load a setup only when the prose leaves narrative debt a reader would notice going unpaid — an unresolved setup, a promise, foreshadowing, a planted object, emotional tension. Ambient scenery, small talk and passing business load nothing.",
+            `At most ${cfg.maxLoadsPerTurn} load per reply. Weight 1–3 by how much it matters. Mark it hot only when it exists because of something {{user}} said or did. A future time ("at noon", "in an hour") becomes an \`at\` lock from the story time. \`after B#\` makes it wait for another setup. A secret stays held while more than 2 people are present.`,
+            cfg.firing === "fate"
+                ? "Firing: a bullet fires only when the turn says so (Fate's pick), or when it is due; pay it off naturally and never narrate the mechanics."
+                : "Firing: you judge the moment — fire an eligible bullet when the story offers a natural opening, never forced; a due bullet fires when its hour comes. Pay it off naturally and never narrate the mechanics.",
+        ].join("\n");
+    },
+    template: () => ["Chekhov:", "- [load: setup (w1–3[, hot][, secret][, at HH:MM][, after B#]) · fire B#: how it paid off · lock B#: why · unlock B# · prune B#]"],
 };

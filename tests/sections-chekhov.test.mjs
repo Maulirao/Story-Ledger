@@ -89,3 +89,54 @@ test("chekhov round-trips, awkward descriptions and locks included", () => {
     s.chekhov.fired = [{ id: "B2", desc: "x", how: "it rang" }];
     assert.deepEqual(parseBlock(renderBlock(s, { rules: [], config: C, sections: {} }), { config: C }).state.chekhov, s.chekhov);
 });
+
+// ── eligibility, due bullets, facts ─────────────────────────────────────────
+import { preTurnFacts } from "../src/model/turn.js";
+import { hotCount } from "../src/model/sections/chekhov.js";
+
+test("eligibility: age, locks, dependencies and the crowd rule for secrets", () => {
+    const s = emptyState();
+    s.scene.present = ["Mara", "Ana", "Bo"];
+    s.chekhov.bullets = [bullet("B1", { age: 6 }), bullet("B2", { age: 5 }), bullet("B3", { age: 9, lock: "x" }),
+                         bullet("B4", { age: 9, after: "B1" }), bullet("B5", { age: 9, secret: true })];
+    const facts = preTurnFacts(s, C).join("\n");
+    assert.match(facts, /Eligible to fire[^\n]*B1/);
+    for (const id of ["B2", "B3", "B4", "B5"]) assert.doesNotMatch(facts, new RegExp(`Eligible[^\n]*\b${id}\b`));
+});
+
+test("a dependency unlocks once its bullet has fired", () => {
+    const s = emptyState();
+    s.chekhov.bullets = [bullet("B4", { age: 9, after: "B1" })];
+    s.chekhov.fired = [{ id: "B1", desc: "x", how: "y" }];
+    assert.match(preTurnFacts(s, C).join("\n"), /Eligible[^\n]*B4/);
+});
+
+test("a due bullet is announced and never pruned", () => {
+    const s = emptyState();
+    s.scene.now = "Day 4 — 18:30";
+    s.chekhov.bullets = [bullet("B4", { desc: "Ana's shift ends", age: 30, at: { day: 4, minutes: 1080 } })];
+    assert.match(preTurnFacts(s, C).join("\n"), /Due now: B4 "Ana's shift ends"/);
+    assert.equal(postTurn(s, null, C).state.chekhov.bullets.length, 1);
+});
+
+test("in fate mode the eligible list is not offered to the model", () => {
+    const cfg = { ...C, sectionConfig: { ...C.sectionConfig, chekhov: { ...C.sectionConfig.chekhov, firing: "fate" } } };
+    const s = emptyState();
+    s.chekhov.bullets = [bullet("B1", { age: 6 })];
+    assert.doesNotMatch(preTurnFacts(s, cfg).join("\n"), /Eligible/);
+});
+
+test("hotCount counts loaded hot bullets", () => {
+    const s = emptyState();
+    s.chekhov.bullets = [bullet("B1", { hot: true }), bullet("B2"), bullet("B3", { hot: true })];
+    assert.equal(hotCount(s), 2);
+});
+
+test("the prompt lists active bullets with their state; the template offers the load/fire lines", async () => {
+    const { renderStatePrompt, buildTemplate } = await import("../src/model/prompt.js");
+    const { emptyNotebook } = await import("../src/model/notebook.js");
+    const s = emptyState();
+    s.chekhov.bullets = [bullet("B2", { desc: "the letter", weight: 2, age: 6, hot: true })];
+    assert.match(renderStatePrompt(s, { notebook: emptyNotebook(), config: C, sections: {} }), /B2 the letter · w2 · age 6\/12 · hot · eligible/);
+    assert.match(buildTemplate(C), /Chekhov:\n- \[load: /);
+});
