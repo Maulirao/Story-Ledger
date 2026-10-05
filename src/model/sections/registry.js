@@ -4,9 +4,10 @@
 // interface documented in docs/superpowers/plans/2026-10-05-phase-2-people-and-story.md.
 // ──────────────────────────────────────────────────────────────────────────────
 
+import agendas from "./agendas.js";
 import locations from "./locations.js";
 
-export const SECTIONS = [locations];
+export const SECTIONS = [agendas, locations];
 
 /** Sections switched on in `sections` (a key that is missing counts as on). */
 export const enabledSections = (sections = {}) => SECTIONS.filter(s => (sections || {})[s.key] !== false);
