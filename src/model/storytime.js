@@ -8,6 +8,8 @@ const dayOf = text => { const m = String(text || "").match(/\bDay\s+(\d+)\b/i); 
 
 function minutesOf(text) {
     const t = String(text || "");
+    if (/\bnoon\b|\bmidday\b/i.test(t) && !/\d{1,2}:\d{2}/.test(t)) return 12 * 60;
+    if (/\bmidnight\b/i.test(t) && !/\d{1,2}:\d{2}/.test(t)) return 0;
     let m = t.match(/\b(\d{1,2}):(\d{2})\s*([ap])\.?\s*m\.?\b/i);
     if (m) return ((Number(m[1]) % 12) + (m[3].toLowerCase() === "p" ? 12 : 0)) * 60 + Number(m[2]);
     m = t.match(/\b(\d{1,2}):(\d{2})\b/);
@@ -23,19 +25,26 @@ export function parseStoryTime(text) {
     return minutes === null ? null : { day: dayOf(text), minutes };
 }
 
-/** A lock from "18:00", "6 pm" or "Day 4 18:00". Without a day: today if still ahead, else tomorrow. */
+/**
+ * A lock from "18:00", "6 pm", "noon" or "Day 4 18:00". Without a day: today if still
+ * ahead, else tomorrow. When the story time has no day number, a time already past
+ * today is marked `wait: true` — it first waits for the clock to pass midnight.
+ */
 export function lockTime(spec, now) {
     const minutes = minutesOf(spec);
     if (minutes === null) return null;
     const day = dayOf(spec);
     if (day !== null) return { day, minutes };
-    if (!now || now.day === null || now.day === undefined) return { day: null, minutes };
+    if (!now) return { day: null, minutes };
+    if (now.day === null || now.day === undefined) return minutes > now.minutes ? { day: null, minutes } : { day: null, minutes, wait: true };
     return { day: minutes > now.minutes ? now.day : now.day + 1, minutes };
 }
 
 /** True when `now` is at or past `at`; when either has no day, only the clock is compared. */
 export function isAtOrPast(now, at) {
     if (!now || !at) return false;
-    if (now.day === null || now.day === undefined || at.day === null || at.day === undefined) return now.minutes >= at.minutes;
+    const nowDay = now.day !== null && now.day !== undefined, atDay = at.day !== null && at.day !== undefined;
+    if (atDay && !nowDay) return false;   // a dated lock cannot be judged from a clock alone
+    if (!atDay) return now.minutes >= at.minutes;
     return now.day > at.day || (now.day === at.day && now.minutes >= at.minutes);
 }

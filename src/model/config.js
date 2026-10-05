@@ -88,3 +88,26 @@ export function resolveConfig(overrides) {
 }
 
 export const axisByKey = (config, key) => config.axes.find(a => a.key === key);
+
+/**
+ * Chekhov numbers from the Settings form: a blank keeps the old value; every number is
+ * at least 1 except eligibleAge and firedKeep (0 = keep all), and prune age stays above
+ * eligible age so a setup can fire before it is pruned.
+ */
+export function sanitizeChekhov(input, prev) {
+    const num = (k, min) => {
+        const raw = input[k];
+        if (raw === undefined || raw === null || String(raw).trim() === "" || !Number.isFinite(Number(raw))) return prev[k];
+        return Math.max(min, Math.round(Number(raw)));
+    };
+    const out = {
+        eligibleAge: num("eligibleAge", 0),
+        pruneAge: num("pruneAge", 1),
+        cap: num("cap", 1),
+        maxLoadsPerTurn: num("maxLoadsPerTurn", 1),
+        firedKeep: num("firedKeep", 0),
+        firing: input.firing === "fate" ? "fate" : "model",
+    };
+    if (out.pruneAge <= out.eligibleAge) out.pruneAge = out.eligibleAge + 1;
+    return out;
+}

@@ -13,12 +13,12 @@
 import {
     emptyNotebook, collectProposals, applyDecision, importFromLegacyNotebook, storyTime, dayRegression,
 } from "./src/model/notebook.js";
-import { resolveConfig } from "./src/model/config.js";
+import { resolveConfig, sanitizeChekhov } from "./src/model/config.js";
 import { describePair, PATTERN_GLOSS } from "./src/model/relations.js";
 import { parseChanges } from "./src/model/changes.js";
-import { renderBlock, BLOCK_MARK, replaceSectionRows } from "./src/model/block.js";
-import questsSection, { setSend } from "./src/model/sections/quests.js";
-import { postTurn, latestState, initialState, writeBlockInto, stripBlocks, generationBase } from "./src/model/turn.js";
+import { renderBlock, BLOCK_MARK } from "./src/model/block.js";
+import { setSend } from "./src/model/sections/quests.js";
+import { postTurn, latestState, initialState, writeBlockInto, stripBlocks, generationBase, rewriteNewestSection } from "./src/model/turn.js";
 import { renderStatePrompt, needsHandover, stripForPrompt, stripPromptText, buildTemplate, renderRules, renderTurnFacts, HANDOVER } from "./src/model/prompt.js";
 import { SECTIONS } from "./src/model/sections/registry.js";
 import { rollsForGeneration, rollsForReceive } from "./src/model/dice.js";
@@ -241,25 +241,20 @@ function hideStreamingLedger() {
 
 /**
  * Change the quests in the newest reply's block, as a hand edit would: only the 📜 QUESTS
- * rows are rewritten, so the reply's thoughts, checks and physics stay. False when no
- * reply carries a block yet.
+ * rows are rewritten, so the reply's thoughts, checks and physics stay. Returns the
+ * status from rewriteNewestSection ("ok" | "noblock" | "unreadable" | "nosection").
  */
 async function editNewestQuests(mutator) {
     const c = ctx().chat || [];
-    const config = engineConfig();
-    const found = latestState(c, c.length, config);
-    if (!found) return false;
-    const st = found.state;
-    mutator(st);
-    const msg = c[found.index];
-    const next = replaceSectionRows(msg.mes, questsSection.match, questsSection.render(st.quests, { config }));
-    if (next === null) return false;
-    msg.mes = next;
+    const r = rewriteNewestSection(c, c.length, engineConfig(), "quests", mutator);
+    if (r.status !== "ok") return r;
+    const msg = c[r.index];
+    msg.mes = r.mes;
     if (Array.isArray(msg.swipes) && msg.swipe_id !== undefined && msg.swipes[msg.swipe_id] !== undefined) msg.swipes[msg.swipe_id] = msg.mes;
-    ctx().updateMessageBlock(found.index, msg);
+    ctx().updateMessageBlock(r.index, msg);
     await ctx().saveChat();
-    decorateMessage(found.index);
-    return true;
+    decorateMessage(r.index);
+    return r;
 }
 
 // ── The popup ───────────────────────────────────────────────────────────────
@@ -377,7 +372,7 @@ function popupHtml(tab) {
                     <option value="model" ${cf.sectionConfig.chekhov.firing !== "fate" ? "selected" : ""}>The model, when the moment is right</option>
                     <option value="fate" disabled>Fate (arrives with the Fate engine)</option></select></label>
                 ${[["eligibleAge", "Eligible from age"], ["pruneAge", "Prune at age"], ["cap", "Active cap"], ["maxLoadsPerTurn", "Loads per reply"], ["firedKeep", "Fired kept (0 = all)"]]
-                    .map(([k, label]) => `<label>${label} <input type="number" min="0" class="text_pole sl-num" data-chk="${k}" value="${cf.sectionConfig.chekhov[k]}"></label>`).join("")}
+                    .map(([k, label]) => `<label>${label} <input type="number" min="${k === "eligibleAge" || k === "firedKeep" ? 0 : 1}" class="text_pole sl-num" data-chk="${k}" value="${cf.sectionConfig.chekhov[k]}"></label>`).join("")}
             </div>
             <div class="sl-btns"><button class="menu_button" id="sl-save-config">Save engine numbers</button><button class="menu_button" id="sl-reset-config">Reset to defaults</button></div>`;
     }
@@ -443,8 +438,9 @@ export async function openLedgerPopup(startTab = "rules") {
         $root.find("[data-cfg-axis]").each((_, el) => { const a = c.axes.find(x => x.key === el.dataset.cfgAxis); a[el.dataset.field] = Number(el.value); });
         $root.find("[data-cfg-decay]").each((_, el) => { c.decay[Number(el.dataset.cfgDecay)].period = Number(el.value); });
         c.offstageSkip = String($root.find("[data-cfg-skip]").val() || "").split(/[,\s]+/).map(Number).filter(Number.isFinite);
-        $root.find("[data-chk]").each((_, el) => { c.sectionConfig.chekhov[el.dataset.chk] = Math.max(0, Number(el.value) || 0); });
-        c.sectionConfig.chekhov.firing = String($root.find("[data-chk-firing]").val() || "model");
+        const form = { firing: String($root.find("[data-chk-firing]").val() || "model") };
+        $root.find("[data-chk]").each((_, el) => { form[el.dataset.chk] = el.value; });
+        c.sectionConfig.chekhov = sanitizeChekhov(form, c.sectionConfig.chekhov);
         settings().config = c;
         saveSettings();
         done("Engine numbers saved. They apply from the next reply on.");
@@ -452,8 +448,11 @@ export async function openLedgerPopup(startTab = "rules") {
     $root.on("click", "#sl-reset-config", () => { settings().config = {}; saveSettings(); done("Reset to defaults."); });
     const setMixed = () => { const all = $root.find("#sl-send-all")[0]; if (all) all.indeterminate = all.dataset.mixed === "1"; };
     const sendQuests = async (ids, on) => {
-        if (await editNewestQuests(st => setSend(st, ids, on))) refresh();
-        else toastr.warning("No reply carries a Story Ledger block yet.", "🗺️ Story Ledger");
+        const r = await editNewestQuests(st => setSend(st, ids, on));
+        if (r.status === "unreadable") toastr.warning(`The newest block has row(s) that no longer read — fix them first, so they are not overwritten: ${r.errors.map(e => `${e.section}: ${e.row}`).join("; ")}`, "🗺️ Story Ledger");
+        else if (r.status === "nosection") toastr.warning("The newest block has no 📜 QUESTS section (is the Quests section switched off?).", "🗺️ Story Ledger");
+        else if (r.status === "noblock") toastr.warning("No reply carries a Story Ledger block yet.", "🗺️ Story Ledger");
+        refresh();
         setMixed();
     };
     $root.on("change", ".sl-send", e => sendQuests([String(e.currentTarget.dataset.id)], e.currentTarget.checked));

@@ -18,8 +18,9 @@ test("a time already past today locks to the next day", () => {
     assert.deepEqual(lockTime("18:00", null), { day: null, minutes: 18 * 60 });
 });
 
-test("isAtOrPast compares day then minutes, minutes only without a day", () => {
+test("isAtOrPast compares day then minutes; a dayless lock by the clock; a dated lock never from a clock alone", () => {
     assert.equal(isAtOrPast({ day: 4, minutes: 60 }, { day: 3, minutes: 600 }), true);
     assert.equal(isAtOrPast({ day: 3, minutes: 599 }, { day: 3, minutes: 600 }), false);
-    assert.equal(isAtOrPast({ day: null, minutes: 600 }, { day: 9, minutes: 600 }), true);
+    assert.equal(isAtOrPast({ day: null, minutes: 600 }, { day: null, minutes: 540 }), true);
+    assert.equal(isAtOrPast({ day: null, minutes: 600 }, { day: 9, minutes: 600 }), false);
 });

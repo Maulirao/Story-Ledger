@@ -6,8 +6,8 @@
 // ──────────────────────────────────────────────────────────────────────────────
 
 import { emptyState } from "./state.js";
-import { parseBlock, findBlock, BLOCK_MARK } from "./block.js";
-import { enabledSections, CORE_KEYS } from "./sections/registry.js";
+import { parseBlock, findBlock, BLOCK_MARK, replaceSectionRows } from "./block.js";
+import { enabledSections, CORE_KEYS, sectionByKey } from "./sections/registry.js";
 import { applyTurn, replayRelations } from "./relations.js";
 import { importFromLegacyNotebook, notebookBody, parseNotebookBlock } from "./notebook.js";
 import { parseChanges } from "./changes.js";
@@ -23,9 +23,9 @@ const linesUnder = (changes, heading) => {
 };
 
 /** The context every section hook receives. */
-export function sectionContext(state, prevPresent, config) {
+export function sectionContext(state, prevPresent, config, prevNow = "") {
     return {
-        config, userName: config.userName, present: state.scene.present, prevPresent: prevPresent || [],
+        config, userName: config.userName, present: state.scene.present, prevPresent: prevPresent || [], prevNow,
         touched: new Set(), warnings: [], sections: config.sections || {}, checkStyle: config.checkStyle || "dnd", rolls: config.rolls,
     };
 }
@@ -46,7 +46,7 @@ export function postTurn(prev, changes, config) {
     s.ct = rel.state.ct;
     s.rel = { pairs: rel.state.pairs, selves: rel.state.selves };
     s.perTurn = {};
-    const ctx = sectionContext(s, prev.scene.present, config);
+    const ctx = sectionContext(s, prev.scene.present, config, prev.scene.now);
     const unparsed = [];
     const on = enabledSections(config.sections);
     for (const sec of on) {
@@ -161,4 +161,21 @@ export function writeBlockInto(mes, blockText) {
 /** How many messages of the raw chat a generation builds on: a swiped or continued reply is not its own past. */
 export function generationBase(chatLength, type) {
     return type === "swipe" || type === "continue" ? chatLength - 1 : chatLength;
+}
+
+/**
+ * Rewrite one section of the newest block the way a hand edit would (only that section's
+ * rows change). Refuses when the newest block has rows that no longer parse — rewriting
+ * would silently replace them. Returns { status: "ok"|"noblock"|"unreadable"|"nosection",
+ * index, mes, errors }.
+ */
+export function rewriteNewestSection(chat, beforeIndex, config, key, mutator) {
+    const found = latestState(chat, beforeIndex, config);
+    if (!found) return { status: "noblock", errors: [] };
+    if (found.errors.length) return { status: "unreadable", index: found.index, errors: found.errors };
+    const sec = sectionByKey(key);
+    mutator(found.state);
+    const mes = replaceSectionRows(chat[found.index].mes, sec.match, sec.render(found.state[key], { config }));
+    if (mes === null) return { status: "nosection", index: found.index, errors: [] };
+    return { status: "ok", index: found.index, mes, errors: [] };
 }
