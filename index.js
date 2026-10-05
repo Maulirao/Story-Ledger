@@ -130,7 +130,7 @@ function buildInjection(type = "normal") {
     if (needsHandover(c)) {
         // the importer already read what it could; the model is asked only for the rest
         const imp = importForeign(c, config);
-        parts.push(buildHandover(imp.imported, { hasNow: Boolean(state.scene.now), sections: s.sections }));
+        parts.push(buildHandover(imp.imported, { hasNow: Boolean(state.scene.now), sections: s.sections, unread: imp.unread }));
         const d = chatData();
         const r = proposeImportedRules(d.notebook, imp.rules, d.imported);
         if (r.done && !d.imported) {

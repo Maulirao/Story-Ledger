@@ -53,14 +53,20 @@ function quests(rows, s) {
         const { name, fields, rest } = rowFields(row);
         const kind = (name.match(/^(Main|Side)\b/i) || [])[1];
         if (!kind) continue;
+        // the status comes from a status slot only — never from words in the objective or reward
+        const statusOf = t => (/^(completed|complete|done|finished)$/i.test(t) ? "done" : /^(dropped|failed|abandoned)$/i.test(t) ? "dropped" : /^active$/i.test(t) ? "active" : "");
         let objective = value(fields.objective);
-        let status = /\b(completed|complete|done|finished)\b/i.test(rest) ? "done" : /\bdropped|failed|abandoned\b/i.test(rest) ? "dropped" : "active";
+        let status = statusOf(value(fields.status));
         if (!objective) {
             // FF form: "Main: Active — Objective | Progress: … | Reward: …"
-            const head = plain(rest.split("|")[0]).replace(/^(active|completed|none)\s*[—–-]\s*/i, "");
-            objective = value(head);
+            const head = plain(rest.split("|")[0]);
+            const lead = head.match(/^(active|completed|complete|done|finished|dropped|failed|abandoned|none)\s*[—–-]\s*(.*)$/i);
+            if (lead) { status = status || statusOf(lead[1]); objective = value(lead[2]); }
+            else objective = value(head);
         }
-        objective = objective.replace(/\s*\((completed|complete|done|finished|active)\)\s*$/i, "").trim();
+        const tail = objective.match(/\s*\((completed|complete|done|finished|active|dropped|failed|abandoned)\)\s*$/i);
+        if (tail) { status = status || statusOf(tail[1]); objective = objective.slice(0, tail.index).trim(); }
+        status = status || "active";
         if (!objective || /^none$/i.test(objective)) continue;
         s.quests.push({ id: nextId(s, "Q", s.quests.map(q => q.id)), kind: kind[0].toUpperCase() + kind.slice(1).toLowerCase(), status,
             objective, progress: value(fields.progress), reward: value(fields.reward), send: false });
@@ -85,7 +91,9 @@ function inventory(rows, s) {
 function chekhov(body, s) {
     const text = plain(body);
     const now = parseStoryTime(s.scene.now);
-    const seg = name => { const m = text.match(new RegExp(`${name}\\s*:\\s*(.*?)(?=\\s·\\s(?:Active|Locked|Fired)\\s*:|$)`, "i")); return m ? m[1] : ""; };
+    // "Active: … · Locked: … · Fired: …" on one line or on separate rows
+    // a label follows the start or a separator — never "[", so a bullet's own [LOCKED: …] tag is not a label
+    const seg = name => { const m = text.match(new RegExp(`(?:^|[\\s·-])${name}\\s*:\\s*(.*?)(?=[\\s·-]+(?:Active|Locked|Fired)\\s*:|$)`, "i")); return m ? m[1] : ""; };
     const bulletsIn = (part, lockedSeg) => {
         for (const m of part.matchAll(/\[BULLET:\s*([^\]]+)\]\s*\(\s*weight:\s*(\d)\s*,\s*age:\s*(\d+)(?:\s*\/\s*\d+)?\s*\)((?:\s*\[[^\]]*\])*)/gi)) {
             const flags = m[4] || "";
@@ -105,7 +113,9 @@ function chekhov(body, s) {
     };
     bulletsIn(seg("Active"), false);
     bulletsIn(seg("Locked"), true);
-    for (const f of listOf(seg("Fired").replace(/\[BULLET:\s*([^\]]+)\][^,]*/gi, "$1"))) {
+    const firedSeg = seg("Fired");
+    const firedDescs = /\[BULLET:/i.test(firedSeg) ? [...firedSeg.matchAll(/\[BULLET:\s*([^\]]+)\]/gi)].map(m => m[1].trim()) : listOf(firedSeg);
+    for (const f of firedDescs) {
         s.chekhov.fired.push({ id: nextId(s, "B", [...s.chekhov.bullets, ...s.chekhov.fired].map(x => x.id)), desc: f, how: "fired before Story Ledger" });
     }
     return s.chekhov.bullets.length + s.chekhov.fired.length;
@@ -148,11 +158,11 @@ export function parseFf(mes) {
     const now = headerNow(mes);
     if (now) { s.scene.now = now; imported.push("scene"); }
     const handlers = [
-        [/NPC AGENDAS/, sec => agendas(rowsOf(sec.body), s), "agendas"],
-        [/NPC LOCATIONS/, sec => locations(rowsOf(sec.body), s), "locations"],
-        [/^FACTIONS$/, sec => factions(rowsOf(sec.body), s), "factions"],
-        [/^QUESTS$/, sec => quests(rowsOf(sec.body), s), "quests"],
-        [/^INV/, sec => inventory(rowsOf(sec.body), s), "inv"],
+        [/NPC AGENDAS/, sec => agendas(rowsOf(sec.body), s), "agendas", true],
+        [/NPC LOCATIONS/, sec => locations(rowsOf(sec.body), s), "locations", true],
+        [/^FACTIONS$/, sec => factions(rowsOf(sec.body), s), "factions", true],
+        [/^QUESTS$/, sec => quests(rowsOf(sec.body), s), "quests", true],
+        [/^INV/, sec => inventory(rowsOf(sec.body), s), "inv", true],
         [/CHEKHOV/, sec => chekhov(sec.body, s), "chekhov"],
         [/FATE ROUTINE/, sec => fate(rowsOf(sec.body), s), "fate"],
     ];
@@ -160,8 +170,13 @@ export function parseFf(mes) {
         if (PER_TURN.test(sec.key) || /NOTEBOOK/.test(sec.key)) continue;
         const h = handlers.find(([re]) => re.test(sec.key));
         if (!h) { unread.push(sec.title); continue; }
-        if (h[1](sec) > 0) { if (!imported.includes(h[2])) imported.push(h[2]); }
-        else if (rowsOf(sec.body).some(r => value(r))) unread.push(sec.title);
+        const n = h[1](sec);
+        const rows = rowsOf(sec.body).filter(r => value(r)).length;
+        if (n > 0) {
+            if (!imported.includes(h[2])) imported.push(h[2]);
+            // row-per-item sections: rows that yielded nothing go to the handover
+            if (h[3] && rows > n) unread.push(`${sec.title} (${rows - n} row${rows - n > 1 ? "s" : ""} not read)`);
+        } else if (rows) unread.push(sec.title);
     }
     const nb = importFromLegacyNotebook([{ is_user: false, mes }]);
     if (nb.rules.length || nb.threads.length) {

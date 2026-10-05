@@ -149,7 +149,7 @@ const HANDOVER_ASKS = [
  * Now only when no story time came across, and change lines only for the sections
  * that are on and were not imported.
  */
-export function buildHandover(imported = [], { hasNow = false, sections = {} } = {}) {
+export function buildHandover(imported = [], { hasNow = false, sections = {}, unread = [] } = {}) {
     const have = new Set(imported);
     const on = k => (sections || {})[k] !== false;
     const lines = [
@@ -160,6 +160,7 @@ export function buildHandover(imported = [], { hasNow = false, sections = {} } =
     if (on("relationships")) lines.push("- Relationships: one NEW line for every relationship that state tracked, calibrated from what it recorded (FF's BOND −5…20 with Sparks and Grudge, Megumin's Affection/Trust/Desire, Sola's named dynamics, AA's bonds) and from the story so far. High BOND means fondness on the axes that fit this relationship; Grudge and hostility mean friction.");
     for (const [key, ask] of HANDOVER_ASKS) if (on(key === "threads" ? "notebook" : key) && !have.has(key)) lines.push(`- ${ask}`);
     if (on("notebook")) lines.push("- Proposed rules: if the reader's notebook below does not already hold that state's [R] rules, propose each as add:.");
+    if ((unread || []).length) lines.push(`- These parts of that block could not be read — carry them over with the change lines that fit: ${unread.join("; ")}.`);
     lines.push("Stop writing the old preset's state block from this reply on, even though it is still visible in the history.", "</ledger_handover>");
     return lines.join("\n");
 }

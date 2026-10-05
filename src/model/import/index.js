@@ -5,7 +5,7 @@
 // ──────────────────────────────────────────────────────────────────────────────
 
 import { BLOCK_MARK } from "../block.js";
-import { collectProposals } from "../notebook.js";
+import { collectProposals, notebookBody } from "../notebook.js";
 import { parseFf } from "./ff.js";
 import { parseAa } from "./aa.js";
 import { parseSola } from "./sola.js";
@@ -24,7 +24,9 @@ const SOURCES = [
  */
 export function importForeign(chat, config) {
     const msgs = chat || [];
-    if (msgs.some(m => m && String(m.mes || "").includes(BLOCK_MARK))) return { source: null, index: -1, state: null, imported: [], rules: [], unread: [] };
+    // a chat that already has Story Ledger state — a block, or a 0.1 Story_Ledger comment — never imports
+    const ours = m => m && (String(m.mes || "").includes(BLOCK_MARK) || (!m.is_user && notebookBody(m.mes) !== null));
+    if (msgs.some(ours)) return { source: null, index: -1, state: null, imported: [], rules: [], unread: [] };
     for (let i = msgs.length - 1; i >= 0; i--) {
         const m = msgs[i];
         if (!m || m.is_user || m.is_system) continue;

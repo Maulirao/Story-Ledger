@@ -269,7 +269,8 @@ export function importFromLegacyNotebook(chat) {
         const body = legacyNotebookSection(msg.mes);
         if (body === null) continue;
         const rules = [], threads = [];
-        for (const raw of body.split(/\r?\n|<br\s*\/?>/i)) {
+        // entries one per line, or pipe-separated on one line ("[R] a | [T] b", the pipe possibly as &#124;)
+        for (const raw of body.split(/\r?\n|<br\s*\/?>|\s+(?:\||&#124;)\s+(?=(?:[-*•]\s*)?\[[RTD]\])/i)) {
             const line = bullet(raw);
             const m = line.match(/^\[(R|T)\]\s*(.+)$/i);
             if (!m) continue;
