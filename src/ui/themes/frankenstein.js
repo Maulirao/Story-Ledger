@@ -11,9 +11,13 @@ const GROUPS = [
     [/FATE|WORLD|DND|PHYSICS|ARROW/i, "sl-grp-sim"],
 ];
 
+import { undecorate } from "./common.js";
+
+export { undecorate };
+
 const escHtml = s => String(s).replace(/[&<>"]/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch]));
 
-function outerDetails(root) {
+export function outerDetails(root) {
     return [...root.querySelectorAll("details")].find(d => {
         const s = d.querySelector(":scope > summary");
         return s && /INTERNAL STATES/i.test(s.textContent);
@@ -69,13 +73,20 @@ function fateChips(section) {
 }
 
 /** Decorate the rendered block inside `root` (a .mes_text element). */
-export function decorate(root, { config, isNewest = false }) {
+export const decorate = (root, ctx) => decorateWith(root, ctx, "frankenstein");
+
+/**
+ * The shared decoration — ↻ and 🎲 controls, relationship bars, notebook tags,
+ * Chekhov chips, Fate tier chips — under theme `theme`. Other themes build on it.
+ * Returns true when it decorated afresh, false when the block already had `theme`.
+ */
+export function decorateWith(root, { config, isNewest = false }, theme) {
     const outer = outerDetails(root);
-    if (!outer) return;
-    if (outer.dataset.slTheme === "frankenstein") { syncNextTurnButton(outer, isNewest); return; }
+    if (!outer) return false;
+    if (outer.dataset.slTheme === theme) { syncNextTurnButton(outer, isNewest); return false; }
     undecorate(root);
-    outer.dataset.slTheme = "frankenstein";
-    outer.classList.add("sl-theme-frankenstein");
+    outer.dataset.slTheme = theme;
+    outer.classList.add(`sl-theme-${theme}`);
     const head = outer.querySelector(":scope > summary");
     head.insertAdjacentHTML("beforeend", `<span class="sl-ui sl-rebuild" title="Rebuild this block from the one before it and this reply's ledger comment">↻</span>`);
     syncNextTurnButton(outer, isNewest);
@@ -100,6 +111,7 @@ export function decorate(root, { config, isNewest = false }) {
         if (/CHEKHOV/i.test(title)) chekhovChips(d);
         if (/FATE ROUTINE/i.test(title)) fateChips(d);
     }
+    return true;
 }
 
 // Bullet tags as chips: hot · eligible · secret · LOCKED … · at … (scheduled, or due once reached) · fired: …
@@ -133,15 +145,4 @@ function chekhovChips(section) {
         const html = el.innerHTML.split(/(<br\s*\/?>|\n)/i).map(part => (/^(<br\s*\/?>|\n)$/i.test(part) ? part : chipLine(part))).join("");
         if (html !== el.innerHTML) { if (!el.dataset.slWrap) el.dataset.slOrig = el.innerHTML; el.innerHTML = html; }
     }
-}
-
-/** Undo everything decorate() did inside `root`. */
-export function undecorate(root) {
-    root.querySelectorAll(".sl-ui").forEach(n => n.remove());
-    root.querySelectorAll("[data-sl-orig]").forEach(n => { n.innerHTML = n.dataset.slOrig; delete n.dataset.slOrig; });
-    root.querySelectorAll("[data-sl-wrap]").forEach(n => n.replaceWith(document.createTextNode(n.dataset.slWrap)));
-    root.querySelectorAll(".sl-fk-section, .sl-theme-frankenstein").forEach(n => {
-        n.classList.remove("sl-fk-section", "sl-grp-people", "sl-grp-memory", "sl-grp-sim", "sl-fk-has-bars", "sl-theme-frankenstein");
-        delete n.dataset.slTheme;
-    });
 }

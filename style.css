@@ -138,3 +138,55 @@
     .sl-row { grid-template-columns: 1fr 1fr; }
     .sl-row .sl-bar { display: none; }
 }
+
+/* ── Sola theme: warm showrunner console (display only) ── */
+.sl-theme-sola {
+    --sl-so-coral: #E07A5F; --sl-so-amber: #F3B74B; --sl-so-sand: #F0DCC4; --sl-so-orange: #F4A261;
+    margin: 6px 0 2px; border-radius: 10px; font-size: 0.9em;
+    background: rgba(42, 28, 20, 0.75); border: 1px solid rgba(224, 122, 95, 0.45);
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.28); color: var(--sl-so-sand);
+}
+.sl-theme-sola > summary { padding: 9px 12px; color: var(--sl-so-coral); font-weight: 600; cursor: pointer; list-style: none; }
+.sl-theme-sola .sl-rebuild, .sl-theme-sola .sl-next-turn { float: right; opacity: 0.6; padding: 0 4px; cursor: pointer; }
+.sl-theme-sola .sl-rebuild:hover, .sl-theme-sola .sl-next-turn:hover { opacity: 1; }
+.sl-theme-sola details { margin: 6px 8px; border-radius: 6px; padding: 0 10px 6px; background: rgba(20, 12, 8, 0.6); border-left: 3px solid var(--sl-so-coral); }
+.sl-theme-sola details > summary { padding: 6px 0; cursor: pointer; list-style: none; font-weight: 600; color: var(--sl-so-coral); }
+.sl-theme-sola .sl-sola-cabinet { border-left-color: var(--sl-so-amber); }
+.sl-theme-sola .sl-sola-cabinet > summary { color: var(--sl-so-amber); }
+.sl-theme-sola .sl-sola-note { background: rgba(224, 122, 95, 0.1); font-style: italic; }
+.sl-theme-sola .sl-sola-note > summary { font-style: normal; color: var(--sl-so-orange); }
+.sl-theme-sola .sl-sola-bond .sl-fk-pair-name { color: var(--sl-so-orange); }
+.sl-theme-sola .sl-fk-has-bars > :not(summary):not(.sl-fk-pairs) { display: none; }
+.sl-sola-hud { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 4px; font-size: 0.82em; }
+.sl-sola-chip { padding: 2px 10px; border-radius: 999px; background: rgba(42, 28, 20, 0.85); border: 1px solid rgba(224, 122, 95, 0.45); color: #F0DCC4; }
+.sl-sola-chip b { color: #F4A261; margin-right: 4px; }
+.sl-sola-major { border-color: #E07A5F; } .sl-sola-minor { border-color: #F3B74B; } .sl-sola-ambient { opacity: 0.8; }
+
+/* ── Megumin theme: one card with a tab strip (display only) ── */
+.sl-theme-megumin {
+    margin: 14px 0 4px; border-radius: 12px; overflow: hidden; font-size: 0.9em;
+    border: 1px solid var(--SmartThemeBorderColor, rgba(255, 255, 255, 0.14)); background: rgba(0, 0, 0, 0.22);
+}
+.sl-theme-megumin > summary { padding: 9px 14px; cursor: pointer; list-style: none; font-weight: 600; background: rgba(0, 0, 0, 0.28); }
+.sl-theme-megumin .sl-rebuild, .sl-theme-megumin .sl-next-turn { float: right; opacity: 0.6; padding: 0 4px; cursor: pointer; }
+.sl-theme-megumin .sl-rebuild:hover, .sl-theme-megumin .sl-next-turn:hover { opacity: 1; }
+.sl-mg-tabs { display: flex; overflow-x: auto; background: rgba(0, 0, 0, 0.28); border-bottom: 1px solid var(--SmartThemeBorderColor, rgba(255, 255, 255, 0.12)); }
+.sl-mg-tab {
+    display: flex; align-items: center; gap: 6px; padding: 8px 14px; white-space: nowrap; cursor: pointer;
+    background: transparent; border: 0; border-right: 1px solid var(--SmartThemeBorderColor, rgba(255, 255, 255, 0.1));
+    border-bottom: 2px solid transparent; color: var(--SmartThemeEmColor, #9aa0a6); font: inherit; font-size: 0.8em; font-weight: 600;
+}
+.sl-mg-tab:hover { background: rgba(255, 255, 255, 0.05); color: var(--SmartThemeBodyColor, #e8e8e8); }
+.sl-mg-tab.sl-mg-active { background: rgba(245, 158, 11, 0.1); color: var(--SmartThemeBodyColor, #e8e8e8); border-bottom-color: #f59e0b; }
+.sl-theme-megumin > details { margin: 0; padding: 4px 14px 8px; border: 0; }
+.sl-theme-megumin > details > summary { font-weight: 600; color: #f59e0b; cursor: pointer; list-style: none; padding: 4px 0; }
+.sl-theme-megumin .sl-mg-hidden { display: none; }
+.sl-theme-megumin .sl-fk-has-bars > :not(summary):not(.sl-fk-pairs) { display: none; }
+/* line breaks SillyTavern leaves between sections would show as gaps (FF's regex collapses them too) */
+.sl-theme-megumin > br, .sl-theme-sola > br, .sl-theme-megumin > p:empty, .sl-theme-sola > p:empty { display: none; }
+/* the shared bars and chips read these colours in every theme */
+.sl-theme-sola, .sl-theme-megumin {
+    --sl-fk-teal: #94e2d5; --sl-fk-purple: #cba6f7; --sl-fk-orange: #fab387; --sl-fk-gold: #f9e2af;
+    --sl-fk-fond: #f38ba8; --sl-fk-friction: #89b4fa;
+}
+.sl-theme-sola { --sl-fk-fond: #E07A5F; --sl-fk-gold: #F4A261; }
