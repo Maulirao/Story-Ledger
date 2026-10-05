@@ -6,8 +6,10 @@
 
 import agendas from "./agendas.js";
 import locations from "./locations.js";
+import factions from "./factions.js";
+import quests from "./quests.js";
 
-export const SECTIONS = [agendas, locations];
+export const SECTIONS = [agendas, locations, factions, quests];
 
 /** Sections switched on in `sections` (a key that is missing counts as on). */
 export const enabledSections = (sections = {}) => SECTIONS.filter(s => (sections || {})[s.key] !== false);
