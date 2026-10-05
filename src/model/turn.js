@@ -6,7 +6,8 @@
 // ──────────────────────────────────────────────────────────────────────────────
 
 import { emptyState } from "./state.js";
-import { parseBlock, findBlock, BLOCK_MARK, SECTION_KEYS } from "./block.js";
+import { parseBlock, findBlock, BLOCK_MARK } from "./block.js";
+import { enabledSections, CORE_KEYS } from "./sections/registry.js";
 import { applyTurn, replayRelations } from "./relations.js";
 import { importFromLegacyNotebook, notebookBody, parseNotebookBlock } from "./notebook.js";
 import { parseChanges } from "./changes.js";
@@ -14,7 +15,22 @@ import { parseChanges } from "./changes.js";
 const clone = o => JSON.parse(JSON.stringify(o));
 const key = s => String(s).trim().toLowerCase();
 
-/** `prev` + this reply's changes (null when the reply has none) → { state, log }. */
+/** The change lines a reply wrote under `heading` (case-insensitive). */
+const linesUnder = (changes, heading) => {
+    if (!changes || !changes.sections) return [];
+    const k = Object.keys(changes.sections).find(h => h.toLowerCase() === heading.toLowerCase());
+    return k ? changes.sections[k] : [];
+};
+
+/** The context every section hook receives. */
+export function sectionContext(state, prevPresent, config) {
+    return {
+        config, userName: config.userName, present: state.scene.present, prevPresent: prevPresent || [],
+        touched: new Set(), sections: config.sections || {}, checkStyle: config.checkStyle || "dnd", rolls: config.rolls,
+    };
+}
+
+/** `prev` + this reply's changes (null when the reply has none) → { state, log, unparsed }. */
 export function postTurn(prev, changes, config) {
     const s = clone(prev);
     if (changes) {
@@ -30,7 +46,22 @@ export function postTurn(prev, changes, config) {
     s.ct = rel.state.ct;
     s.rel = { pairs: rel.state.pairs, selves: rel.state.selves };
     s.perTurn = {};
-    return { state: s, log: rel.log };
+    const ctx = sectionContext(s, prev.scene.present, config);
+    const unparsed = [];
+    const on = enabledSections(config.sections);
+    for (const sec of on) {
+        if (sec.carried) { if (s[sec.key] === undefined) s[sec.key] = sec.empty(); }
+        else s.perTurn[sec.key] = sec.empty();
+        for (const line of sec.apply(s, linesUnder(changes, sec.change), ctx)) unparsed.push({ section: sec.change, line });
+    }
+    for (const sec of on) if (sec.after) sec.after(s, ctx);
+    return { state: s, log: rel.log, unparsed };
+}
+
+/** Lines for <story_ledger_turn>: what the sections announce before the reply is written. */
+export function preTurnFacts(state, config) {
+    const ctx = sectionContext(state, state.scene.present, config);
+    return enabledSections(config.sections).flatMap(sec => (sec.facts ? sec.facts(state, ctx) : []));
 }
 
 /**
@@ -44,7 +75,9 @@ export function latestState(chat, beforeIndex, config) {
         if (!mes || !mes.includes(BLOCK_MARK)) continue;
         const first = parseBlock(mes, { config });
         if (!first) continue;
-        if (!first.errors.length && SECTION_KEYS.every(k => first.sections.includes(k))) return { state: first.state, index: i, errors: [] };
+        const want = [...CORE_KEYS.filter(k => (config.sections || {})[k] !== false),
+            ...enabledSections(config.sections).filter(sec => sec.carried).map(sec => sec.key)];
+        if (!first.errors.length && want.every(k => first.sections.includes(k))) return { state: first.state, index: i, errors: [] };
         const older = latestState(chat, i, config);
         if (!older) return { state: first.state, index: i, errors: first.errors };
         const again = parseBlock(mes, { prev: older.state, config });

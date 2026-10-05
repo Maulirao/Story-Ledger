@@ -8,6 +8,8 @@
 import { notebookBody, renderNotebookPrompt, LEDGER_BLOCK_RE } from "./notebook.js";
 import { describePair, PATTERN_GLOSS } from "./relations.js";
 import { findBlock, BLOCK_MARK } from "./block.js";
+import { enabledSections } from "./sections/registry.js";
+import { sectionContext } from "./turn.js";
 
 const COMMENT_RE = new RegExp(LEDGER_BLOCK_RE.source, "gi");
 
@@ -37,14 +39,20 @@ function renderRelations(state, config) {
  */
 export function renderStatePrompt(state, { notebook, config, sections, time = null }) {
     const parts = [];
-    if (sections.notebook || sections.scene) {
+    if (sections.notebook !== false || sections.scene !== false) {
         const t = time && time.now ? time : (state.scene.now ? { now: { text: state.scene.now, source: "notebook" }, timeline: [] } : null);
-        const nb = renderNotebookPrompt(sections.notebook ? notebook : { rules: [], inbox: [] }, sections.notebook ? state.threads : [], sections.scene ? t : null);
+        const nb = renderNotebookPrompt(sections.notebook !== false ? notebook : { rules: [], inbox: [] }, sections.notebook !== false ? state.threads : [], sections.scene !== false ? t : null);
         if (nb) parts.push(nb);
     }
-    if (sections.relationships) {
+    if (sections.relationships !== false) {
         const rel = renderRelations(state, config);
         if (rel) parts.push(rel);
+    }
+    const ctx = sectionContext(state, state.scene.present, { ...config, sections });
+    for (const sec of enabledSections(sections)) {
+        if (!sec.carried) continue;
+        const text = sec.prompt(state[sec.key] ?? sec.empty(), state, ctx);
+        if (text) parts.push(text);
     }
     return parts.join("\n\n");
 }

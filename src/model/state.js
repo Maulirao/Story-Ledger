@@ -1,27 +1,27 @@
 // ──────────────────────────────────────────────────────────────────────────────
 // The story state the block holds. One plain object; every field the next turn
 // needs is written into the reply's block and read back from it (snapshot model:
-// the newest block is the truth). Later phases add keys — every consumer must
-// tolerate keys it does not know. Pure: no SillyTavern, no DOM.
+// the newest block is the truth). Sections from the registry add their own keys.
+// Every consumer must tolerate keys it does not know. Pure: no SillyTavern, no DOM.
 // ──────────────────────────────────────────────────────────────────────────────
 
+import { SECTIONS } from "./sections/registry.js";
+
 export function emptyState() {
-    return {
+    const s = {
         ct: 0,
         scene: { now: "", present: [], public: false },
         threads: [],
         rel: { pairs: {}, selves: {} },
         perTurn: {},
     };
+    for (const sec of SECTIONS) if (sec.carried) s[sec.key] = sec.empty();
+    return s;
 }
 
-/** The first `kind`+n id not already used; recorded so it is never handed out twice. Mutates. */
+/** The next id of `kind` ("Q1", "Q2", …). Ids are counted, so one is never handed out twice. Mutates. */
 export function nextId(state, kind) {
     state.ids = state.ids || {};
-    const used = new Set(state.ids[kind] || []);
-    let n = 1;
-    while (used.has(`${kind}${n}`)) n++;
-    const id = `${kind}${n}`;
-    state.ids[kind] = [...used, id];
-    return id;
+    state.ids[kind] = (state.ids[kind] || 0) + 1;
+    return `${kind}${state.ids[kind]}`;
 }

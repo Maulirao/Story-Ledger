@@ -8,13 +8,11 @@
 
 import { emptyState } from "./state.js";
 import { describePair } from "./relations.js";
+import { esc, unesc, ROW } from "./text.js";
+import { SECTIONS, enabledSections, CORE_KEYS } from "./sections/registry.js";
 
 export const BLOCK_MARK = "<!-- story-ledger-state v1 -->";
 
-const esc = v => String(v ?? "").replace(/\r?\n/g, " ")
-    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\|/g, "&#124;");
-const unesc = v => String(v ?? "")
-    .replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&#124;/g, "|").replace(/&amp;/g, "&").trim();
 const clone = o => JSON.parse(JSON.stringify(o));
 
 // ── Writing ─────────────────────────────────────────────────────────────────
@@ -38,18 +36,27 @@ function relationRows(state, config) {
 
 /** The block for `state`. `rules` are the reader's [R] list (shown, never read back). */
 export function renderBlock(state, { rules = [], config, sections = {} }) {
-    const out = ["<!-- GFX_START -->", BLOCK_MARK, "<internal_states>",
+    const on = k => (sections || {})[k] !== false;
+    const ids = Object.entries(state.ids || {}).filter(([, n]) => n > 0).map(([k, n]) => `${k}${n}`).join(" ");
+    const out = ["<!-- GFX_START -->", BLOCK_MARK, ...(ids ? [`<!-- story-ledger-ids ${ids} -->`] : []), "<internal_states>",
         `<details><summary>🎬 INTERNAL STATES (Turn: ${state.ct}) </summary>`];
-    if (sections.scene) out.push(...sectionHtml("🕰️ SCENE", [
+    if (on("scene")) out.push(...sectionHtml("🕰️ SCENE", [
         `- <b>Now:</b> ${esc(state.scene.now)}`,
         `- <b>Present:</b> ${state.scene.present.map(esc).join(", ")}`,
         `- <b>Public:</b> ${state.scene.public ? "yes" : "no"}`,
     ]));
-    if (sections.relationships) out.push(...sectionHtml("💞 RELATIONSHIPS", relationRows(state, config)));
-    if (sections.notebook) out.push(...sectionHtml("📓 NOTEBOOK", [
+    if (on("relationships")) out.push(...sectionHtml("💞 RELATIONSHIPS", relationRows(state, config)));
+    if (on("notebook")) out.push(...sectionHtml("📓 NOTEBOOK", [
         ...rules.map(r => `- [R] ${esc(r)}`),
         ...state.threads.map(t => `- [T] ${esc(t)}`),
     ]));
+    const ctx = { config, checkStyle: (config && config.checkStyle) || "dnd" };
+    for (const sec of enabledSections(sections)) {
+        const value = sec.carried ? (state[sec.key] ?? sec.empty()) : (state.perTurn || {})[sec.key];
+        if (!sec.carried && (value === undefined || (sec.isEmpty && sec.isEmpty(value)))) continue;
+        const title = typeof sec.title === "function" ? sec.title(ctx) : sec.title;
+        out.push(...sectionHtml(title, sec.render(value, ctx)));
+    }
     out.push("</details>", "</internal_states>", "<!-- GFX_END -->");
     return out.join("\n");
 }
@@ -86,9 +93,8 @@ function sectionsOf(text) {
     return out;
 }
 
-export const SECTION_KEYS = ["SCENE", "RELATIONSHIPS", "NOTEBOOK"];
-
-const ROW = /^[-*•]\s*<b>([\s\S]*?)<\/b>\s*(.*)$/;
+/** Every carried section key: the phase-1 three and the registry's. */
+export const SECTION_KEYS = [...CORE_KEYS, ...SECTIONS.filter(s => s.carried).map(s => s.key)];
 
 function parseScene(rows, base, errors) {
     for (const row of rows) {
@@ -147,11 +153,28 @@ export function parseBlock(text, { prev = null, config }) {
     const errors = [];
     const ct = block.match(/INTERNAL STATES\s*\(Turn:\s*(\d+)\)/i);
     if (ct) base.ct = Number(ct[1]);
+    const ids = t.slice(at).match(/<!--\s*story-ledger-ids([^>]*?)-->/);
+    if (ids) {
+        base.ids = { ...(base.ids || {}) };
+        for (const m of ids[1].matchAll(/([A-Z])(\d+)/g)) base.ids[m[1]] = Math.max(base.ids[m[1]] || 0, Number(m[2]));
+    }
     const secs = sectionsOf(block);
-    if (secs.SCENE) parseScene(secs.SCENE, base, errors);
-    if (secs.RELATIONSHIPS) parseRelations(secs.RELATIONSHIPS, base, prev, config, errors);
-    if (secs.NOTEBOOK) base.threads = secs.NOTEBOOK
-        .map(r => r.match(/^[-*•]\s*\[T\]\s*(.*)$/i)).filter(Boolean).map(m => unesc(m[1])).filter(Boolean);
+    const found = [];
+    if (secs.SCENE) { parseScene(secs.SCENE, base, errors); found.push("scene"); }
+    if (secs.RELATIONSHIPS) { parseRelations(secs.RELATIONSHIPS, base, prev, config, errors); found.push("relationships"); }
+    if (secs.NOTEBOOK) {
+        base.threads = secs.NOTEBOOK
+            .map(r => r.match(/^[-*•]\s*\[T\]\s*(.*)$/i)).filter(Boolean).map(m => unesc(m[1])).filter(Boolean);
+        found.push("notebook");
+    }
+    for (const sec of SECTIONS.filter(x => x.carried)) {
+        const title = Object.keys(secs).find(k => sec.match.test(k));
+        if (!title) { if (base[sec.key] === undefined) base[sec.key] = sec.empty(); continue; }
+        const r = sec.parse(secs[title], prev ? prev[sec.key] : undefined);
+        base[sec.key] = r.value;
+        for (const row of r.errors) errors.push({ section: title, row });
+        found.push(sec.key);
+    }
     base.perTurn = {};
-    return { state: base, errors, sections: Object.keys(secs).filter(k => SECTION_KEYS.includes(k)) };
+    return { state: base, errors, sections: found };
 }
