@@ -22,25 +22,37 @@ const clock = at => `${at.day !== null && at.day !== undefined ? `Day ${at.day} 
 const timeText = at => `${clock(at)}${at.wait ? " next-day" : ""}${at.hit ? " reached" : ""}`;
 const byId = (list, id) => list.find(b => b.id.toLowerCase() === String(id).toLowerCase());
 
-/** True while a lock, a time lock or a dependency on a still-active bullet holds the bullet. */
-export function isLocked(b, state) {
-    if (b.lock || b.at) return true;
-    // waits only while the bullet it depends on is still loaded; fired, pruned or unknown frees it
-    return Boolean(b.after) && state.chekhov.bullets.some(x => x !== b && x.id.toLowerCase() === b.after.toLowerCase());
-}
+// waits only while the bullet it depends on is still loaded; fired, pruned or unknown frees it
+const waitsOn = (b, state) => Boolean(b.after) && state.chekhov.bullets.some(x => x !== b && x.id.toLowerCase() === b.after.toLowerCase());
+const crowded = (b, state) => b.secret && (state.scene.present || []).length > 2;
 
-/** A time-locked bullet whose hour has come (by the scene's Now line); once due it stays due until fired. */
+/** True while a manual lock, a time lock or a dependency on a still-active bullet holds the bullet. */
+export const isLocked = (b, state) => Boolean(b.lock || b.at) || waitsOn(b, state);
+
+/**
+ * A time-locked bullet whose hour has come (by the scene's Now line); once due it stays due
+ * until fired. Holds win: a manual lock, a dependency or a crowd (for a secret) keep it from
+ * being due even after its hour.
+ */
 export function isDue(b, state) {
-    if (!b.at) return false;
+    if (!b.at || b.lock || waitsOn(b, state) || crowded(b, state)) return false;
     if (b.at.hit) return true;
     if (b.at.wait) return false;
     return isAtOrPast(parseStoryTime(state.scene.now), b.at);
 }
 
 /** May fire: unlocked, old enough, and a secret is not exposed to a crowd (more than 2 present). */
-export function eligible(b, state, cfg) {
-    if (isLocked(b, state) || b.age < cfg.eligibleAge) return false;
-    return !(b.secret && (state.scene.present || []).length > 2);
+export const eligible = (b, state, cfg) => !isLocked(b, state) && b.age >= cfg.eligibleAge && !crowded(b, state);
+
+/** Why a bullet may not fire yet, for warnings: age, manual hold, time, dependency, crowd. */
+function holdReasons(b, state, cfg) {
+    const out = [];
+    if (b.age < cfg.eligibleAge) out.push(`age ${b.age} of ${cfg.eligibleAge}`);
+    if (b.lock) out.push(`held: ${b.lock}`);
+    if (b.at && !isDue(b, state)) out.push(`time-locked until ${timeText(b.at)}`);
+    if (waitsOn(b, state)) out.push(`waits for ${b.after}`);
+    if (crowded(b, state)) out.push("a secret, and a crowd is present");
+    return out;
 }
 
 /** Loaded bullets that exist because of something {{user}} said or did. */
@@ -76,7 +88,7 @@ export default {
     empty: () => ({ bullets: [], fired: [] }),
     render(value, ctx) {
         const cfg = cfgOf(ctx);
-        const fakeState = { chekhov: value, scene: { now: "", present: [] } };
+        const view = (ctx && ctx.state) ? { ...ctx.state, chekhov: value } : { chekhov: value, scene: { now: "", present: [] } };
         return [
             ...value.bullets.map(b => {
                 const tags = [`w${b.weight}`, `age ${b.age}/${cfg.pruneAge}`];
@@ -85,7 +97,7 @@ export default {
                 if (b.lock) tags.push(`LOCKED ${escTag(b.lock)}`);
                 if (b.at) tags.push(`at ${timeText(b.at)}`);
                 if (b.after) tags.push(`after ${b.after}`);
-                if (!isLocked(b, fakeState) && b.age >= cfg.eligibleAge) tags.push("eligible");
+                if (eligible(b, view, cfg)) tags.push("eligible");
                 return `- <b>${b.id}</b> ${esc(b.desc)} | ${tags.join(" · ")}`;
             }),
             ...value.fired.map(f => `- <b>${f.id}</b> ${esc(f.desc)} | fired: ${esc(f.how)}`),
@@ -145,7 +157,7 @@ export default {
                 ctx.touched.add(`chekhov:${nb.id}`);
                 if (++loads > cfg.maxLoadsPerTurn) ctx.warnings.push({ section: "Chekhov", text: `More than ${cfg.maxLoadsPerTurn} setup loaded in one reply (${nb.id} "${nb.desc}" kept).` });
             } else if ((m = line.match(/^fire\s+(B\d+)\s*:\s*(.+)$/i)) && (b = byId(state.chekhov.bullets, m[1]))) {
-                if (!eligible(b, state, cfg) && !isDue(b, state)) ctx.warnings.push({ section: "Chekhov", text: `${b.id} "${b.desc}" fired before it was eligible.` });
+                if (!eligible(b, state, cfg) && !isDue(b, state)) ctx.warnings.push({ section: "Chekhov", text: `${b.id} "${b.desc}" fired before it was eligible (${holdReasons(b, state, cfg).join("; ")}).` });
                 toFired(state, b, m[2].trim());
             } else if ((m = line.match(/^lock\s+(B\d+)\s*:\s*(.+)$/i)) && (b = byId(state.chekhov.bullets, m[1]))) b.lock = m[2].trim();
             else if ((m = line.match(/^unlock\s+(B\d+)$/i)) && (b = byId(state.chekhov.bullets, m[1]))) { b.lock = ""; b.at = null; b.after = ""; }
@@ -161,13 +173,21 @@ export default {
         const now = parseStoryTime(state.scene.now), before = parseStoryTime(ctx.prevNow || "");
         for (const b of state.chekhov.bullets) {
             if (!b.at) continue;
+            const waited = Boolean(b.at.wait);   // still waiting for midnight when the turn began: not yet announced
             if (b.at.wait && now && before && now.minutes < before.minutes) delete b.at.wait;
-            if (!b.at.hit && isDue(b, state)) b.at.hit = true;
+            // reached = it was already due when this turn began, so the model has been told "Due now"
+            if (!waited && !b.at.hit && ctx.prevNow && isDue(b, { ...state, scene: { ...state.scene, now: ctx.prevNow } })) b.at.hit = true;
         }
         for (const b of state.chekhov.bullets) if (!isLocked(b, state) && !ctx.touched.has(`chekhov:${b.id}`)) b.age += 1;
         for (const b of [...state.chekhov.bullets]) if (!isLocked(b, state) && !isDue(b, state) && b.age >= cfg.pruneAge) toFired(state, b, "pruned");
+        // over the cap: prune the lightest, then oldest — never a due or locked setup
         while (state.chekhov.bullets.length > cfg.cap) {
-            const victim = [...state.chekhov.bullets].sort((a, z) => a.weight - z.weight || z.age - a.age)[0];
+            const victim = state.chekhov.bullets.filter(b => !isLocked(b, state) && !isDue(b, state))
+                .sort((a, z) => a.weight - z.weight || z.age - a.age)[0];
+            if (!victim) {
+                ctx.warnings.push({ section: "Chekhov", text: `${state.chekhov.bullets.length} setups are due or locked, more than the cap of ${cfg.cap} — none were pruned. Fire, unlock or prune some.` });
+                break;
+            }
             toFired(state, victim, "pruned");
         }
         if (cfg.firedKeep > 0 && state.chekhov.fired.length > cfg.firedKeep) state.chekhov.fired = state.chekhov.fired.slice(-cfg.firedKeep);
@@ -175,7 +195,12 @@ export default {
     facts(state, ctx) {
         const cfg = cfgOf(ctx);
         const out = [];
-        for (const b of state.chekhov.bullets.filter(x => isDue(x, state))) out.push(`Due now: ${b.id} "${b.desc}" [at ${timeText(b.at)}] — fire it this turn.`);
+        // the first due turn is an instruction; after that a softer reminder the model may defer
+        for (const b of state.chekhov.bullets.filter(x => isDue(x, state))) {
+            out.push(b.at.hit
+                ? `Overdue: ${b.id} "${b.desc}" [at ${clock(b.at)}] — pay it off when it fits, or \`lock ${b.id}: why\` to hold it.`
+                : `Due now: ${b.id} "${b.desc}" [at ${clock(b.at)}] — fire it this turn.`);
+        }
         if (cfg.firing !== "fate") {
             const ready = state.chekhov.bullets.filter(b => eligible(b, state, cfg))
                 .sort((a, z) => z.weight - a.weight || z.age - a.age)

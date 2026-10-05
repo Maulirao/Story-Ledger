@@ -52,7 +52,7 @@ export function renderBlock(state, { rules = [], config, sections = {} }) {
         ...rules.map(r => `- [R] ${esc(r)}`),
         ...state.threads.map(t => `- [T] ${esc(t)}`),
     ]));
-    const ctx = { config, checkStyle: (config && config.checkStyle) || "dnd" };
+    const ctx = { config, checkStyle: (config && config.checkStyle) || "dnd", state };
     for (const sec of enabledSections(sections)) {
         const value = sec.carried ? (state[sec.key] ?? sec.empty()) : (state.perTurn || {})[sec.key];
         if (!sec.carried && (value === undefined || (sec.isEmpty && sec.isEmpty(value)))) continue;
@@ -191,15 +191,19 @@ export function replaceSectionRows(mes, match, rows) {
     const text = String(mes || "");
     const at = text.indexOf(BLOCK_MARK);
     if (at < 0) return null;
+    const endRel = text.slice(at).search(/<!--\s*GFX_END\s*-->/i);
+    const end = endRel < 0 ? text.length : at + endRel;   // never look past the block
+    const eol = /\r\n/.test(text) ? "\r\n" : "\n";         // keep the message's line endings
     const re = /<summary>([\s\S]*?)<\/summary>/gi;
     re.lastIndex = at;
     let m;
-    while ((m = re.exec(text))) {
+    while ((m = re.exec(text)) && m.index < end) {
         if (!match.test(titleKey(m[1]))) continue;
         const start = re.lastIndex;
-        const stop = text.slice(start).search(/<\/?details\b/i);
+        const stop = text.slice(start, end).search(/<\/?details\b/i);
         if (stop < 0) return null;
-        return `${text.slice(0, start)}\n${rows.join("\n")}${rows.length ? "\n" : ""}${text.slice(start + stop)}`;
+        const body = text.slice(start, start + stop).startsWith("\r\n") || !/\r\n/.test(text) ? "" : "";
+        return `${text.slice(0, start)}${eol}${rows.join(eol)}${rows.length ? eol : ""}${text.slice(start + stop)}${body}`;
     }
     return null;
 }

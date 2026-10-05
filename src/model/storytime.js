@@ -35,9 +35,12 @@ export function lockTime(spec, now) {
     if (minutes === null) return null;
     const day = dayOf(spec);
     if (day !== null) return { day, minutes };
+    const tomorrow = /\btomorrow\b/i.test(spec), today = /\btoday\b|\btonight\b/i.test(spec);
     if (!now) return { day: null, minutes };
-    if (now.day === null || now.day === undefined) return minutes > now.minutes ? { day: null, minutes } : { day: null, minutes, wait: true };
-    return { day: minutes > now.minutes ? now.day : now.day + 1, minutes };
+    // an explicit word wins; otherwise a time not yet passed (or this very minute) is today
+    const later = tomorrow || (!today && minutes < now.minutes);
+    if (now.day === null || now.day === undefined) return later ? { day: null, minutes, wait: true } : { day: null, minutes };
+    return { day: later ? now.day + 1 : now.day, minutes };
 }
 
 /** True when `now` is at or past `at`; when either has no day, only the clock is compared. */

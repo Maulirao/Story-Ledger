@@ -18,7 +18,7 @@ import { describePair, PATTERN_GLOSS } from "./src/model/relations.js";
 import { parseChanges } from "./src/model/changes.js";
 import { renderBlock, BLOCK_MARK } from "./src/model/block.js";
 import { setSend } from "./src/model/sections/quests.js";
-import { postTurn, latestState, initialState, writeBlockInto, stripBlocks, generationBase, rewriteNewestSection } from "./src/model/turn.js";
+import { postTurn, latestState, initialState, writeBlockInto, stripBlocks, generationBase, rewriteNewestSection, withClockOverride } from "./src/model/turn.js";
 import { renderStatePrompt, needsHandover, stripForPrompt, stripPromptText, buildTemplate, renderRules, renderTurnFacts, HANDOVER } from "./src/model/prompt.js";
 import { SECTIONS } from "./src/model/sections/registry.js";
 import { rollsForGeneration, rollsForReceive } from "./src/model/dice.js";
@@ -82,14 +82,18 @@ function stateBefore(chat, index, config) {
     return startOf(chat, index, config).state;
 }
 
-/** { state, errors } — errors are rows of the previous block that no longer parse. */
+/**
+ * { state, errors } — errors are rows of the previous block that no longer parse. A clock
+ * correction from the popup that is newer than that block is the story time (so due
+ * setups are judged by the corrected time, the same one the model is told).
+ */
 function startOf(chat, index, config) {
-    const found = latestState(chat, index, config);
-    if (found) return { state: found.state, errors: found.errors };
     const d = chatData();
+    const found = latestState(chat, index, config);
+    if (found) return { state: withClockOverride(found.state, d.notebook.clockOverride, found.index), errors: found.errors };
     const s = initialState(chat.slice(0, index), config, { ctOffset: d.ctOffset ?? null, corrections: d.corrections || [] });
     if (!s.threads.length && d.notebook.threads.length) s.threads = [...d.notebook.threads];   // reader's starting list
-    return { state: s, errors: [] };
+    return { state: withClockOverride(s, d.notebook.clockOverride, -1), errors: [] };
 }
 
 function blockFor(state) {
@@ -323,15 +327,16 @@ function popupHtml(tab) {
                 <button class="menu_button" id="sl-clock-set">Set correction</button>${nb.clockOverride ? `<button class="menu_button" id="sl-clock-clear">Clear</button>` : ""}</div>`;
     } else if (tab === "quests") {
         const found = latestState(c, c.length, config);
+        const questsOff = s.sections.quests === false;
         if (!found) body = "<p><i>No reply carries a Story Ledger block yet — quests appear here once one does.</i></p>";
         else {
             const qs = found.state.quests || [];
             const done = qs.filter(q => q.status !== "active");
             const row = q => `<div class="sl-item"><div><b>${esc(q.id)} ${esc(q.kind)}</b> · ${esc(q.status)} — ${esc(q.objective)}${q.progress ? ` <small>(${esc(q.progress)})</small>` : ""}</div>${
                 q.status === "active" ? "<small>active — always sent</small>"
-                    : `<label class="checkbox_label"><input type="checkbox" class="sl-send" data-id="${esc(q.id)}" ${q.send ? "checked" : ""}> Send to the model</label>`}</div>`;
-            body = `<p class="sl-meta">Every quest stays in the block for you. Active quests always reach the model; a finished one only when you tick it.</p>
-                ${done.length ? `<label class="checkbox_label"><input type="checkbox" id="sl-send-all" ${done.every(q => q.send) ? "checked" : ""} data-mixed="${done.some(q => q.send) && !done.every(q => q.send) ? 1 : 0}"> <b>Send all finished quests</b></label>` : ""}
+                    : `<label class="checkbox_label"><input type="checkbox" class="sl-send" data-id="${esc(q.id)}" ${q.send ? "checked" : ""} ${questsOff ? "disabled" : ""}> Send to the model</label>`}</div>`;
+            body = `${questsOff ? `<p class="sl-meta"><b>The 📜 Quests section is switched off in Settings</b> — quests are not tracked or sent; switch it back on to change these.</p>` : ""}<p class="sl-meta">Every quest stays in the block for you. Active quests always reach the model; a finished one only when you tick it.</p>
+                ${done.length ? `<label class="checkbox_label"><input type="checkbox" id="sl-send-all" ${done.every(q => q.send) ? "checked" : ""} ${questsOff ? "disabled" : ""} data-mixed="${done.some(q => q.send) && !done.every(q => q.send) ? 1 : 0}"> <b>Send all finished quests</b></label>` : ""}
                 ${qs.map(row).join("") || "<p><i>No quests yet.</i></p>"}`;
         }
     } else if (tab === "rel") {
@@ -459,6 +464,7 @@ export async function openLedgerPopup(startTab = "rules") {
     $root.on("change", "#sl-send-all", e => sendQuests("all", e.currentTarget.checked));
     $root.on("click", "[data-sl-popup-tab]", () => setTimeout(setMixed, 0));
 
+    setTimeout(setMixed, 0);   // the master checkbox's partial state when the popup opens on the Quests tab
     await popup.show();
 }
 

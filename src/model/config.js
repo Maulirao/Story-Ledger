@@ -72,7 +72,7 @@ export function resolveConfig(overrides) {
     const sc = overrides && typeof overrides === "object" ? overrides.sectionConfig : null;
     if (sc && typeof sc === "object") {
         for (const [k, v] of Object.entries(sc)) {
-            if (k === "chekhov" && v && typeof v === "object") base.sectionConfig.chekhov = { ...base.sectionConfig.chekhov, ...v };
+            if (k === "chekhov" && v && typeof v === "object") base.sectionConfig.chekhov = validChekhov(v, base.sectionConfig.chekhov);
             else if (k in base.sectionConfig && typeof v === typeof base.sectionConfig[k]) base.sectionConfig[k] = v;
         }
     }
@@ -88,6 +88,19 @@ export function resolveConfig(overrides) {
 }
 
 export const axisByKey = (config, key) => config.axes.find(a => a.key === key);
+
+/** Saved Chekhov overrides, allowlisted and validated: anything unknown or out of range keeps the default. */
+function validChekhov(v, defaults) {
+    const out = { ...defaults };
+    const MIN = { eligibleAge: 0, pruneAge: 1, cap: 1, maxLoadsPerTurn: 1, firedKeep: 0 };
+    for (const [k, min] of Object.entries(MIN)) {
+        const n = v[k];
+        if (typeof n === "number" && Number.isInteger(n) && n >= min) out[k] = n;
+    }
+    if (v.firing === "model" || v.firing === "fate") out.firing = v.firing;
+    if (out.pruneAge <= out.eligibleAge) out.pruneAge = defaults.pruneAge > out.eligibleAge ? defaults.pruneAge : out.eligibleAge + 1;
+    return out;
+}
 
 /**
  * Chekhov numbers from the Settings form: a blank keeps the old value; every number is

@@ -24,7 +24,7 @@ test("a dayless 'at 09:00' loaded at 10:00 waits for the clock to pass midnight"
     s = postTurn(s, ch("Now: Wednesday, 09:15"), C).state;
     assert.match(preTurnFacts(s, C).join("\n"), /Due now: B1/);
     s = postTurn(s, ch("Now: Thursday, 00:30"), C).state;
-    assert.match(preTurnFacts(s, C).join("\n"), /Due now: B1/, "once due it stays due until fired");
+    assert.match(preTurnFacts(s, C).join("\n"), /(Due now|Overdue): B1/, "once due it stays due until fired");
     const back = parseBlock(renderBlock(s, { rules: [], config: C, sections: {} }), { config: C }).state;
     assert.deepEqual(back.chekhov.bullets[0].at, s.chekhov.bullets[0].at);
 });

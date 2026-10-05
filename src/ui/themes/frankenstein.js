@@ -77,11 +77,22 @@ export function decorate(root, { config }) {
     }
 }
 
-// Bullet tags as chips: hot · eligible · secret · LOCKED … · at … · fired: …
+// Bullet tags as chips: hot · eligible · secret · LOCKED … · at … (scheduled, or due once reached) · fired: …
+// Only the tag part of a row is touched — never the setup's description.
 const CHIP_RES = [
-    [/·\s*(hot)\b/g, "hot"], [/·\s*(eligible)\b/g, "eligible"], [/·\s*(secret)\b/g, "secret"],
-    [/·\s*(LOCKED [^·<|]+)/g, "locked"], [/·\s*(at (?:Day \d+ )?\d{1,2}:\d{2})/g, "due"], [/\|\s*(fired:)/g, "fired"],
+    [/·\s*(hot)\b/g, () => "hot"], [/·\s*(eligible)\b/g, () => "eligible"], [/·\s*(secret)\b/g, () => "secret"],
+    [/·\s*(LOCKED .+?)(?=\s·\s(?:at |after B|eligible)|$|<)/g, () => "locked"],
+    [/·\s*(at (?:Day \d+ )?\d{1,2}:\d{2}(?: next-day)?(?: reached)?)/g, t => (/reached$/.test(t) ? "due" : "scheduled")],
+    [/\|\s*(fired:)/g, () => "fired"],
 ];
+const TAGS_START = /\|\s*(?:w[123]\s·\sage|fired:)/;
+const chipLine = line => {
+    const at = line.search(TAGS_START);
+    if (at < 0) return line;
+    let tags = line.slice(at);
+    for (const [re, kind] of CHIP_RES) tags = tags.replace(re, (m, t) => `${m.startsWith("|") ? "| " : " "}<span class="sl-ui-inline sl-fk-chip sl-fk-${kind(t)}">${t}</span>`);
+    return line.slice(0, at) + tags;
+};
 function chekhovChips(section) {
     for (const child of [...section.childNodes]) {
         if (child.nodeType === 1 && (child.tagName === "SUMMARY" || child.classList.contains("sl-ui"))) continue;
@@ -94,8 +105,7 @@ function chekhovChips(section) {
             el.textContent = child.textContent;
         }
         if (el.nodeType !== 1) continue;
-        let html = el.innerHTML;
-        for (const [re, kind] of CHIP_RES) html = html.replace(re, (_, t) => ` <span class="sl-ui-inline sl-fk-chip sl-fk-${kind}">${t}</span>`);
+        const html = el.innerHTML.split(/(<br\s*\/?>|\n)/i).map(part => (/^(<br\s*\/?>|\n)$/i.test(part) ? part : chipLine(part))).join("");
         if (html !== el.innerHTML) { if (!el.dataset.slWrap) el.dataset.slOrig = el.innerHTML; el.innerHTML = html; }
     }
 }

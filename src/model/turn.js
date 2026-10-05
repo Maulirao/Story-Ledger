@@ -7,7 +7,7 @@
 
 import { emptyState } from "./state.js";
 import { parseBlock, findBlock, BLOCK_MARK, replaceSectionRows } from "./block.js";
-import { enabledSections, CORE_KEYS, sectionByKey } from "./sections/registry.js";
+import { enabledSections, CORE_KEYS, sectionByKey, needsPresent } from "./sections/registry.js";
 import { applyTurn, replayRelations } from "./relations.js";
 import { importFromLegacyNotebook, notebookBody, parseNotebookBlock } from "./notebook.js";
 import { parseChanges } from "./changes.js";
@@ -33,16 +33,21 @@ export function sectionContext(state, prevPresent, config, prevNow = "") {
 /** `prev` + this reply's changes (null when the reply has none) → { state, log, unparsed, warnings }. */
 export function postTurn(prev, changes, config) {
     const s = clone(prev);
+    // a switched-off section ignores its lines (Present stays while a section needs it)
+    const coreOn = k => (config.sections || {})[k] !== false;
     if (changes) {
-        if (changes.now !== null) s.scene.now = changes.now;
-        if (changes.present !== null) s.scene.present = changes.present;
-        if (changes.public !== null) s.scene.public = changes.public;
-        const gone = new Set(changes.threads.remove.map(key));
-        s.threads = s.threads.filter(t => !gone.has(key(t)));
-        for (const t of changes.threads.add) if (!s.threads.some(x => key(x) === key(t))) s.threads.push(t);
+        if (coreOn("scene") && changes.now !== null) s.scene.now = changes.now;
+        if (needsPresent(config.sections) && changes.present !== null) s.scene.present = changes.present;
+        if (coreOn("scene") && changes.public !== null) s.scene.public = changes.public;
+        if (coreOn("notebook")) {
+            const gone = new Set(changes.threads.remove.map(key));
+            s.threads = s.threads.filter(t => !gone.has(key(t)));
+            for (const t of changes.threads.add) if (!s.threads.some(x => key(x) === key(t))) s.threads.push(t);
+        }
     }
     const present = [...new Set([...s.scene.present, ...(config.userName ? [config.userName] : [])])];
-    const rel = applyTurn({ ct: prev.ct, pairs: prev.rel.pairs, selves: prev.rel.selves }, changes ? changes.relations : null, present, config);
+    const events = changes && coreOn("relationships") ? changes.relations : null;   // the turn count still advances
+    const rel = applyTurn({ ct: prev.ct, pairs: prev.rel.pairs, selves: prev.rel.selves }, events, present, config);
     s.ct = rel.state.ct;
     s.rel = { pairs: rel.state.pairs, selves: rel.state.selves };
     s.perTurn = {};
@@ -178,4 +183,16 @@ export function rewriteNewestSection(chat, beforeIndex, config, key, mutator) {
     const mes = replaceSectionRows(chat[found.index].mes, sec.match, sec.render(found.state[key], { config }));
     if (mes === null) return { status: "nosection", index: found.index, errors: [] };
     return { status: "ok", index: found.index, mes, errors: [] };
+}
+
+/**
+ * The state with the reader's clock correction applied, when that correction is newer than
+ * the block the state came from (`blockIndex`): the correction is the story time until a
+ * later reply states one. Returns `state` itself when nothing applies.
+ */
+export function withClockOverride(state, override, blockIndex) {
+    if (!override || !override.text || !(override.atLength > blockIndex)) return state;
+    const s = clone(state);
+    s.scene.now = override.text;
+    return s;
 }

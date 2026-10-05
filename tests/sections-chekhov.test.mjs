@@ -101,7 +101,7 @@ test("eligibility: age, locks, dependencies and the crowd rule for secrets", () 
                          bullet("B4", { age: 9, after: "B1" }), bullet("B5", { age: 9, secret: true })];
     const facts = preTurnFacts(s, C).join("\n");
     assert.match(facts, /Eligible to fire[^\n]*B1/);
-    for (const id of ["B2", "B3", "B4", "B5"]) assert.doesNotMatch(facts, new RegExp(`Eligible[^\n]*\b${id}\b`));
+    for (const id of ["B2", "B3", "B4", "B5"]) assert.doesNotMatch(facts, new RegExp(String.raw`Eligible[^\n]*\b${id}\b`));
 });
 
 test("a dependency unlocks once its bullet has fired", () => {
