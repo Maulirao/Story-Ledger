@@ -14,7 +14,11 @@
 // node (tests/notebook.test.mjs). The glue lives in ./index.js.
 // ──────────────────────────────────────────────────────────────────────────────
 
-export const NOTEBOOK_TAG = "Notebook";
+export const NOTEBOOK_TAG = "Story_Ledger";
+// <Story_Ledger> is this extension's tag — deliberately not "<ledger>", which Ancient
+// Access's tracker uses for a different block. <Notebook> is what the Megumin fork's
+// block used, so a chat that ran the fork keeps its threads and clock.
+const BLOCK_TAGS = "(?:Story_Ledger|Notebook)";
 
 export function emptyNotebook() {
     return { enabled: true, rules: [], threads: [], inbox: [], rejected: [], nextId: 1 };
@@ -25,16 +29,25 @@ const key = s => norm(s).toLowerCase();
 
 // ── Reading the model's block ───────────────────────────────────────────────
 
-// The body of the last <Notebook> in a message, or null.
-function notebookBody(mes) {
-    const re = new RegExp(`<${NOTEBOOK_TAG}\\b[^>]*>([\\s\\S]*?)(?:<\\/${NOTEBOOK_TAG}\\s*>|$)`, "gi");
+// The block is normally written as an HTML comment, <!-- Story_Ledger … -->, because
+// SillyTavern's renderer hides a finished comment completely, while an unknown tag
+// is stripped but its contents are shown as prose. The tag forms are still read.
+export const LEDGER_BLOCK_RE = new RegExp(
+    `<!--\\s*Story_Ledger\\b([\\s\\S]*?)(?:-->|$)|<${BLOCK_TAGS}\\b[^>]*>([\\s\\S]*?)(?:<\\/${BLOCK_TAGS}\\s*>|$)`, "gi");
+
+// The body of the last ledger block in a message, or null.
+export function notebookBody(mes) {
+    const re = new RegExp(LEDGER_BLOCK_RE.source, "gi");
     let m, last = null;
-    while ((m = re.exec(String(mes || "")))) last = m[1];
+    while ((m = re.exec(String(mes || "")))) {
+        last = m[1] !== undefined ? m[1] : m[2];
+        if (m[0] === "") re.lastIndex++;
+    }
     return last;
 }
 
 // Lines under a "Heading:" up to the next heading or the end.
-function section(body, heading) {
+export function section(body, heading) {
     const lines = body.split(/\r?\n|<br\s*\/?>/i);
     const out = [];
     let inside = false;
@@ -62,7 +75,7 @@ export function parseNotebookBlock(mes) {
     const nowText = nowMatch ? norm(nowMatch[1]) : "";
     const now = nowText && !isSkeleton(nowText) ? nowText : null;
     const threads = section(body, "Threads")
-        .filter(l => !NOW_LINE.test(l))                  // a Now: line written below the threads is not a thread
+        .filter(l => !NOW_LINE.test(l) && !/^\s*(?:[-*•]\s*)?Present\s*:/i.test(l))   // stray one-line fields are not threads
         .map(bullet)
         .map(t => t.replace(/^\[T\]\s*/i, ""))
         .filter(t => t && !isSkeleton(t));                // drop an unfilled "[...]" skeleton line
@@ -132,7 +145,7 @@ export function dayRegression([previous, current]) {
     return a !== null && b !== null && b < a ? { from: a, to: b } : null;
 }
 
-/** Threads from the newest AI reply carrying a Notebook block, else the stored list. */
+/** Threads from the newest AI reply carrying a ledger block, else the stored list. */
 export function latestThreads(chat, notebook) {
     for (let i = (chat || []).length - 1; i >= 0; i--) {
         const msg = chat[i];
@@ -211,7 +224,7 @@ export function renderNotebookPrompt(notebook, threads, time = null) {
     const now = time && time.now;
     if (!rules.length && !(threads || []).length && !inbox.length && !now) return "";
     const parts = ["<rules_notebook>",
-        "The reader's notebook for this story. RULES are constants the reader set: they outrank style habits and tracker limits, and you never contradict, soften, reinterpret, or let one lapse. You cannot change a rule; you can only propose a change in your Notebook block, and the reader decides."];
+        "The reader's notebook for this story. RULES are constants the reader set: they outrank style habits and tracker limits, and you never contradict, soften, reinterpret, or let one lapse. You cannot change a rule; you can only propose a change in your Story_Ledger block, and the reader decides."];
     if (now) {
         parts.push("", `Current story time: ${now.text}${now.source === "reader" ? " (set by the reader — continue from it)" : ""}`);
         if ((time.timeline || []).length > 1) parts.push(`Recent timeline: ${time.timeline.join(" → ")}`);

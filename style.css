@@ -1,0 +1,104 @@
+/* Story Ledger — cards under messages and the popup. Built on SillyTavern's theme
+   variables so it follows the user's theme; the look borrows from Megumin Suite's
+   block card: a tinted card, a strip of tabs, warm accents for fondness, cool for friction. */
+
+.sl-card, .sl-popup {
+    --sl-fond: #f43f5e;
+    --sl-friction: #38bdf8;
+    --sl-accent: #eab308;
+    --sl-dim: color-mix(in srgb, var(--SmartThemeBodyColor) 55%, transparent);
+    --sl-line: var(--SmartThemeBorderColor);
+}
+
+/* ── card under a message ── */
+.sl-card {
+    margin: 8px 0 2px;
+    border: 1px solid var(--sl-line);
+    border-left: 3px solid var(--sl-accent);
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--SmartThemeBlurTintColor) 70%, transparent);
+    font-size: 0.88em;
+    overflow: hidden;
+}
+.sl-tabs { display: flex; flex-wrap: wrap; gap: 2px; padding: 4px 4px 0; border-bottom: 1px solid var(--sl-line); }
+.sl-tab {
+    background: transparent; border: 0; border-bottom: 2px solid transparent;
+    color: var(--sl-dim); padding: 4px 10px; cursor: pointer; font: inherit;
+}
+.sl-tab:hover { color: var(--SmartThemeBodyColor); }
+.sl-tab.sl-on { color: var(--SmartThemeBodyColor); border-bottom-color: var(--sl-accent); }
+.sl-card .sl-tab span { display: none; }
+@media (min-width: 700px) { .sl-card .sl-tab span { display: inline; } }
+.sl-pane { display: none; padding: 8px 12px; }
+.sl-pane.sl-on { display: block; }
+.sl-now { font-weight: 600; margin-bottom: 4px; }
+.sl-list { margin: 0; padding-left: 18px; }
+.sl-list li { margin: 2px 0; }
+.sl-list i { color: var(--sl-dim); }
+.sl-unread { color: var(--sl-accent); }
+.sl-chips { display: flex; flex-wrap: wrap; gap: 4px; margin: 4px 0; }
+.sl-chip {
+    display: inline-flex; align-items: center; gap: 4px; padding: 1px 8px; border-radius: 999px;
+    border: 1px solid var(--sl-line); font-size: 0.9em;
+}
+.sl-chip.sl-ok { border-color: color-mix(in srgb, #22c55e 60%, transparent); color: #4ade80; }
+.sl-chip.sl-locked { color: var(--sl-dim); }
+.sl-chip.sl-wall { border-color: var(--sl-accent); color: var(--sl-accent); }
+.sl-chip.sl-pattern { border-color: color-mix(in srgb, #a855f7 60%, transparent); color: #c084fc; cursor: help; }
+.sl-tag { font-size: 0.75em; font-weight: 700; padding: 0 5px; border-radius: 4px; border: 1px solid var(--sl-line); }
+.sl-tag.sl-new { color: #4ade80; }
+.sl-tag.sl-direct { color: var(--sl-accent); }
+.sl-axis.sl-fond { color: var(--sl-fond); }
+.sl-axis.sl-friction { color: var(--sl-friction); }
+
+/* ── popup ── */
+.sl-popup { text-align: left; }
+.sl-popup h3 { text-align: center; margin: 0 0 6px; }
+.sl-popup h4 { margin: 14px 0 6px; }
+.sl-popup h4 small { font-weight: normal; color: var(--sl-dim); }
+.sl-popup-tabs { margin-bottom: 8px; }
+.sl-popup textarea { width: 100%; }
+.sl-btns { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 6px 0; }
+.sl-popup .menu_button { width: auto; white-space: nowrap; padding: 4px 14px; }
+.sl-item {
+    display: flex; justify-content: space-between; align-items: center; gap: 12px;
+    border: 1px solid var(--sl-line); border-radius: 6px; padding: 6px 10px; margin: 6px 0;
+}
+.sl-item.sl-stale { opacity: 0.6; }
+.sl-timeline, .sl-meta { color: var(--sl-dim); font-size: 0.9em; margin: 4px 0; }
+#sl-clock { flex: 1; min-width: 220px; }
+.sl-grid { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; margin: 6px 0; }
+.sl-grid label { display: flex; align-items: center; gap: 6px; }
+.sl-num { width: 4.5em !important; display: inline-block; }
+.sl-table { border-collapse: collapse; margin: 8px 0; }
+.sl-table td, .sl-table th { padding: 2px 10px 2px 0; text-align: left; }
+.sl-logbox { margin-top: 12px; }
+.sl-logbox li { font-size: 0.9em; }
+.sl-log-refused { color: var(--sl-accent); }
+
+/* relationship pair card: mirrored bars, fondness grows left, friction grows right */
+.sl-pair {
+    border: 1px solid var(--sl-line); border-left: 3px solid var(--sl-fond);
+    border-radius: 8px; padding: 8px 12px; margin: 10px 0;
+    background: color-mix(in srgb, var(--SmartThemeBlurTintColor) 60%, transparent);
+}
+.sl-pair-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.sl-pair-actions { display: flex; gap: 6px; }
+.sl-mirror-head { display: grid; grid-template-columns: 1fr 1fr; color: var(--sl-dim); font-size: 0.8em; margin-top: 6px; }
+.sl-mirror-head span:first-child { text-align: right; padding-right: 8px; }
+.sl-mirror-head span:last-child { padding-left: 8px; }
+.sl-row { display: grid; grid-template-columns: minmax(110px, 1fr) 1fr 1fr minmax(110px, 1fr); align-items: center; gap: 6px; margin: 3px 0; }
+.sl-lab { font-size: 0.88em; white-space: nowrap; }
+.sl-lab small { color: var(--sl-dim); }
+.sl-lab.sl-fond { text-align: right; color: color-mix(in srgb, var(--sl-fond) 80%, var(--SmartThemeBodyColor)); }
+.sl-lab.sl-friction { color: color-mix(in srgb, var(--sl-friction) 80%, var(--SmartThemeBodyColor)); }
+.sl-bar { height: 8px; border-radius: 4px; background: color-mix(in srgb, var(--SmartThemeBodyColor) 10%, transparent); display: flex; overflow: hidden; }
+.sl-bar i { display: block; height: 100%; border-radius: 4px; }
+.sl-bar-fond { justify-content: flex-end; }
+.sl-bar-fond i { background: linear-gradient(90deg, transparent, var(--sl-fond)); }
+.sl-bar-friction i { background: linear-gradient(90deg, var(--sl-friction), transparent); }
+.sl-acc { width: 3.5em !important; opacity: 0.8; }
+@media (max-width: 600px) {
+    .sl-row { grid-template-columns: 1fr 1fr; }
+    .sl-row .sl-bar { display: none; }
+}
