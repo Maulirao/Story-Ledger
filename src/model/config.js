@@ -80,6 +80,32 @@ export const DEFAULT_SECTION_CONFIG = {
         pursuitLimit: 8,
         residueKeep: 12,
     },
+    worldsim: {
+        standard: [
+            { from: 1, to: 2, name: "CALM", text: "The wider world goes on without a notable interruption" },
+            { from: 3, to: 4, name: "GOOD NEWS", text: "A community gets a small relief or useful opening" },
+            { from: 5, to: 6, name: "BAD NEWS", text: "A shortage, closure, or loss adds ordinary pressure somewhere nearby" },
+            { from: 7, to: 8, name: "RUMOUR", text: "A rumor spreads, mixing one true detail with speculation" },
+            { from: 9, to: 10, name: "OPPORTUNITY", text: "A trade, job, or request offers a practical chance" },
+            { from: 11, to: 12, name: "DISRUPTION", text: "Weather, transit, or a service interrupts someone's plans" },
+            { from: 13, to: 14, name: "CONFLICT", text: "A dispute between groups becomes public" },
+            { from: 15, to: 16, name: "ARRIVAL", text: "A newcomer or convoy brings unfamiliar needs or news" },
+            { from: 17, to: 18, name: "CRISIS", text: "A regional incident calls for an immediate response" },
+            { from: 19, to: 20, name: "CALM", text: "The wider world goes on without a notable interruption" },
+        ],
+        duo: [
+            { from: 1, to: 2, name: "CALM", text: "Nothing outside the moment demands their attention" },
+            { from: 3, to: 4, name: "GOOD NEWS", text: "A small kindness or success eases their day" },
+            { from: 5, to: 6, name: "MISUNDERSTANDING", text: "A comment lands badly and needs clarification" },
+            { from: 7, to: 8, name: "INTERRUPTION", text: "A personal errand or small need complicates the moment" },
+            { from: 9, to: 10, name: "OPENING", text: "A shared interest or offer creates a chance to connect" },
+            { from: 11, to: 12, name: "TENSION", text: "A private worry or unmet need surfaces between them" },
+            { from: 13, to: 14, name: "COMPLICATION", text: "Something they planned goes wrong and needs coordination" },
+            { from: 15, to: 16, name: "REVELATION", text: "Someone shares a small personal detail they may keep private" },
+            { from: 17, to: 18, name: "PRESSURE", text: "A difficult personal choice or boundary lands in the moment" },
+            { from: 19, to: 20, name: "CALM", text: "Nothing outside the moment demands their attention" },
+        ],
+    },
 };
 
 /** Deep-merge a reader's saved overrides onto the defaults. Unknown keys are ignored. */
@@ -91,6 +117,7 @@ export function resolveConfig(overrides) {
         for (const [k, v] of Object.entries(sc)) {
             if (k === "chekhov" && v && typeof v === "object") base.sectionConfig.chekhov = validChekhov(v, base.sectionConfig.chekhov);
             else if (k === "fate" && v && typeof v === "object") base.sectionConfig.fate = mergeKnown(base.sectionConfig.fate, v);
+            else if (k === "worldsim" && v && typeof v === "object") base.sectionConfig.worldsim = mergeKnown(base.sectionConfig.worldsim, v);
             else if (k in base.sectionConfig && typeof v === typeof base.sectionConfig[k]) base.sectionConfig[k] = v;
         }
     }
