@@ -130,15 +130,41 @@ export function renderTurnFacts(state, config = {}) {
     return `<story_ledger_turn>\n${head}\n${facts.join("\n")}\n</story_ledger_turn>`;
 }
 
-export const HANDOVER = `<ledger_handover>
-This chat ran under another preset until now. The story continues exactly where it stands; only the bookkeeping changes. From the newest state block in the history — a Freaky/Realistic Frankenstein header and <internal_states>, Megumin's <Blocks>, Sola's <sola_hud>, or Ancient Access's <ledger> — fill this reply's Story_Ledger comment:
-- Now: from that state's time, date and place. Keep its Day number and continue counting from it.
-- Threads: one \`+ [T]\` line for every open thread or [T] entry it holds that the ledger's open threads below do not already list.
-- Relationships: one NEW line for every relationship that state tracked, calibrated from what it recorded (FF's BOND −5…20 with Sparks and Grudge, Megumin's Affection/Trust/Desire, Sola's named dynamics) and from the story so far. High BOND means fondness on the axes that fit this relationship; Grudge and hostility mean friction.
-- Proposed rules: if the reader's notebook below does not already hold that state's [R] rules, propose each as add:.
-- Agendas, Locations, Factions, Quests, Inventory, Cast: one change line for every entry the old state held (\`new\` agendas with their current step, \`+\` quests and items, field lines for factions and the cast), so the ledger starts complete.
-Stop writing the old preset's state block from this reply on, even though it is still visible in the history.
-</ledger_handover>`;
+// What the handover asks the model for, per section the import may already have brought.
+const HANDOVER_ASKS = [
+    ["threads", "Threads: one `+ [T]` line for every open thread or [T] entry it holds."],
+    ["agendas", "Agendas: a `new` line for every agenda it held, with its current step."],
+    ["locations", "Locations: a `Name @ place` line for everyone it placed."],
+    ["factions", "Factions: field lines for every faction it held."],
+    ["quests", "Quests: a `+ Main|Side` line for every quest it held."],
+    ["inv", "Inventory: a `+ item` line for every item {{user}} carried, plus titles and status."],
+    ["cast", "Cast: field lines for everyone present — position, wearing, holding, condition."],
+    ["chekhov", "Chekhov: a `load:` line for every planted setup it held (weight, hot, time lock)."],
+    ["fate", "Fate/World: an open pursuit, deferred items and world happenings it held."],
+];
+
+/**
+ * The one-time handover from another preset. The importer has already read what it
+ * could (`imported`, section keys); the model is asked for relationships always,
+ * Now only when no story time came across, and change lines only for the sections
+ * that are on and were not imported.
+ */
+export function buildHandover(imported = [], { hasNow = false, sections = {} } = {}) {
+    const have = new Set(imported);
+    const on = k => (sections || {})[k] !== false;
+    const lines = [
+        "<ledger_handover>",
+        "This chat ran under another preset until now. The story continues exactly where it stands; only the bookkeeping changes. The ledger has already read what it could from the newest state block in the history (a Freaky/Realistic Frankenstein <internal_states>, Megumin's <Blocks>, Sola's trackers, or Ancient Access's <ledger>). In this reply's Story_Ledger comment, add only what is still missing:",
+    ];
+    if (!hasNow && on("scene")) lines.push("- Now: from that state's time, date and place. Keep its Day number and continue counting from it.");
+    if (on("relationships")) lines.push("- Relationships: one NEW line for every relationship that state tracked, calibrated from what it recorded (FF's BOND −5…20 with Sparks and Grudge, Megumin's Affection/Trust/Desire, Sola's named dynamics, AA's bonds) and from the story so far. High BOND means fondness on the axes that fit this relationship; Grudge and hostility mean friction.");
+    for (const [key, ask] of HANDOVER_ASKS) if (on(key === "threads" ? "notebook" : key) && !have.has(key)) lines.push(`- ${ask}`);
+    if (on("notebook")) lines.push("- Proposed rules: if the reader's notebook below does not already hold that state's [R] rules, propose each as add:.");
+    lines.push("Stop writing the old preset's state block from this reply on, even though it is still visible in the history.", "</ledger_handover>");
+    return lines.join("\n");
+}
+
+export const HANDOVER = buildHandover([], { hasNow: false });
 
 /** Remove every state block, and every ledger comment except the newest assistant message's own. Mutates. */
 export function stripForPrompt(messages) {

@@ -5,6 +5,7 @@
 // ──────────────────────────────────────────────────────────────────────────────
 
 import { BLOCK_MARK } from "../block.js";
+import { collectProposals } from "../notebook.js";
 import { parseFf } from "./ff.js";
 import { parseAa } from "./aa.js";
 import { parseSola } from "./sola.js";
@@ -32,4 +33,14 @@ export function importForeign(chat, config) {
         if (hit) return { source: hit[0], index: i, ...hit[2](mes, config) };
     }
     return { source: null, index: -1, state: null, imported: [], rules: [], unread: [] };
+}
+
+/**
+ * Imported [R] rules go to the reader's approval inbox — once per chat. `alreadyDone` is
+ * the marker from chat metadata; returns { notebook, done }.
+ */
+export function proposeImportedRules(notebook, rules, alreadyDone) {
+    if (alreadyDone || !rules || !rules.length) return { notebook, done: alreadyDone || null };
+    const after = collectProposals(notebook, rules.map(text => ({ op: "add", target: null, text })), "import");
+    return { notebook: after, done: true };
 }

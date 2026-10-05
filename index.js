@@ -19,7 +19,8 @@ import { parseChanges } from "./src/model/changes.js";
 import { renderBlock, BLOCK_MARK } from "./src/model/block.js";
 import { setSend } from "./src/model/sections/quests.js";
 import { postTurn, latestState, initialState, writeBlockInto, stripBlocks, generationBase, rewriteNewestSection, withClockOverride } from "./src/model/turn.js";
-import { renderStatePrompt, needsHandover, stripForPrompt, stripPromptText, buildTemplate, renderRules, renderTurnFacts, HANDOVER } from "./src/model/prompt.js";
+import { renderStatePrompt, needsHandover, stripForPrompt, stripPromptText, buildTemplate, renderRules, renderTurnFacts, buildHandover } from "./src/model/prompt.js";
+import { importForeign, proposeImportedRules } from "./src/model/import/index.js";
 import { SECTIONS } from "./src/model/sections/registry.js";
 import { rollTurnDice, withFudges, fudgesForGeneration, diceFromBlock, parseDiceCommand, parseForceCommand } from "./src/model/dice.js";
 import { decorate as decorateFrankenstein, undecorate } from "./src/ui/themes/frankenstein.js";
@@ -121,7 +122,18 @@ function buildInjection(type = "normal") {
     const time = storyTime(c, nb);
     if (state.scene.now && (!time.now || time.now.source !== "reader")) time.now = { text: state.scene.now, source: "notebook" };
     const parts = [];
-    if (needsHandover(c)) parts.push(HANDOVER);
+    if (needsHandover(c)) {
+        // the importer already read what it could; the model is asked only for the rest
+        const imp = importForeign(c, config);
+        parts.push(buildHandover(imp.imported, { hasNow: Boolean(state.scene.now), sections: s.sections }));
+        const d = chatData();
+        const r = proposeImportedRules(d.notebook, imp.rules, d.imported);
+        if (r.done && !d.imported) {
+            saveChatData(x => { x.notebook = r.notebook; x.imported = { source: imp.source, index: imp.index }; })
+                .then(() => toastr.info(`${imp.rules.length} rule(s) from the previous preset are waiting in the 📜 Rules inbox.`, "📒 Story Ledger"))
+                .catch(e => console.error("[Story Ledger] could not save imported rules", e));
+        }
+    }
     const st = renderStatePrompt(state, {
         notebook: nb.enabled === false ? { ...nb, rules: [], inbox: [] } : nb, config, sections: s.sections, time,
     });
