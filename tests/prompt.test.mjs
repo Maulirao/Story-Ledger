@@ -93,3 +93,30 @@ test("text completion continue: the continued reply's block is removed from the 
     const out = stripPromptText(`U: go\nA: Prose so far.\n<!-- Story_Ledger\nNow: 3\n-->\n\n${blk}`);
     assert.match(out, /Now: 3\n-->$/);
 });
+
+// ── phase 2: template, rules and turn facts built from the sections ─────────
+import { buildTemplate, renderRules, renderTurnFacts } from "../src/model/prompt.js";
+
+test("the template lists only enabled sections", () => {
+    assert.match(buildTemplate({ sections: {} }), /Agendas:[\s\S]*Quests:[\s\S]*Check:/);
+    assert.doesNotMatch(buildTemplate({ sections: { quests: false } }), /Quests:/);
+    assert.match(buildTemplate({ sections: {} }), /^[\s\S]*<!-- Story_Ledger[\s\S]*-->$/);
+});
+
+test("turn facts carry the announcements and the dice", () => {
+    const s = emptyState();
+    s.ct = 311;
+    s.scene.now = "Day 3";
+    s.agendas = { Ana: { task: "t", step: 1, max: 2, aware: "", fibs: "", circle: "", body: "" } };
+    const out = renderTurnFacts(s, { ...C, sections: {}, rolls: [14, 7, 19] });
+    assert.match(out, /^<story_ledger_turn>\nTurn 312 · Day 3/);
+    assert.match(out, /Ana finishes/);
+    assert.match(out, /14, 7, 19/);
+    assert.equal(renderTurnFacts(emptyState(), { ...C, sections: {} }), "");
+});
+
+test("rules include only enabled sections' rules", () => {
+    assert.match(renderRules({ ...C, sections: {} }), /Agendas: every named NPC/);
+    assert.doesNotMatch(renderRules({ ...C, sections: { agendas: false } }), /Agendas: every named NPC/);
+    assert.match(renderRules({ ...C, sections: {} }), /^<ledger_rules>[\s\S]*<\/ledger_rules>$/);
+});

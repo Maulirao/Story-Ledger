@@ -9,7 +9,7 @@ import { notebookBody, renderNotebookPrompt, LEDGER_BLOCK_RE } from "./notebook.
 import { describePair, PATTERN_GLOSS } from "./relations.js";
 import { findBlock, BLOCK_MARK } from "./block.js";
 import { enabledSections } from "./sections/registry.js";
-import { sectionContext } from "./turn.js";
+import { sectionContext, preTurnFacts } from "./turn.js";
 
 const COMMENT_RE = new RegExp(LEDGER_BLOCK_RE.source, "gi");
 
@@ -82,19 +82,51 @@ Fondness and friction coexist and tick independently; one interaction can tick b
 Never state the numbers in prose; show them through behavior. Romantic or sexual initiation happens only where the ledger says romance is allowed; forcing it elsewhere meets discomfort or anger. "Reads as" patterns are interpretation, not rules.
 </relationship_rules>`;
 
-export const LEDGER_TEMPLATE = `At the very end of your reply, after the prose, write exactly one ledger comment as below. Report only what changed in this reply — the ledger keeps everything else and writes the full state block itself; never write a state block, <internal_states> or GFX markers yourself. Omit any section where nothing changed. The reader never sees the comment; never write "-->" inside it.
-<!-- Story_Ledger
-Now: [story time after this reply, free text — e.g. Day 12 — Tuesday, March 4, 21:44 | the lawn. Day N counts from the story's first day and never resets.]
-Present: [every named character in the scene, comma separated]
-Public: [yes when the scene is in a public or exposed place, else no]
-Threads:
-- + [T] [a thread that opened: an intention, open question, promise, debt, appointment with day and time, unresolved arc]
-- - [T] [a thread that resolved, written as it appears in the list]
-Relationships:
-- [only this reply's events, as described in the relationship rules]
-Proposed rules:
-- [ONLY when the story establishes a fact that must never drift, or the reader gives a lasting out-of-character instruction: \`add: <rule>\`, \`edit R#: <new text>\`, or \`remove R#: <why>\`]
--->`;
+const TEMPLATE_HEAD = `At the very end of your reply, after the prose, write exactly one ledger comment as below. Report only what changed in this reply — the ledger keeps everything else and writes the full state block itself; never write a state block, <internal_states> or GFX markers yourself. Omit any section where nothing changed. The reader never sees the comment; never write "-->" inside it.`;
+
+/** The comment template for the sections that are switched on, in block order. */
+export function buildTemplate(config = {}) {
+    const on = k => ((config.sections || {})[k] !== false);
+    const ctx = { config, checkStyle: config.checkStyle || "dnd", sections: config.sections || {} };
+    const lines = ["<!-- Story_Ledger"];
+    if (on("scene")) lines.push(
+        "Now: [story time after this reply, free text — e.g. Day 12 — Tuesday, March 4, 21:44 | the lawn. Day N counts from the story's first day and never resets.]",
+        "Present: [every named character in the scene, comma separated]",
+        "Public: [yes when the scene is in a public or exposed place, else no]");
+    if (on("notebook")) lines.push(
+        "Threads:",
+        "- + [T] [a thread that opened: an intention, open question, promise, debt, appointment with day and time, unresolved arc]",
+        "- - [T] [a thread that resolved, written as it appears in the list]");
+    if (on("relationships")) lines.push("Relationships:", "- [only this reply's events, as described in the relationship rules]");
+    for (const sec of enabledSections(config.sections)) lines.push(...sec.template(ctx));
+    if (on("notebook")) lines.push(
+        "Proposed rules:",
+        "- [ONLY when the story establishes a fact that must never drift, or the reader gives a lasting out-of-character instruction: `add: <rule>`, `edit R#: <new text>`, or `remove R#: <why>`]");
+    lines.push("-->");
+    return `${TEMPLATE_HEAD}\n${lines.join("\n")}`;
+}
+
+export const LEDGER_TEMPLATE = buildTemplate({ sections: {} });
+
+/** How to judge what to report, for the sections that are switched on. */
+export function renderRules(config = {}) {
+    const ctx = { config, checkStyle: config.checkStyle || "dnd", sections: config.sections || {} };
+    const parts = [];
+    if ((config.sections || {}).relationships !== false) parts.push(RELATIONSHIP_RULES);
+    for (const sec of enabledSections(config.sections)) {
+        const r = sec.rules(ctx);
+        if (r) parts.push(r);
+    }
+    return `<ledger_rules>\n${parts.join("\n\n")}\n</ledger_rules>`;
+}
+
+/** What this turn already holds before the reply is written: announcements and dice. "" when nothing. */
+export function renderTurnFacts(state, config = {}) {
+    const facts = preTurnFacts(state, config);
+    if (!facts.length) return "";
+    const head = [`Turn ${state.ct + 1}`, state.scene.now, state.scene.present.length ? `present: ${state.scene.present.join(", ")}` : ""].filter(Boolean).join(" · ");
+    return `<story_ledger_turn>\n${head}\n${facts.join("\n")}\n</story_ledger_turn>`;
+}
 
 export const HANDOVER = `<ledger_handover>
 This chat ran under another preset until now. The story continues exactly where it stands; only the bookkeeping changes. From the newest state block in the history — a Freaky/Realistic Frankenstein header and <internal_states>, Megumin's <Blocks>, Sola's <sola_hud>, or Ancient Access's <ledger> — fill this reply's Story_Ledger comment:
@@ -102,6 +134,7 @@ This chat ran under another preset until now. The story continues exactly where 
 - Threads: one \`+ [T]\` line for every open thread or [T] entry it holds that the ledger's open threads below do not already list.
 - Relationships: one NEW line for every relationship that state tracked, calibrated from what it recorded (FF's BOND −5…20 with Sparks and Grudge, Megumin's Affection/Trust/Desire, Sola's named dynamics) and from the story so far. High BOND means fondness on the axes that fit this relationship; Grudge and hostility mean friction.
 - Proposed rules: if the reader's notebook below does not already hold that state's [R] rules, propose each as add:.
+- Agendas, Locations, Factions, Quests, Inventory, Cast: one change line for every entry the old state held (\`new\` agendas with their current step, \`+\` quests and items, field lines for factions and the cast), so the ledger starts complete.
 Stop writing the old preset's state block from this reply on, even though it is still visible in the history.
 </ledger_handover>`;
 

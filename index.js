@@ -18,7 +18,9 @@ import { describePair, PATTERN_GLOSS } from "./src/model/relations.js";
 import { parseChanges } from "./src/model/changes.js";
 import { renderBlock, BLOCK_MARK } from "./src/model/block.js";
 import { postTurn, latestState, initialState, writeBlockInto, stripBlocks, generationBase } from "./src/model/turn.js";
-import { renderStatePrompt, needsHandover, stripForPrompt, stripPromptText, RELATIONSHIP_RULES, LEDGER_TEMPLATE, HANDOVER } from "./src/model/prompt.js";
+import { renderStatePrompt, needsHandover, stripForPrompt, stripPromptText, buildTemplate, renderRules, renderTurnFacts, HANDOVER } from "./src/model/prompt.js";
+import { SECTIONS } from "./src/model/sections/registry.js";
+import { rollD20s } from "./src/model/dice.js";
 import { decorate as decorateFrankenstein, undecorate } from "./src/ui/themes/frankenstein.js";
 
 const NAME = "storyLedger";
@@ -28,8 +30,8 @@ const ctx = () => SillyTavern.getContext();
 
 // ── Settings (global) and chat data (per chat) ──────────────────────────────
 
-const DEFAULT_SECTIONS = { scene: true, relationships: true, notebook: true };
-const DEFAULT_SETTINGS = { enabled: true, depth: 1, role: 0, placement: "auto", theme: "frankenstein", config: {} };
+const DEFAULT_SECTIONS = { scene: true, relationships: true, notebook: true, ...Object.fromEntries(SECTIONS.map(sec => [sec.key, true])) };
+const DEFAULT_SETTINGS = { enabled: true, depth: 1, role: 0, placement: "auto", theme: "frankenstein", checkStyle: "dnd", config: {} };
 
 function settings() {
     const all = ctx().extensionSettings;
@@ -47,7 +49,10 @@ function settings() {
     return s;
 }
 const saveSettings = () => ctx().saveSettingsDebounced();
-const engineConfig = () => ({ ...resolveConfig(settings().config), userName: ctx().name1 });
+const engineConfig = (extra = {}) => ({
+    ...resolveConfig(settings().config), userName: ctx().name1,
+    sections: settings().sections, checkStyle: settings().checkStyle, ...extra,
+});
 
 function chatData() {
     const meta = ctx().chatMetadata || {};
@@ -100,7 +105,7 @@ function buildInjection(type = "normal") {
     if (!s.enabled) return "";
     const raw = ctx().chat || [];
     const c = raw.slice(0, generationBase(raw.length, type));
-    const config = engineConfig();
+    const config = engineConfig({ rolls: pendingTurn ? pendingTurn.rolls : undefined });
     const nb = chatData().notebook;
     const state = stateBefore(c, c.length, config);
     const time = storyTime(c, nb);
@@ -111,18 +116,26 @@ function buildInjection(type = "normal") {
         notebook: nb.enabled === false ? { ...nb, rules: [], inbox: [] } : nb, config, sections: s.sections, time,
     });
     if (st) parts.push(st);
-    if (s.sections.relationships) parts.push(RELATIONSHIP_RULES);
-    parts.push(LEDGER_TEMPLATE);
+    parts.push(renderRules(config));
+    parts.push(buildTemplate(config));
+    const facts = renderTurnFacts(state, config);
+    if (facts) parts.push(facts);
     return ctx().substituteParams(`<story_ledger>\n${parts.join("\n\n")}\n</story_ledger>`);
 }
 
 let lastInjection = "";
+// This generation's dice, rolled when it starts and written into the reply's block when
+// it arrives. A continue keeps the dice of the reply it continues.
+let pendingTurn = null;
 const SKIP_TYPES = new Set(["quiet", "impersonate", "first_message"]);
 
 globalThis.storyLedgerInterceptor = async function (_chat, _contextSize, _abort, type) {
     try {
         const s = settings();
         // Background generations (summaries, other extensions' tasks) get nothing.
+        if (!SKIP_TYPES.has(type) && s.enabled && !(type === "continue" && pendingTurn)) {
+            pendingTurn = { rolls: s.sections.checks !== false ? rollD20s(3) : [] };
+        }
         lastInjection = (SKIP_TYPES.has(type) || !s.enabled) ? "" : buildInjection(type);
         const auto = s.placement !== "macro" ? lastInjection : "";
         ctx().setExtensionPrompt(PROMPT_KEY, auto, IN_CHAT, Number(s.depth) || 0, false, Number(s.role) || 0);
@@ -139,13 +152,18 @@ async function rebuildMessage(i, { announce = true } = {}) {
     const c = ctx().chat || [];
     const msg = c[i];
     if (!msg || msg.is_user || msg.is_system) return;
-    const config = engineConfig();
+    // The newest reply takes this generation's dice; an older one (↻ rebuild) keeps the
+    // dice its block already shows.
+    const shown = String(msg.mes || "").match(/<b>Rolls:<\/b>\s*([\d,\s]+)/);
+    const rolls = i === c.length - 1 && pendingTurn ? pendingTurn.rolls
+        : shown ? shown[1].split(/[,\s]+/).filter(Boolean).map(Number) : [];
+    const config = engineConfig({ rolls });
     const start = startOf(c, i, config);
     const prev = start.state;
     // Read the comment with every block taken out: after a continue, the rest of a
     // cut-off comment sits after the block, and the block's own "-->" would end it early.
     const changes = parseChanges(stripBlocks(msg.mes));
-    const { state, log } = postTurn(prev, changes, config);
+    const { state, log, unparsed } = postTurn(prev, changes, config);
     msg.mes = writeBlockInto(msg.mes, blockFor(state));
     if (Array.isArray(msg.swipes) && msg.swipe_id !== undefined && msg.swipes[msg.swipe_id] !== undefined) msg.swipes[msg.swipe_id] = msg.mes;
     ctx().updateMessageBlock(i, msg);
@@ -165,7 +183,8 @@ async function rebuildMessage(i, { announce = true } = {}) {
     }
     const refused = log.filter(l => l.kind === "refused").length + changes.relations.unparsed.length;
     if (s.sections.relationships && refused) toastr.info(`${refused} relationship line(s) could not be applied.`, "💞 Story Ledger");
-    if (changes.unparsed.length) toastr.info(`Could not read: ${changes.unparsed.map(u => `${u.section}: "${u.line}"`).join("; ")}`, "📒 Story Ledger");
+    const unread = [...changes.unparsed, ...unparsed];
+    if (unread.length) toastr.info(`Could not read: ${unread.map(u => `${u.section}: "${u.line}"`).join("; ")}`, "📒 Story Ledger");
     if (s.sections.notebook && changes.proposals.length) {
         const before = chatData().notebook;
         const after = collectProposals(before, changes.proposals, `m${i}s${msg.swipe_id ?? 0}`);
@@ -240,7 +259,7 @@ function pairCard(state, from, to, config) {
 function popupHtml(tab) {
     const c = ctx().chat || [];
     const s = settings();
-    const config = engineConfig();
+    const config = engineConfig({ rolls: pendingTurn ? pendingTurn.rolls : undefined });
     const nb = chatData().notebook;
     const state = stateBefore(c, c.length, config);
     const T = (id, label) => `<button class="sl-tab${tab === id ? " sl-on" : ""}" data-sl-popup-tab="${id}">${label}</button>`;
@@ -282,12 +301,14 @@ function popupHtml(tab) {
         const axisRows = cf.axes.map(a => `<tr><td title="${esc(a.meaning)}">${esc(a.name)} (${a.key})</td><td><input type="number" class="text_pole sl-num" data-cfg-axis="${a.key}" data-field="period" value="${a.period}"></td><td><input type="number" class="text_pole sl-num" data-cfg-axis="${a.key}" data-field="threshold" value="${a.threshold}"></td></tr>`).join("");
         const decayRows = cf.decay.map((d, i) => `<tr><td>${d.pair.join(" ↔ ")}</td><td><input type="number" class="text_pole sl-num" data-cfg-decay="${i}" value="${d.period}"></td></tr>`).join("");
         const num = (k, label) => `<label>${label} <input type="number" class="text_pole sl-num" data-cfg="${k}" value="${cf[k]}"></label>`;
-        const sec = { scene: "🕰️ Scene & story clock", relationships: "💞 Relationships", notebook: "📓 Rules notebook & threads" };
+        const sec = { scene: "🕰️ Scene & story clock", relationships: "💞 Relationships", notebook: "📓 Rules notebook & threads",
+            ...Object.fromEntries(SECTIONS.map(x => [x.key, typeof x.title === "function" ? x.title({ checkStyle: s.checkStyle }) : x.title])) };
         body = `<label class="checkbox_label"><input type="checkbox" data-set="enabled" ${s.enabled ? "checked" : ""}> Story Ledger on</label>
             <h4>Sections</h4>
             ${Object.entries(sec).map(([k, label]) => `<label class="checkbox_label"><input type="checkbox" data-section="${k}" ${s.sections[k] ? "checked" : ""}> ${label}</label>`).join("")}
             <h4>Look</h4>
-            <div class="sl-grid"><label>Theme <select class="text_pole" data-set="theme"><option value="frankenstein" selected>Frankenstein</option></select></label></div>
+            <div class="sl-grid"><label>Theme <select class="text_pole" data-set="theme"><option value="frankenstein" selected>Frankenstein</option></select></label>
+                <label>Check style <select class="text_pole" data-set="checkStyle"><option value="dnd" ${s.checkStyle !== "arrow" ? "selected" : ""}>DnD (locked DC)</option><option value="arrow" ${s.checkStyle === "arrow" ? "selected" : ""}>Wind's Arrow (Sola)</option></select></label></div>
             <h4>Prompt placement</h4>
             <div class="sl-grid">
                 <label>Placement <select class="text_pole" data-set="placement"><option value="auto" ${s.placement === "auto" ? "selected" : ""}>automatic, in chat at depth</option><option value="macro" ${s.placement === "macro" ? "selected" : ""}>only where a preset uses {{story_ledger}}</option></select></label>

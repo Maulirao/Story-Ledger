@@ -8,7 +8,7 @@
 const GROUPS = [
     [/SCENE|AGENDAS|LOCATIONS|RELATIONSHIPS|FACTIONS|CAST/i, "sl-grp-people"],
     [/NOTEBOOK|QUESTS|CHEKHOV|THOUGHTS|INV|LAST/i, "sl-grp-memory"],
-    [/FATE|WORLD|DND|PHYSICS/i, "sl-grp-sim"],
+    [/FATE|WORLD|DND|PHYSICS|ARROW/i, "sl-grp-sim"],
 ];
 
 const escHtml = s => String(s).replace(/[&<>"]/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch]));

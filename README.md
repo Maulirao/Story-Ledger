@@ -24,6 +24,12 @@ the reply — FF's `<internal_states>` layout, folded under **🎬 INTERNAL STAT
   comment (for when you edited the comment instead). Nothing rebuilds on its own.
 - Swipes, deletes and branches work like FF's block: each reply carries its own state.
 - Blocks and old comments are stripped from the prompt; the current state is injected once.
+- The block's sections: 🕰️ Scene · 👥 Scene cast · 💞 Relationships · 📓 Notebook ·
+  👤 NPC agendas (off-screen ones advance a step per turn on their own) · 👤 NPC locations ·
+  🏳️ Factions · 📜 Quests (finished ones stay) · 🎒 Inventory ({{user}} only) · 🧾 Last beats ·
+  and, for that reply only, 🧠 Thoughts · 🎲 Checks · 🌌 Physics. The model reports only
+  changes; the extension rolls the check dice (three d20s per reply) and tells the model.
+- **Settings → Check style**: DnD (locked DC, as in RF/FF) or Wind's Arrow (as in Sola).
 - **Settings → Sections** turns parts off (not tracked, not shown); **Theme** sets the look
   of the block on screen without changing the message text.
 
