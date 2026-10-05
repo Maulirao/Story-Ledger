@@ -51,6 +51,13 @@
 .sl-fk-tag { display: inline-block; font-size: 0.75em; font-weight: 700; padding: 0 5px; border-radius: 4px; margin-right: 4px; }
 .sl-fk-R { color: #1e1e2e; background: var(--sl-fk-gold); }
 .sl-fk-T { color: #1e1e2e; background: var(--sl-fk-teal); }
+.sl-fk-chip { display: inline-block; font-size: 0.78em; padding: 0 6px; border-radius: 999px; margin: 0 2px; border: 1px solid currentColor; }
+.sl-fk-hot { color: #fab387; }
+.sl-fk-eligible { color: #a6e3a1; }
+.sl-fk-secret { color: #cba6f7; }
+.sl-fk-locked { color: #9399b2; }
+.sl-fk-due { color: #89dceb; }
+.sl-fk-fired { color: #f38ba8; }
 @media (max-width: 600px) {
     .sl-fk-row { grid-template-columns: 1fr 1fr; }
     .sl-fk-row .sl-fk-bar { display: none; }

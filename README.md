@@ -29,6 +29,14 @@ the reply — FF's `<internal_states>` layout, folded under **🎬 INTERNAL STAT
   🏳️ Factions · 📜 Quests (finished ones stay) · 🎒 Inventory ({{user}} only) · 🧾 Last beats ·
   and, for that reply only, 🧠 Thoughts · 🎲 Checks · 🌌 Physics. The model reports only
   changes; the extension rolls the check dice (three d20s per reply) and tells the model.
+- 🔫 **Chekhov's Gun**: the model loads setups (`load: … (w2, hot, at 18:00)`) and fires them (`fire B#: …`); the
+  ledger ages them, unlocks them at age 6, prunes them at 12, keeps 20 active and says before each
+  reply which are due and which may fire. **Settings → Who fires bullets**: the model (it picks the
+  moment) or, once the Fate engine ships, Fate. All the numbers, including how many fired bullets
+  the block keeps (0 = all), are in Settings.
+- 🗺️ **Quests tab**: every quest stays in the block; a finished one reaches the model only when you
+  tick **Send to the model** (or **Send all finished quests**). The tick is stored in the block
+  (`done · sent`), so editing the row works too.
 - **Settings → Check style**: DnD (locked DC, as in RF/FF) or Wind's Arrow (as in Sola).
 - **Settings → Sections** turns parts off (not tracked, not shown); **Theme** sets the look
   of the block on screen without changing the message text.

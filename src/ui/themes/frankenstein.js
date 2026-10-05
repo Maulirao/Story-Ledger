@@ -73,6 +73,30 @@ export function decorate(root, { config }) {
                 }
             }
         }
+        if (/CHEKHOV/i.test(title)) chekhovChips(d);
+    }
+}
+
+// Bullet tags as chips: hot · eligible · secret · LOCKED … · at … · fired: …
+const CHIP_RES = [
+    [/·\s*(hot)\b/g, "hot"], [/·\s*(eligible)\b/g, "eligible"], [/·\s*(secret)\b/g, "secret"],
+    [/·\s*(LOCKED [^·<|]+)/g, "locked"], [/·\s*(at (?:Day \d+ )?\d{1,2}:\d{2})/g, "due"], [/\|\s*(fired:)/g, "fired"],
+];
+function chekhovChips(section) {
+    for (const child of [...section.childNodes]) {
+        if (child.nodeType === 1 && (child.tagName === "SUMMARY" || child.classList.contains("sl-ui"))) continue;
+        let el = child;
+        if (child.nodeType === 3) {
+            if (!child.textContent.trim()) continue;
+            el = document.createElement("span");
+            el.dataset.slWrap = child.textContent;   // the original text, restored by undecorate
+            child.replaceWith(el);
+            el.textContent = child.textContent;
+        }
+        if (el.nodeType !== 1) continue;
+        let html = el.innerHTML;
+        for (const [re, kind] of CHIP_RES) html = html.replace(re, (_, t) => ` <span class="sl-ui-inline sl-fk-chip sl-fk-${kind}">${t}</span>`);
+        if (html !== el.innerHTML) { if (!el.dataset.slWrap) el.dataset.slOrig = el.innerHTML; el.innerHTML = html; }
     }
 }
 
@@ -80,6 +104,7 @@ export function decorate(root, { config }) {
 export function undecorate(root) {
     root.querySelectorAll(".sl-ui").forEach(n => n.remove());
     root.querySelectorAll("[data-sl-orig]").forEach(n => { n.innerHTML = n.dataset.slOrig; delete n.dataset.slOrig; });
+    root.querySelectorAll("[data-sl-wrap]").forEach(n => n.replaceWith(document.createTextNode(n.dataset.slWrap)));
     root.querySelectorAll(".sl-fk-section, .sl-theme-frankenstein").forEach(n => {
         n.classList.remove("sl-fk-section", "sl-grp-people", "sl-grp-memory", "sl-grp-sim", "sl-fk-has-bars", "sl-theme-frankenstein");
         delete n.dataset.slTheme;

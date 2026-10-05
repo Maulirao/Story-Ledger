@@ -180,3 +180,26 @@ export function parseBlock(text, { prev = null, config }) {
     base.perTurn = {};
     return { state: base, errors, sections: found };
 }
+
+/**
+ * The message with one section's rows replaced in its Story Ledger block — nothing else
+ * in the text changes (per-turn sections, which are never read back, survive). `match`
+ * is tested against the section title with its emoji and punctuation removed. Null when
+ * the message has no Story Ledger block or no such section.
+ */
+export function replaceSectionRows(mes, match, rows) {
+    const text = String(mes || "");
+    const at = text.indexOf(BLOCK_MARK);
+    if (at < 0) return null;
+    const re = /<summary>([\s\S]*?)<\/summary>/gi;
+    re.lastIndex = at;
+    let m;
+    while ((m = re.exec(text))) {
+        if (!match.test(titleKey(m[1]))) continue;
+        const start = re.lastIndex;
+        const stop = text.slice(start).search(/<\/?details\b/i);
+        if (stop < 0) return null;
+        return `${text.slice(0, start)}\n${rows.join("\n")}${rows.length ? "\n" : ""}${text.slice(start + stop)}`;
+    }
+    return null;
+}

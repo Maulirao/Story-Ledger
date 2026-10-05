@@ -16,7 +16,8 @@ import {
 import { resolveConfig } from "./src/model/config.js";
 import { describePair, PATTERN_GLOSS } from "./src/model/relations.js";
 import { parseChanges } from "./src/model/changes.js";
-import { renderBlock, BLOCK_MARK } from "./src/model/block.js";
+import { renderBlock, BLOCK_MARK, replaceSectionRows } from "./src/model/block.js";
+import questsSection, { setSend } from "./src/model/sections/quests.js";
 import { postTurn, latestState, initialState, writeBlockInto, stripBlocks, generationBase } from "./src/model/turn.js";
 import { renderStatePrompt, needsHandover, stripForPrompt, stripPromptText, buildTemplate, renderRules, renderTurnFacts, HANDOVER } from "./src/model/prompt.js";
 import { SECTIONS } from "./src/model/sections/registry.js";
@@ -174,7 +175,7 @@ async function rebuildMessage(i, { announce = true } = {}) {
     // Read the comment with every block taken out: after a continue, the rest of a
     // cut-off comment sits after the block, and the block's own "-->" would end it early.
     const changes = parseChanges(stripBlocks(msg.mes));
-    const { state, log, unparsed } = postTurn(prev, changes, config);
+    const { state, log, unparsed, warnings } = postTurn(prev, changes, config);
     msg.mes = writeBlockInto(msg.mes, blockFor(state));
     if (Array.isArray(msg.swipes) && msg.swipe_id !== undefined && msg.swipes[msg.swipe_id] !== undefined) msg.swipes[msg.swipe_id] = msg.mes;
     ctx().updateMessageBlock(i, msg);
@@ -196,6 +197,7 @@ async function rebuildMessage(i, { announce = true } = {}) {
     if (s.sections.relationships && refused) toastr.info(`${refused} relationship line(s) could not be applied.`, "💞 Story Ledger");
     const unread = [...changes.unparsed, ...unparsed];
     if (unread.length) toastr.info(`Could not read: ${unread.map(u => `${u.section}: "${u.line}"`).join("; ")}`, "📒 Story Ledger");
+    for (const w of warnings || []) toastr.warning(w.text, w.section === "Chekhov" ? "🔫 Story Ledger" : "📒 Story Ledger");
     if (s.sections.notebook && changes.proposals.length) {
         const before = chatData().notebook;
         const after = collectProposals(before, changes.proposals, `m${i}s${msg.swipe_id ?? 0}`);
@@ -235,6 +237,29 @@ function hideStreamingLedger() {
         if (!hiding && /<!--\s*Story_Ledger/.test(child.textContent)) hiding = true;
         if (hiding) child.style.display = "none";
     }
+}
+
+/**
+ * Change the quests in the newest reply's block, as a hand edit would: only the 📜 QUESTS
+ * rows are rewritten, so the reply's thoughts, checks and physics stay. False when no
+ * reply carries a block yet.
+ */
+async function editNewestQuests(mutator) {
+    const c = ctx().chat || [];
+    const config = engineConfig();
+    const found = latestState(c, c.length, config);
+    if (!found) return false;
+    const st = found.state;
+    mutator(st);
+    const msg = c[found.index];
+    const next = replaceSectionRows(msg.mes, questsSection.match, questsSection.render(st.quests, { config }));
+    if (next === null) return false;
+    msg.mes = next;
+    if (Array.isArray(msg.swipes) && msg.swipe_id !== undefined && msg.swipes[msg.swipe_id] !== undefined) msg.swipes[msg.swipe_id] = msg.mes;
+    ctx().updateMessageBlock(found.index, msg);
+    await ctx().saveChat();
+    decorateMessage(found.index);
+    return true;
 }
 
 // ── The popup ───────────────────────────────────────────────────────────────
@@ -301,6 +326,19 @@ function popupHtml(tab) {
             ${time.timeline.length > 1 ? `<div class="sl-timeline">${time.timeline.map(esc).join(" → ")}</div>` : ""}
             <div class="sl-btns"><input type="text" id="sl-clock" class="text_pole" placeholder="Correct the time, e.g. Day 12 — Tuesday, 21:44 | the lawn" value="${esc(nb.clockOverride ? nb.clockOverride.text : "")}">
                 <button class="menu_button" id="sl-clock-set">Set correction</button>${nb.clockOverride ? `<button class="menu_button" id="sl-clock-clear">Clear</button>` : ""}</div>`;
+    } else if (tab === "quests") {
+        const found = latestState(c, c.length, config);
+        if (!found) body = "<p><i>No reply carries a Story Ledger block yet — quests appear here once one does.</i></p>";
+        else {
+            const qs = found.state.quests || [];
+            const done = qs.filter(q => q.status !== "active");
+            const row = q => `<div class="sl-item"><div><b>${esc(q.id)} ${esc(q.kind)}</b> · ${esc(q.status)} — ${esc(q.objective)}${q.progress ? ` <small>(${esc(q.progress)})</small>` : ""}</div>${
+                q.status === "active" ? "<small>active — always sent</small>"
+                    : `<label class="checkbox_label"><input type="checkbox" class="sl-send" data-id="${esc(q.id)}" ${q.send ? "checked" : ""}> Send to the model</label>`}</div>`;
+            body = `<p class="sl-meta">Every quest stays in the block for you. Active quests always reach the model; a finished one only when you tick it.</p>
+                ${done.length ? `<label class="checkbox_label"><input type="checkbox" id="sl-send-all" ${done.every(q => q.send) ? "checked" : ""} data-mixed="${done.some(q => q.send) && !done.every(q => q.send) ? 1 : 0}"> <b>Send all finished quests</b></label>` : ""}
+                ${qs.map(row).join("") || "<p><i>No quests yet.</i></p>"}`;
+        }
     } else if (tab === "rel") {
         const here = new Set([...state.scene.present, config.userName]);
         const pairs = Object.values(state.rel.pairs).sort((a, b) => (here.has(b.from) || here.has(b.to)) - (here.has(a.from) || here.has(a.to)));
@@ -333,11 +371,19 @@ function popupHtml(tab) {
             <div class="sl-grid"><label>Φ period <input type="number" class="text_pole sl-num" data-cfg-phi="period" value="${cf.phi.period}"></label><label>Φ threshold <input type="number" class="text_pole sl-num" data-cfg-phi="threshold" value="${cf.phi.threshold}"></label><label>Φ acc cap <input type="number" class="text_pole sl-num" data-cfg-phi="accCap" value="${cf.phi.accCap}"></label></div>
             <table class="sl-table"><tr><th>Axis</th><th>Convert every N turns</th><th>at accumulator ≥</th></tr>${axisRows}</table>
             <table class="sl-table"><tr><th>Mirror decay</th><th>every N turns</th></tr>${decayRows}</table>
-            <div class="sl-btns"><button class="menu_button" id="sl-save-config">Save engine numbers</button><button class="menu_button" id="sl-reset-config">Reset to FrankenSIM defaults</button></div>`;
+            <h4>🔫 Chekhov's Gun</h4>
+            <div class="sl-grid">
+                <label>Who fires bullets <select class="text_pole" data-chk-firing>
+                    <option value="model" ${cf.sectionConfig.chekhov.firing !== "fate" ? "selected" : ""}>The model, when the moment is right</option>
+                    <option value="fate" disabled>Fate (arrives with the Fate engine)</option></select></label>
+                ${[["eligibleAge", "Eligible from age"], ["pruneAge", "Prune at age"], ["cap", "Active cap"], ["maxLoadsPerTurn", "Loads per reply"], ["firedKeep", "Fired kept (0 = all)"]]
+                    .map(([k, label]) => `<label>${label} <input type="number" min="0" class="text_pole sl-num" data-chk="${k}" value="${cf.sectionConfig.chekhov[k]}"></label>`).join("")}
+            </div>
+            <div class="sl-btns"><button class="menu_button" id="sl-save-config">Save engine numbers</button><button class="menu_button" id="sl-reset-config">Reset to defaults</button></div>`;
     }
     return `<div class="sl-popup">
         <h3>📒 Story Ledger</h3>
-        <div class="sl-tabs sl-popup-tabs">${T("rules", "📜 Rules")}${T("threads", "🧵 Threads")}${T("clock", "🕰️ Clock")}${T("rel", "💞 Relationships")}${T("settings", "⚙️ Settings")}</div>
+        <div class="sl-tabs sl-popup-tabs">${T("rules", "📜 Rules")}${T("threads", "🧵 Threads")}${T("clock", "🕰️ Clock")}${T("quests", "🗺️ Quests")}${T("rel", "💞 Relationships")}${T("settings", "⚙️ Settings")}</div>
         <div class="sl-popup-body">${body}</div>
     </div>`;
 }
@@ -397,11 +443,22 @@ export async function openLedgerPopup(startTab = "rules") {
         $root.find("[data-cfg-axis]").each((_, el) => { const a = c.axes.find(x => x.key === el.dataset.cfgAxis); a[el.dataset.field] = Number(el.value); });
         $root.find("[data-cfg-decay]").each((_, el) => { c.decay[Number(el.dataset.cfgDecay)].period = Number(el.value); });
         c.offstageSkip = String($root.find("[data-cfg-skip]").val() || "").split(/[,\s]+/).map(Number).filter(Number.isFinite);
+        $root.find("[data-chk]").each((_, el) => { c.sectionConfig.chekhov[el.dataset.chk] = Math.max(0, Number(el.value) || 0); });
+        c.sectionConfig.chekhov.firing = String($root.find("[data-chk-firing]").val() || "model");
         settings().config = c;
         saveSettings();
         done("Engine numbers saved. They apply from the next reply on.");
     });
-    $root.on("click", "#sl-reset-config", () => { settings().config = {}; saveSettings(); done("Reset to FrankenSIM defaults."); });
+    $root.on("click", "#sl-reset-config", () => { settings().config = {}; saveSettings(); done("Reset to defaults."); });
+    const setMixed = () => { const all = $root.find("#sl-send-all")[0]; if (all) all.indeterminate = all.dataset.mixed === "1"; };
+    const sendQuests = async (ids, on) => {
+        if (await editNewestQuests(st => setSend(st, ids, on))) refresh();
+        else toastr.warning("No reply carries a Story Ledger block yet.", "🗺️ Story Ledger");
+        setMixed();
+    };
+    $root.on("change", ".sl-send", e => sendQuests([String(e.currentTarget.dataset.id)], e.currentTarget.checked));
+    $root.on("change", "#sl-send-all", e => sendQuests("all", e.currentTarget.checked));
+    $root.on("click", "[data-sl-popup-tab]", () => setTimeout(setMixed, 0));
 
     await popup.show();
 }

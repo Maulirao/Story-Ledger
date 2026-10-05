@@ -79,6 +79,7 @@ export function resolveConfig(overrides) {
     if (!overrides || typeof overrides !== "object") return base;
     for (const [k, v] of Object.entries(overrides)) {
         if (!(k in base)) continue;
+        if (k === "sectionConfig") continue;   // merged above, key by key
         if (Array.isArray(base[k])) base[k] = Array.isArray(v) ? JSON.parse(JSON.stringify(v)) : base[k];
         else if (base[k] && typeof base[k] === "object") base[k] = { ...base[k], ...(v || {}) };
         else if (typeof v === typeof base[k]) base[k] = v;
