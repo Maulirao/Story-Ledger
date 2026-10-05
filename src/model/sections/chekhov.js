@@ -157,6 +157,9 @@ export default {
                 ctx.touched.add(`chekhov:${nb.id}`);
                 if (++loads > cfg.maxLoadsPerTurn) ctx.warnings.push({ section: "Chekhov", text: `More than ${cfg.maxLoadsPerTurn} setup loaded in one reply (${nb.id} "${nb.desc}" kept).` });
             } else if ((m = line.match(/^fire\s+(B\d+)\s*:\s*(.+)$/i)) && (b = byId(state.chekhov.bullets, m[1]))) {
+                if (cfg.firing === "fate" && eligible(b, state, cfg) && ctx.turn?.fate?.fire !== b.id) {
+                    ctx.warnings.push({ section: "Chekhov", text: `${b.id} "${b.desc}" fired without Fate's pick.` });
+                }
                 if (!eligible(b, state, cfg) && !isDue(b, state)) ctx.warnings.push({ section: "Chekhov", text: `${b.id} "${b.desc}" fired before it was eligible (${holdReasons(b, state, cfg).join("; ")}).` });
                 toFired(state, b, m[2].trim());
             } else if ((m = line.match(/^lock\s+(B\d+)\s*:\s*(.+)$/i)) && (b = byId(state.chekhov.bullets, m[1]))) b.lock = m[2].trim();
@@ -179,6 +182,8 @@ export default {
             if (!waited && !b.at.hit && ctx.prevNow && isDue(b, { ...state, scene: { ...state.scene, now: ctx.prevNow } })) b.at.hit = true;
         }
         for (const b of state.chekhov.bullets) if (!isLocked(b, state) && !ctx.touched.has(`chekhov:${b.id}`)) b.age += 1;
+        const warmed = cfg.firing === "fate" && ctx.turn?.fate?.warm && byId(state.chekhov.bullets, ctx.turn.fate.warm);
+        if (warmed) warmed.age += 1;
         for (const b of [...state.chekhov.bullets]) if (!isLocked(b, state) && !isDue(b, state) && b.age >= cfg.pruneAge) toFired(state, b, "pruned");
         // over the cap: prune the lightest, then oldest — never a due or locked setup
         while (state.chekhov.bullets.length > cfg.cap) {

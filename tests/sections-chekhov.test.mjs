@@ -126,6 +126,42 @@ test("in fate mode the eligible list is not offered to the model", () => {
     assert.doesNotMatch(preTurnFacts(s, cfg).join("\n"), /Eligible/);
 });
 
+test("Fate's pick is announced; firing it is allowed and another eligible bullet is warned", () => {
+    const cfg = { ...resolveConfig(), userName: "Jan", sections: {}, dice: { fate: { a: 17, b: 20, c: 5 } } };
+    const s = emptyState();
+    s.fate.q = 7;
+    s.chekhov.bullets = [
+        bullet("B1", { desc: "the wrong letter", weight: 1, age: 6, hot: true }),
+        bullet("B2", { desc: "the letter", weight: 3, age: 6, hot: true }),
+    ];
+    assert.match(preTurnFacts(s, cfg).join("\n"), /Fire B2 this turn/);
+
+    const picked = postTurn(s, ch("Chekhov:\n- fire B2: it is opened"), cfg);
+    assert.deepEqual(picked.state.chekhov.fired.map(item => item.id), ["B2"]);
+    assert.deepEqual(picked.warnings, []);
+
+    const other = postTurn(s, ch("Chekhov:\n- fire B1: it is opened"), cfg);
+    assert.deepEqual(other.state.chekhov.fired.map(item => item.id), ["B1"]);
+    assert.match(other.warnings.map(w => w.text).join("\n"), /fired without Fate's pick/);
+});
+
+test("warming adds one extra age to the chosen bullet", () => {
+    const cfg = { ...resolveConfig(), userName: "Jan", sections: {}, dice: { fate: { a: 1, b: 20, c: 5 } } };
+    const s = emptyState();
+    s.chekhov.bullets = [bullet("B1", { age: 6, hot: true })];
+    const { state } = postTurn(s, null, cfg);
+    assert.equal(state.chekhov.bullets[0].age, 8); // normal turn age + Fate's extra warm age
+});
+
+test("model mode ignores Fate's pick", () => {
+    const cfg = { ...C, dice: { fate: { a: 1, b: 20, c: 5 } } };
+    const s = emptyState();
+    s.chekhov.bullets = [bullet("B1", { age: 6, hot: true })];
+    assert.match(preTurnFacts(s, cfg).join("\n"), /Eligible to fire/);
+    assert.doesNotMatch(preTurnFacts(s, cfg).join("\n"), /Fire B1 this turn/);
+    assert.equal(postTurn(s, null, cfg).state.chekhov.bullets[0].age, 7);
+});
+
 test("hotCount counts loaded hot bullets", () => {
     const s = emptyState();
     s.chekhov.bullets = [bullet("B1", { hot: true }), bullet("B2"), bullet("B3", { hot: true })];
