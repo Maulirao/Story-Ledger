@@ -11,6 +11,7 @@ import { enabledSections, CORE_KEYS, sectionByKey, needsPresent } from "./sectio
 import { applyTurn, replayRelations } from "./relations.js";
 import { importFromLegacyNotebook, notebookBody, parseNotebookBlock } from "./notebook.js";
 import { parseChanges } from "./changes.js";
+import { importForeign } from "./import/index.js";
 
 const clone = o => JSON.parse(JSON.stringify(o));
 const key = s => String(s).trim().toLowerCase();
@@ -143,6 +144,16 @@ export function initialState(chat, config, legacy = {}) {
     const s = emptyState();
     s.ct = importFfTurn(chat) ?? 0;
     s.threads = importFromLegacyNotebook(chat).threads;
+    // the other preset's newest block, read by code: its sections replace the empty defaults
+    const imp = importForeign(chat, config);
+    if (imp.source) {
+        for (const k of imp.imported) {
+            if (k === "ct") s.ct = imp.state.ct;
+            else if (k === "scene") s.scene = { ...s.scene, ...imp.state.scene };
+            else s[k] = imp.state[k];
+        }
+        s.ids = { ...(s.ids || {}), ...(imp.state.ids || {}) };
+    }
     const old = replayLegacy(chat, config, legacy);
     if (old) {
         s.ct = old.state.ct;
