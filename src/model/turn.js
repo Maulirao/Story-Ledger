@@ -23,10 +23,10 @@ const linesUnder = (changes, heading) => {
 };
 
 /** The context every section hook receives. */
-export function sectionContext(state, prevPresent, config, prevNow = "") {
+export function sectionContext(state, prevPresent, config, prevNow = "", changes = null) {
     return {
         config, userName: config.userName, present: state.scene.present, prevPresent: prevPresent || [], prevNow,
-        touched: new Set(), warnings: [], sections: config.sections || {}, checkStyle: config.checkStyle || "dnd", rolls: config.rolls,
+        touched: new Set(), warnings: [], turn: {}, linesUnder: heading => linesUnder(changes, heading), sections: config.sections || {}, checkStyle: config.checkStyle || "dnd", rolls: config.rolls,
     };
 }
 
@@ -51,9 +51,10 @@ export function postTurn(prev, changes, config) {
     s.ct = rel.state.ct;
     s.rel = { pairs: rel.state.pairs, selves: rel.state.selves };
     s.perTurn = {};
-    const ctx = sectionContext(s, prev.scene.present, config, prev.scene.now);
+    const ctx = sectionContext(s, prev.scene.present, config, prev.scene.now, changes);
     const unparsed = [];
     const on = enabledSections(config.sections);
+    for (const sec of on) if (sec.decide) ctx.turn[sec.key] = sec.decide(prev, ctx);
     for (const sec of on) {
         if (sec.carried) { if (s[sec.key] === undefined) s[sec.key] = sec.empty(); }
         else s.perTurn[sec.key] = sec.empty();
@@ -65,8 +66,10 @@ export function postTurn(prev, changes, config) {
 
 /** Lines for <story_ledger_turn>: what the sections announce before the reply is written. */
 export function preTurnFacts(state, config) {
+    const on = enabledSections(config.sections);
     const ctx = sectionContext(state, state.scene.present, config);
-    return enabledSections(config.sections).flatMap(sec => (sec.facts ? sec.facts(state, ctx) : []));
+    for (const sec of on) if (sec.decide) ctx.turn[sec.key] = sec.decide(state, ctx);
+    return on.flatMap(sec => (sec.facts ? sec.facts(state, ctx) : []));
 }
 
 /**
