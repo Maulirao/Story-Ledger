@@ -23,7 +23,12 @@ import { renderStatePrompt, needsHandover, stripForPrompt, stripPromptText, buil
 import { importForeign, proposeImportedRules } from "./src/model/import/index.js";
 import { SECTIONS } from "./src/model/sections/registry.js";
 import { rollTurnDice, withFudges, fudgesForGeneration, diceFromBlock, parseDiceCommand, parseForceCommand } from "./src/model/dice.js";
-import { decorate as decorateFrankenstein, undecorate } from "./src/ui/themes/frankenstein.js";
+import * as frankensteinTheme from "./src/ui/themes/frankenstein.js";
+import * as solaTheme from "./src/ui/themes/sola.js";
+import * as meguminTheme from "./src/ui/themes/megumin.js";
+import { undecorate } from "./src/ui/themes/common.js";
+
+const THEMES = { frankenstein: frankensteinTheme, sola: solaTheme, megumin: meguminTheme };
 
 const NAME = "storyLedger";
 const PROMPT_KEY = "story_ledger";
@@ -262,7 +267,8 @@ function decorateMessage(i, newestIndex = newestBlockIndex()) {
     if (!el) return;
     const s = settings();
     if (!s.enabled || !String(((ctx().chat || [])[i] || {}).mes || "").includes(BLOCK_MARK)) { undecorate(el); return; }
-    decorateFrankenstein(el, { config: engineConfig(), mesIndex: i, isNewest: i === newestIndex });
+    const theme = THEMES[s.theme] || THEMES.frankenstein;   // display only: the message text never changes
+    theme.decorate(el, { config: engineConfig(), mesIndex: i, isNewest: i === newestIndex });
 }
 const decorateAll = () => {
     const newestIndex = newestBlockIndex();
@@ -465,7 +471,7 @@ function popupHtml(tab, previewBaseDice = null) {
             <h4>Sections</h4>
             ${Object.entries(sec).map(([k, label]) => `<label class="checkbox_label"><input type="checkbox" data-section="${k}" ${s.sections[k] ? "checked" : ""}> ${label}</label>`).join("")}
             <h4>Look</h4>
-            <div class="sl-grid"><label>Theme <select class="text_pole" data-set="theme"><option value="frankenstein" selected>Frankenstein</option></select></label>
+            <div class="sl-grid"><label>Theme <select class="text_pole" data-set="theme">${[["frankenstein", "Frankenstein"], ["sola", "Sola"], ["megumin", "Megumin"]].map(([v, l]) => `<option value="${v}" ${(s.theme || "frankenstein") === v ? "selected" : ""}>${l}</option>`).join("")}</select></label>
                 <label>Check style <select class="text_pole" data-set="checkStyle"><option value="dnd" ${s.checkStyle !== "arrow" ? "selected" : ""}>DnD (locked DC)</option><option value="arrow" ${s.checkStyle === "arrow" ? "selected" : ""}>Wind's Arrow (Sola)</option></select></label></div>
             <h4>Prompt placement</h4>
             <div class="sl-grid">
