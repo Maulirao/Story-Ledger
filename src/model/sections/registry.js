@@ -11,11 +11,12 @@ import factions from "./factions.js";
 import quests from "./quests.js";
 import inventory from "./inventory.js";
 import last from "./last.js";
+import chekhov from "./chekhov.js";
 import thoughts from "./thoughts.js";
 import checks from "./checks.js";
 import physics from "./physics.js";
 
-export const SECTIONS = [cast, agendas, locations, factions, quests, inventory, last, thoughts, checks, physics];
+export const SECTIONS = [cast, agendas, locations, factions, quests, inventory, chekhov, last, thoughts, checks, physics];
 
 /** Sections switched on in `sections` (a key that is missing counts as on). */
 export const enabledSections = (sections = {}) => SECTIONS.filter(s => (sections || {})[s.key] !== false);

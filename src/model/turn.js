@@ -26,11 +26,11 @@ const linesUnder = (changes, heading) => {
 export function sectionContext(state, prevPresent, config) {
     return {
         config, userName: config.userName, present: state.scene.present, prevPresent: prevPresent || [],
-        touched: new Set(), sections: config.sections || {}, checkStyle: config.checkStyle || "dnd", rolls: config.rolls,
+        touched: new Set(), warnings: [], sections: config.sections || {}, checkStyle: config.checkStyle || "dnd", rolls: config.rolls,
     };
 }
 
-/** `prev` + this reply's changes (null when the reply has none) → { state, log, unparsed }. */
+/** `prev` + this reply's changes (null when the reply has none) → { state, log, unparsed, warnings }. */
 export function postTurn(prev, changes, config) {
     const s = clone(prev);
     if (changes) {
@@ -55,7 +55,7 @@ export function postTurn(prev, changes, config) {
         for (const line of sec.apply(s, linesUnder(changes, sec.change), ctx)) unparsed.push({ section: sec.change, line });
     }
     for (const sec of on) if (sec.after) sec.after(s, ctx);
-    return { state: s, log: rel.log, unparsed };
+    return { state: s, log: rel.log, unparsed, warnings: ctx.warnings };
 }
 
 /** Lines for <story_ledger_turn>: what the sections announce before the reply is written. */
