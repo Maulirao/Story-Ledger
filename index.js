@@ -691,7 +691,7 @@ function init() {
         if (data && typeof data.prompt === "string" && settings().enabled) data.prompt = stripPromptText(data.prompt);
     });
     for (const ev of [t.CHARACTER_MESSAGE_RENDERED, t.MESSAGE_UPDATED, t.MESSAGE_SWIPED, t.MESSAGE_EDITED]) {
-        if (ev) c.eventSource.on(ev, id => setTimeout(() => decorateMessage(Number(id)), 0));
+        if (ev) c.eventSource.on(ev, () => setTimeout(decorateAll, 0));
     }
     for (const ev of [t.CHAT_CHANGED, t.MORE_MESSAGES_LOADED]) if (ev) c.eventSource.on(ev, () => setTimeout(decorateAll, 0));
     if (t.CHAT_CHANGED) c.eventSource.on(t.CHAT_CHANGED, () => { pendingTurn = null; });
