@@ -11,10 +11,21 @@ A SillyTavern extension that keeps three kinds of story state for any preset:
   pairs); the extension does the arithmetic. Every engine number is editable under
   Settings, defaulting to FrankenSIM 3.0.
 
-The model writes its block at the end of each reply inside an HTML comment
-(`<!-- Story_Ledger … -->`), so it never shows in the chat. Everything is recomputed from
-the chat, so swipes, edits and deletions just work. Older blocks are stripped from the
-prompt; the current state is injected instead.
+## How it works
+
+The model ends each reply with a hidden comment (`<!-- Story_Ledger … -->`) holding only
+what changed in that reply. Story Ledger reads the state from the previous reply's block,
+applies the changes and the engine's own bookkeeping, and writes the full state block into
+the reply — FF's `<internal_states>` layout, folded under **🎬 INTERNAL STATES (Turn N)**.
+
+- **The newest block is the truth.** To correct anything, edit the numbers or lines in the
+  newest reply's block; the next turn starts from your edit.
+- **↻** in the block's header rebuilds that block from the one before it and the reply's
+  comment (for when you edited the comment instead). Nothing rebuilds on its own.
+- Swipes, deletes and branches work like FF's block: each reply carries its own state.
+- Blocks and old comments are stripped from the prompt; the current state is injected once.
+- **Settings → Sections** turns parts off (not tracked, not shown); **Theme** sets the look
+  of the block on screen without changing the message text.
 
 ## Install
 
@@ -30,7 +41,7 @@ Megumin's bond/state blocks, Sola's HUD notes — or the model will keep two set
 When the newest state in the chat came from Freaky/Realistic Frankenstein, Megumin, Sola or
 Ancient Access, the next prompt carries a one-time handover: the model seeds the ledger
 from that state (time, threads, a NEW line per relationship, rules as proposals). An FF
-turn number carries over automatically so decay schedules continue.
+turn number carries over automatically so the schedules continue.
 
 ## Tests
 
