@@ -14,6 +14,8 @@ import { pathToFileURL } from "node:url";
 
 const DEFAULT_DIR = "C:\\dev\\lonelynoy\\presets";
 
+const LINGERING = /<internal_states>|<ledger>/i;
+
 const findPrompt = (preset, key) => (preset.prompts || []).find(p => p.name === key || p.identifier === key || (p.name || "").trim() === String(key).trim());
 
 /**
@@ -23,7 +25,7 @@ const findPrompt = (preset, key) => (preset.prompts || []).find(p => p.name === 
  */
 export function applyRecipe(input, recipe) {
     const preset = JSON.parse(JSON.stringify(input));
-    const report = { off: [], edits: [], missing: [] };
+    const report = { off: [], edits: [], missing: [], warnings: [] };
     for (const key of recipe.off || []) {
         const p = findPrompt(preset, key);
         if (!p) { report.missing.push(`prompt: ${key}`); continue; }
@@ -40,6 +42,13 @@ export function applyRecipe(input, recipe) {
         p.content = content.slice(0, at) + edit.replace + content.slice(at + edit.find.length);
         report.edits.push({ prompt: p.name, find: edit.find, replace: edit.replace });
     }
+    // a prompt still switched on that orders the old state block would fight the extension
+    const on = new Set((preset.prompt_order || []).flatMap(o => o.order || []).filter(e => e.enabled).map(e => e.identifier));
+    for (const pr of preset.prompts || []) {
+        if (!on.has(pr.identifier)) continue;
+        const text = String(pr.content || "").replace(/\{\{\/\/[\s\S]*?\}\}/g, "");   // {{// comments}} never reach the model
+        if (LINGERING.test(text)) report.warnings.push(pr.name);
+    }
     return report.missing.length ? { preset: input, report } : { preset, report };
 }
 
@@ -50,6 +59,7 @@ export function formatReport(recipe, report, target, exists) {
     for (const o of report.off) out.push(`  - ${o.name.trim()}  (${o.was.map(w => (w ? "on" : "off")).join("/") || "not in any order"} → off)`);
     out.push("", "Text edits:");
     for (const e of report.edits) out.push(`  - ${e.prompt.trim()}`, `      before: ${short(e.find)}`, `      after:  ${short(e.replace)}`);
+    if (report.warnings && report.warnings.length) out.push("", "WARNING — still on and still mention <internal_states> or <ledger>:", ...report.warnings.map(w => `  - ${w.trim()}`));
     if (report.missing.length) out.push("", "MISSING — nothing will be written:", ...report.missing.map(m => `  - ${m}`));
     return out.join("\n");
 }

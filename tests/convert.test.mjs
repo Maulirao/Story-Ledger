@@ -33,3 +33,13 @@ test("an unknown prompt name aborts the preset", () => {
     const { report } = applyRecipe(mini(), { off: ["No Such Prompt"], edits: [] });
     assert.deepEqual(report.missing, ["prompt: No Such Prompt"]);
 });
+
+test("prompts left on that still order the old block are reported as warnings", () => {
+    const p = mini();
+    p.prompts.push({ identifier: "p-post", name: "Post-History Instructions", content: "Ensure the <internal_states> block closes every reply." });
+    p.prompts.push({ identifier: "p-off", name: "Old Ledger", content: "Close with the <ledger>." });
+    p.prompt_order[1].order.push({ identifier: "p-post", enabled: true }, { identifier: "p-off", enabled: false });
+    const { report } = applyRecipe(p, { off: ["p-states"], edits: [] });
+    assert.deepEqual(report.warnings, ["Post-History Instructions"]);
+    assert.deepEqual(report.missing, []);
+});
