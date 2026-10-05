@@ -7,12 +7,14 @@
 import { BLOCK_MARK } from "../block.js";
 import { parseFf } from "./ff.js";
 import { parseAa } from "./aa.js";
+import { parseSola } from "./sola.js";
 
 const FF = /<internal_states>|<!--\s*GFX_START\s*-->/i;
 
 const SOURCES = [
     ["ff", mes => FF.test(mes), parseFf],
     ["aa", mes => /<ledger\b/i.test(mes), parseAa],
+    ["sola", mes => /<sola_hud\b|<story_notes>|<scene_cast>|<wardrobe>|<inventory>/i.test(mes), parseSola],
 ];
 
 /**

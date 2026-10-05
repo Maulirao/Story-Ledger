@@ -72,3 +72,49 @@ QUESTS: Main — find the spare key
 FACTIONS: Harbour Guild — wants the docks
 WORLD: —
 </ledger>`;
+
+export const SOLA_REPLY = `Prose under Sola.
+
+<sola_hud digest="Day 9 · Dusk · Mara: T1 F2 D3 Y2">
+<story_notes>
+- [R] Ana does not know about the key.
+- [T] Race after breakfast.
+Seeds: the gardener's ladder, a sealed letter in the drawer
+Motives: Ana wants the café sold
+Horizon: the inspection on Monday
+</story_notes>
+<date>
+Day: Day 9
+Calendar: Mid-Autumn
+Time: Dusk
+Elapsed: ~20 minutes
+Sola: *the light goes amber*
+</date>
+<scene_cast>
+Location: the café, back room
+Active Speakers: Mara
+Ambient NPCs: Ana, Bo
+Observable Facts: Mara limping
+Sola: *tight room*
+</scene_cast>
+<wardrobe>
+Mara:
+Layers: grey coat over a wool dress, boots
+Condition: Soaked
+Tells: heavy damp wool
+Sola: *drenched*
+</wardrobe>
+<inventory>
+Mara:
+In-Hand: a mug
+Carried: a ring of keys
+Concealed: None
+Sola: *hm*
+
+Jan:
+In-Hand: Empty
+Carried: umbrella
+Concealed: lockpicks
+Sola: *sneaky*
+</inventory>
+</sola_hud>`;
