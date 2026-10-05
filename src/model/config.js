@@ -1,0 +1,68 @@
+// ──────────────────────────────────────────────────────────────────────────────
+// Relationship engine settings. Every number from FrankenSIM 3.0's bond tracker is
+// here, as the default, so the rules are data the reader can change rather than
+// constants buried in code. Pure: no SillyTavern, no DOM.
+// ──────────────────────────────────────────────────────────────────────────────
+
+/** The twelve paired axes. `period`/`threshold` drive accumulator → axis conversion. */
+export const DEFAULT_AXES = [
+    { key: "E",  name: "Eros",      kind: "fond",     mirror: "M",  period: 5,  threshold: 10, meaning: "romantic fondness" },
+    { key: "M",  name: "Misos",     kind: "friction", mirror: "E",  period: 5,  threshold: 10, meaning: "romantic friction" },
+    { key: "L",  name: "Ludus",     kind: "fond",     mirror: "Er", period: 3,  threshold: 8,  meaning: "playful fondness" },
+    { key: "Er", name: "Eris",      kind: "friction", mirror: "L",  period: 3,  threshold: 8,  meaning: "playful friction" },
+    { key: "Ph", name: "Philia",    kind: "fond",     mirror: "Ec", period: 5,  threshold: 10, meaning: "friendship fondness" },
+    { key: "Ec", name: "Echthros",  kind: "friction", mirror: "Ph", period: 5,  threshold: 10, meaning: "friendship friction" },
+    { key: "Pr", name: "Pragma",    kind: "fond",     mirror: "St", period: 7,  threshold: 12, meaning: "practical fondness" },
+    { key: "St", name: "Stasis",    kind: "friction", mirror: "Pr", period: 7,  threshold: 12, meaning: "practical friction" },
+    { key: "Sg", name: "Storge",    kind: "fond",     mirror: "Ad", period: 11, threshold: 12, meaning: "familial fondness" },
+    { key: "Ad", name: "Adiaphora", kind: "friction", mirror: "Sg", period: 11, threshold: 12, meaning: "familial friction" },
+    { key: "Ag", name: "Agape",     kind: "fond",     mirror: "Pt", period: 7,  threshold: 10, meaning: "selfless fondness" },
+    { key: "Pt", name: "Phthonos",  kind: "friction", mirror: "Ag", period: 7,  threshold: 10, meaning: "giving friction / resentment" },
+];
+
+export const DEFAULT_RELATION_CONFIG = {
+    axes: DEFAULT_AXES,
+    axisMin: 1,            // "NEVER 0"
+    axisMax: 20,
+    tickCap: 2,            // +2 per accumulator per turn
+    directMax: 2,          // DIRECT_SHIFT is +1 or +2
+    phi: { min: -20, max: 20, accCap: 30, period: 23, threshold: 12 },
+    // MIRROR DECAY: on each period, if the gap between a pair is ≥ lead, the trailing
+    // axis loses 1, never below floor = min(floorMax, max(1, ⌈leading / floorDivisor⌉)).
+    decay: [
+        { pair: ["L", "Er"], period: 6 },
+        { pair: ["E", "M"], period: 10 },
+        { pair: ["Ph", "Ec"], period: 10 },
+        { pair: ["Ag", "Pt"], period: 14 },
+        { pair: ["Pr", "St"], period: 14 },
+        { pair: ["Sg", "Ad"], period: 22 },
+    ],
+    decayLead: 5,
+    floorDivisor: 4,
+    floorMax: 4,
+    offstageSkip: [4, 8, 12, 15],   // trailing value at which an offstage pair does not decay
+    wallMin: 5,                     // WALL: tied pair, both ≥ this → conversion and decay freeze
+    gravityMin: 6,                  // GRAVITY WELL: fondness converts while its mirror ≥ this → mirror acc +1
+    romanceGate: { E: 6, L: 6 },    // romantic/sexual initiation allowed when E or L reaches these
+    tiers: [
+        { min: 1, max: 5, fond: "Fond", friction: "Distant" },
+        { min: 6, max: 10, fond: "Affectionate", friction: "Cold" },
+        { min: 11, max: 15, fond: "Devoted", friction: "Hostile" },
+        { min: 16, max: 20, fond: "Ultimate", friction: "Murderous" },
+    ],
+};
+
+/** Deep-merge a reader's saved overrides onto the defaults. Unknown keys are ignored. */
+export function resolveConfig(overrides) {
+    const base = JSON.parse(JSON.stringify(DEFAULT_RELATION_CONFIG));
+    if (!overrides || typeof overrides !== "object") return base;
+    for (const [k, v] of Object.entries(overrides)) {
+        if (!(k in base)) continue;
+        if (Array.isArray(base[k])) base[k] = Array.isArray(v) ? JSON.parse(JSON.stringify(v)) : base[k];
+        else if (base[k] && typeof base[k] === "object") base[k] = { ...base[k], ...(v || {}) };
+        else if (typeof v === typeof base[k]) base[k] = v;
+    }
+    return base;
+}
+
+export const axisByKey = (config, key) => config.axes.find(a => a.key === key);
