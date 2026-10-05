@@ -13,7 +13,7 @@
 import {
     emptyNotebook, collectProposals, applyDecision, importFromLegacyNotebook, storyTime, dayRegression,
 } from "./src/model/notebook.js";
-import { resolveConfig, sanitizeChekhov } from "./src/model/config.js";
+import { resolveConfig, sanitizeChekhov, sanitizeFate } from "./src/model/config.js";
 import { describePair, PATTERN_GLOSS } from "./src/model/relations.js";
 import { parseChanges } from "./src/model/changes.js";
 import { renderBlock, BLOCK_MARK } from "./src/model/block.js";
@@ -21,7 +21,7 @@ import { setSend } from "./src/model/sections/quests.js";
 import { postTurn, latestState, initialState, writeBlockInto, stripBlocks, generationBase, rewriteNewestSection, withClockOverride } from "./src/model/turn.js";
 import { renderStatePrompt, needsHandover, stripForPrompt, stripPromptText, buildTemplate, renderRules, renderTurnFacts, HANDOVER } from "./src/model/prompt.js";
 import { SECTIONS } from "./src/model/sections/registry.js";
-import { rollsForGeneration, rollsForReceive } from "./src/model/dice.js";
+import { rollTurnDice, withFudges, fudgesForGeneration, diceFromBlock, parseDiceCommand, parseForceCommand } from "./src/model/dice.js";
 import { decorate as decorateFrankenstein, undecorate } from "./src/ui/themes/frankenstein.js";
 
 const NAME = "storyLedger";
@@ -64,6 +64,7 @@ function chatData() {
     }
     const d = meta.storyLedger;
     d.notebook = { ...emptyNotebook(), ...(d.notebook || {}) };
+    if (d.fudges === undefined) d.fudges = null;
     // d.ctOffset / d.corrections are 0.1's replay inputs. They are kept: a 0.1 chat with
     // no block yet is replayed from its comments with them (initialState).
     return d;
@@ -110,7 +111,11 @@ function buildInjection(type = "normal") {
     if (!s.enabled) return "";
     const raw = ctx().chat || [];
     const c = raw.slice(0, generationBase(raw.length, type));
-    const config = engineConfig({ rolls: pendingTurn ? pendingTurn.rolls : undefined });
+    const index = generationBase(raw.length, type);
+    const active = pendingFor(index);
+    const config = engineConfig(active ? {
+        dice: active.dice, fudges: active.fudges, fudgedDice: active.fudged, rolls: active.dice.checks,
+    } : {});
     const nb = chatData().notebook;
     const state = stateBefore(c, c.length, config);
     const time = storyTime(c, nb);
@@ -129,15 +134,16 @@ function buildInjection(type = "normal") {
 }
 
 let lastInjection = "";
-// This generation's dice, rolled when it starts and written into the reply's block when
-// it arrives. Tagged with the chat and the reply index it was rolled for; a continue keeps
-// the dice the continued reply's block already shows.
+// This generation's dice and fudge controls, tied to its chat/reply index. A continuation
+// reads the existing block's dice; swipes reuse the same reply's armed fudges.
 let pendingTurn = null;
 const chatId = () => (ctx().getCurrentChatId ? ctx().getCurrentChatId() : null);
-const shownRolls = mes => {
-    const m = String(mes || "").match(/<b>Rolls:<\/b>\s*([\d,\s]+)/);
-    return m ? m[1].split(/[,\s]+/).filter(Boolean).map(Number) : null;
-};
+const pendingFor = index => pendingTurn && pendingTurn.chatId === chatId() && pendingTurn.index === index ? pendingTurn : null;
+const mergeTurnDice = (shown, fallback) => ({
+    fate: shown.fate || fallback.fate,
+    world: Number.isInteger(shown.world) ? shown.world : fallback.world,
+    checks: Array.isArray(shown.checks) ? [...shown.checks] : [...fallback.checks],
+});
 const SKIP_TYPES = new Set(["quiet", "impersonate", "first_message"]);
 
 globalThis.storyLedgerInterceptor = async function (_chat, _contextSize, _abort, type) {
@@ -147,11 +153,18 @@ globalThis.storyLedgerInterceptor = async function (_chat, _contextSize, _abort,
         if (!SKIP_TYPES.has(type) && s.enabled) {
             const raw = ctx().chat || [];
             const index = generationBase(raw.length, type);
-            pendingTurn = rollsForGeneration({
-                type, chatId: chatId(), index, pending: pendingTurn,
-                shown: type === "continue" ? shownRolls(raw[index] && raw[index].mes) : null,
-                checksOn: s.sections.checks !== false,
-            });
+            const samePending = pendingFor(index);
+            const fresh = rollTurnDice();
+            const baseDice = type === "continue"
+                ? mergeTurnDice(diceFromBlock(raw[index]?.mes), samePending?.dice || fresh)
+                : fresh;
+            const storedFudges = chatData().fudges;
+            const lifecycle = fudgesForGeneration(storedFudges, index);
+            if (JSON.stringify(lifecycle.next) !== JSON.stringify(storedFudges)) {
+                await saveChatData(d => { d.fudges = lifecycle.next; });
+            }
+            const applied = withFudges(baseDice, lifecycle.active);
+            pendingTurn = { chatId: chatId(), index, dice: applied.dice, fudges: lifecycle.active, fudged: applied.fudged };
         }
         lastInjection = (SKIP_TYPES.has(type) || !s.enabled) ? "" : buildInjection(type);
         const auto = s.placement !== "macro" ? lastInjection : "";
@@ -171,9 +184,14 @@ async function rebuildMessage(i, { announce = true } = {}) {
     if (!msg || msg.is_user || msg.is_system) return;
     // A received reply takes the dice rolled for it (same chat, same reply); ↻ rebuild keeps
     // the dice its block already shows.
-    const shown = shownRolls(msg.mes);
-    const rolls = announce ? rollsForReceive({ chatId: chatId(), index: i, pending: pendingTurn, shown }) : (shown || []);
-    const config = engineConfig({ rolls });
+    const active = pendingFor(i);
+    const shown = diceFromBlock(msg.mes);
+    const saved = chatData().fudges;
+    const storedForReply = saved && saved.appliedTo === i ? saved : null;
+    const dice = active ? active.dice : shown;
+    const fudges = active ? active.fudges : storedForReply;
+    const fudgeResult = withFudges(dice, fudges);
+    const config = engineConfig({ dice, fudges, fudgedDice: active ? active.fudged : fudgeResult.fudged, rolls: dice.checks || [] });
     const start = startOf(c, i, config);
     const prev = start.state;
     // Read the comment with every block taken out: after a continue, the rest of a
@@ -184,7 +202,7 @@ async function rebuildMessage(i, { announce = true } = {}) {
     if (Array.isArray(msg.swipes) && msg.swipe_id !== undefined && msg.swipes[msg.swipe_id] !== undefined) msg.swipes[msg.swipe_id] = msg.mes;
     ctx().updateMessageBlock(i, msg);
     await ctx().saveChat();
-    decorateMessage(i);
+    decorateAll();
     if (!announce) return;
 
     const s = settings();
@@ -222,14 +240,22 @@ async function onMessageReceived(id, type) {
 
 // ── Display ─────────────────────────────────────────────────────────────────
 
-function decorateMessage(i) {
+function newestBlockIndex() {
+    const chat = ctx().chat || [];
+    return latestState(chat, chat.length, engineConfig())?.index ?? -1;
+}
+
+function decorateMessage(i, newestIndex = newestBlockIndex()) {
     const el = document.querySelector(`#chat .mes[mesid="${i}"] .mes_text`);
     if (!el) return;
     const s = settings();
     if (!s.enabled || !String(((ctx().chat || [])[i] || {}).mes || "").includes(BLOCK_MARK)) { undecorate(el); return; }
-    decorateFrankenstein(el, { config: engineConfig(), mesIndex: i });
+    decorateFrankenstein(el, { config: engineConfig(), mesIndex: i, isNewest: i === newestIndex });
 }
-const decorateAll = () => document.querySelectorAll("#chat .mes[mesid]").forEach(el => decorateMessage(Number(el.getAttribute("mesid"))));
+const decorateAll = () => {
+    const newestIndex = newestBlockIndex();
+    document.querySelectorAll("#chat .mes[mesid]").forEach(el => decorateMessage(Number(el.getAttribute("mesid")), newestIndex));
+};
 
 // While a reply streams, the unfinished comment is shown as text until "-->"
 // arrives. Hide it in the live view.
@@ -265,6 +291,43 @@ async function editNewestQuests(mutator) {
 
 const esc = s => String(s ?? "").replace(/[&<>"]/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch]));
 const lines = text => String(text || "").split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+const hasOwn = (value, key) => Object.prototype.hasOwnProperty.call(value || {}, key);
+const validDie = value => Number.isInteger(Number(value)) && Number(value) >= 1 && Number(value) <= 20;
+const dieValue = (dice, key) => key.startsWith("fate.") ? dice.fate[key.at(-1)] : key === "world" ? dice.world : dice.checks;
+
+function readFudgePanel($root) {
+    const fudge = { appliedTo: null }, dice = {};
+    for (const key of ["fate.a", "fate.b", "fate.c", "world"]) {
+        const locked = $root.find(`[data-fudge-lock="${key}"]`).prop("checked");
+        const value = $root.find(`[data-fudge-value="${key}"]`).val();
+        if (locked && validDie(value)) dice[key] = Number(value);
+    }
+    if ($root.find('[data-fudge-lock="checks"]').prop("checked")) {
+        const values = [0, 1, 2].map(i => Number($root.find(`[data-fudge-check="${i}"]`).val()));
+        if (values.every(validDie)) dice.checks = values;
+    }
+    if (Object.keys(dice).length) fudge.dice = dice;
+    const tier = String($root.find("#sl-fudge-tier").val() || "");
+    const source = String($root.find("#sl-fudge-source").val() || "");
+    const fire = String($root.find("#sl-fudge-fire").val() || "");
+    if (tier) fudge.tier = tier;
+    if (source) fudge.source = source;
+    if ($root.find("#sl-fudge-calm").prop("checked")) fudge.calm = true;
+    if (fire) fudge.fire = fire;
+    return fudge;
+}
+
+function fudgeSummary(fudge) {
+    const parts = [];
+    if (fudge.dice) parts.push(...Object.keys(fudge.dice));
+    if (fudge.calm) parts.push("calm");
+    if (fudge.tier) parts.push(fudge.tier);
+    if (fudge.source) parts.push(fudge.source);
+    if (fudge.fire) parts.push(`fire ${fudge.fire}`);
+    return parts.length ? parts.join(", ") : "none";
+}
+
+const hasFudgeSettings = fudge => Object.keys(fudge || {}).some(key => key !== "appliedTo");
 
 function pairCard(state, from, to, config) {
     const rel = { ct: state.ct, pairs: state.rel.pairs, selves: state.rel.selves };
@@ -291,10 +354,10 @@ function pairCard(state, from, to, config) {
         <div class="sl-mirror-head"><span>fondness</span><span>friction</span></div>${rows}</div>`;
 }
 
-function popupHtml(tab) {
+function popupHtml(tab, previewBaseDice = null) {
     const c = ctx().chat || [];
     const s = settings();
-    const config = engineConfig({ rolls: pendingTurn ? pendingTurn.rolls : undefined });
+    const config = engineConfig();
     const nb = chatData().notebook;
     const state = stateBefore(c, c.length, config);
     const T = (id, label) => `<button class="sl-tab${tab === id ? " sl-on" : ""}" data-sl-popup-tab="${id}">${label}</button>`;
@@ -325,6 +388,40 @@ function popupHtml(tab) {
             ${time.timeline.length > 1 ? `<div class="sl-timeline">${time.timeline.map(esc).join(" → ")}</div>` : ""}
             <div class="sl-btns"><input type="text" id="sl-clock" class="text_pole" placeholder="Correct the time, e.g. Day 12 — Tuesday, 21:44 | the lawn" value="${esc(nb.clockOverride ? nb.clockOverride.text : "")}">
                 <button class="menu_button" id="sl-clock-set">Set correction</button>${nb.clockOverride ? `<button class="menu_button" id="sl-clock-clear">Clear</button>` : ""}</div>`;
+    } else if (tab === "dice") {
+        const dice = previewBaseDice || rollTurnDice();
+        const fudge = chatData().fudges || {};
+        const locks = fudge.dice || {};
+        const die = (key, label, value, locked) => `<label class="sl-die"><span>${label}</span>
+            <input type="number" class="text_pole sl-num" data-fudge-value="${key}" min="1" max="20" step="1" value="${esc(value)}">
+            <input type="checkbox" data-fudge-lock="${key}" ${locked ? "checked" : ""}> lock</label>`;
+        const checksLocked = Array.isArray(locks.checks) && locks.checks.length === 3;
+        const checksValues = checksLocked ? locks.checks : dice.checks;
+        const bulletOptions = (state.chekhov?.bullets || []).map(b => `<option value="${esc(b.id)}" ${fudge.fire === b.id ? "selected" : ""}>${esc(b.id)} — ${esc(b.desc)}</option>`).join("");
+        const oldFire = fudge.fire && fudge.fire !== "none" && !(state.chekhov?.bullets || []).some(b => b.id === fudge.fire)
+            ? `<option value="${esc(fudge.fire)}" selected>${esc(fudge.fire)} (not active)</option>` : "";
+        const initialApplied = withFudges(dice, fudge);
+        const initialFacts = renderTurnFacts(state, engineConfig({ dice: initialApplied.dice, fudges: fudge, fudgedDice: initialApplied.fudged, rolls: initialApplied.dice.checks }));
+        body = `<p class="sl-meta">Lock dice or outcomes for the next reply. Swipes and continues of that reply keep these controls.</p>
+            <h4>Turn dice <small>— unlocked dice roll again when generation starts</small></h4>
+            <div class="sl-dice-grid">
+                ${die("fate.a", "Fate A", hasOwn(locks, "fate.a") ? locks["fate.a"] : dice.fate.a, hasOwn(locks, "fate.a"))}
+                ${die("fate.b", "Fate B", hasOwn(locks, "fate.b") ? locks["fate.b"] : dice.fate.b, hasOwn(locks, "fate.b"))}
+                ${die("fate.c", "Fate C", hasOwn(locks, "fate.c") ? locks["fate.c"] : dice.fate.c, hasOwn(locks, "fate.c"))}
+                ${die("world", "World", hasOwn(locks, "world") ? locks.world : dice.world, hasOwn(locks, "world"))}
+                <label class="sl-die sl-check-dice"><span>Checks</span>${checksValues.map((value, i) => `<input type="number" class="text_pole sl-num" data-fudge-check="${i}" min="1" max="20" step="1" value="${esc(value)}">`).join("")}
+                    <input type="checkbox" data-fudge-lock="checks" ${checksLocked ? "checked" : ""}> lock all 3</label>
+            </div>
+            <h4>Outcome controls</h4>
+            <div class="sl-dice-grid">
+                <label>Tier <select class="text_pole" id="sl-fudge-tier"><option value="">Auto</option>${["AMBIENT", "MINOR", "MAJOR"].map(x => `<option value="${x}" ${fudge.tier === x ? "selected" : ""}>${x}</option>`).join("")}</select></label>
+                <label>Source <select class="text_pole" id="sl-fudge-source"><option value="">Auto</option>${["TRUE", "WEIGHTED"].map(x => `<option value="${x}" ${fudge.source === x ? "selected" : ""}>${x}</option>`).join("")}</select></label>
+                <label class="checkbox_label"><input type="checkbox" id="sl-fudge-calm" ${fudge.calm ? "checked" : ""}> Calm (AMBIENT + TRUE)</label>
+                <label>Fire <select class="text_pole" id="sl-fudge-fire"><option value="">Auto</option><option value="none" ${fudge.fire === "none" ? "selected" : ""}>None</option>${oldFire}${bulletOptions}</select></label>
+            </div>
+            <div class="sl-btns"><button class="menu_button" id="sl-reroll-unlocked">Re-roll unlocked</button>
+                <button class="menu_button" id="sl-save-fudges">Save for next turn</button><button class="menu_button" id="sl-clear-fudges">Clear fudges</button></div>
+            <h4>Preview</h4><pre id="sl-turn-preview" class="sl-turn-preview">${esc(initialFacts || "No turn facts for the enabled sections.")}</pre>`;
     } else if (tab === "quests") {
         const found = latestState(c, c.length, config);
         const questsOff = s.sections.quests === false;
@@ -374,26 +471,39 @@ function popupHtml(tab) {
             <h4>🔫 Chekhov's Gun</h4>
             <div class="sl-grid">
                 <label>Who fires bullets <select class="text_pole" data-chk-firing>
-                    <option value="model" ${cf.sectionConfig.chekhov.firing !== "fate" ? "selected" : ""}>The model, when the moment is right</option>
-                    <option value="fate" disabled>Fate (arrives with the Fate engine)</option></select></label>
+                    <option value="model" ${cf.sectionConfig.chekhov.firing === "model" ? "selected" : ""}>The model, when the moment is right</option>
+                    <option value="fate" ${cf.sectionConfig.chekhov.firing === "fate" ? "selected" : ""}>Fate's pick</option></select></label>
                 ${[["eligibleAge", "Eligible from age"], ["pruneAge", "Prune at age"], ["cap", "Active cap"], ["maxLoadsPerTurn", "Loads per reply"], ["firedKeep", "Fired kept (0 = all)"]]
                     .map(([k, label]) => `<label>${label} <input type="number" min="${k === "eligibleAge" || k === "firedKeep" ? 0 : 1}" class="text_pole sl-num" data-chk="${k}" value="${cf.sectionConfig.chekhov[k]}"></label>`).join("")}
             </div>
+            <h4>🎲 Fate & World Sim</h4>
+            <div class="sl-grid">${[["deferredExpire", "Deferred expiry"], ["worldKeep", "World entries kept"], ["reach1Drop", "Drop Reach 1 at age"], ["pursuitLimit", "Pursuit limit"], ["residueKeep", "Residue lines kept"]]
+                .map(([k, label]) => `<label>${label} <input type="number" min="1" class="text_pole sl-num" data-fate="${k}" value="${cf.sectionConfig.fate[k]}"></label>`).join("")}</div>
             <div class="sl-btns"><button class="menu_button" id="sl-save-config">Save engine numbers</button><button class="menu_button" id="sl-reset-config">Reset to defaults</button></div>`;
     }
     return `<div class="sl-popup">
         <h3>📒 Story Ledger</h3>
-        <div class="sl-tabs sl-popup-tabs">${T("rules", "📜 Rules")}${T("threads", "🧵 Threads")}${T("clock", "🕰️ Clock")}${T("quests", "🗺️ Quests")}${T("rel", "💞 Relationships")}${T("settings", "⚙️ Settings")}</div>
+        <div class="sl-tabs sl-popup-tabs">${T("rules", "📜 Rules")}${T("threads", "🧵 Threads")}${T("clock", "🕰️ Clock")}${T("quests", "🗺️ Quests")}${T("rel", "💞 Relationships")}${T("dice", "🎲 Next turn")}${T("settings", "⚙️ Settings")}</div>
         <div class="sl-popup-body">${body}</div>
     </div>`;
 }
 
 export async function openLedgerPopup(startTab = "rules") {
     let tab = startTab;
-    const popup = new (ctx().Popup)(popupHtml(tab), ctx().POPUP_TYPE.TEXT, "", { wide: true, large: true, allowVerticalScrolling: true, okButton: "Close" });
+    let previewBaseDice = rollTurnDice();
+    const popup = new (ctx().Popup)(popupHtml(tab, previewBaseDice), ctx().POPUP_TYPE.TEXT, "", { wide: true, large: true, allowVerticalScrolling: true, okButton: "Close" });
     const $root = $(popup.dlg);
-    const refresh = () => $root.find(".sl-popup").replaceWith(popupHtml(tab));
+    const refresh = () => $root.find(".sl-popup").replaceWith(popupHtml(tab, previewBaseDice));
     const done = (msg) => { if (msg) toastr.success(msg, "📒 Story Ledger"); refresh(); };
+    const updatePreview = () => {
+        if (tab !== "dice") return;
+        const chat = ctx().chat || [];
+        const state = stateBefore(chat, chat.length, engineConfig());
+        const fudge = readFudgePanel($root);
+        const applied = withFudges(previewBaseDice, fudge);
+        const text = renderTurnFacts(state, engineConfig({ dice: applied.dice, fudges: fudge, fudgedDice: applied.fudged, rolls: applied.dice.checks }));
+        $root.find("#sl-turn-preview").text(text || "No turn facts for the enabled sections.");
+    };
 
     $root.on("click", "[data-sl-popup-tab]", e => { tab = $(e.currentTarget).data("sl-popup-tab"); refresh(); });
     $root.on("change", "#sl-nb-enabled", async e => { await saveChatData(d => { d.notebook.enabled = e.target.checked; }); });
@@ -425,6 +535,39 @@ export async function openLedgerPopup(startTab = "rules") {
         done("Story time corrected.");
     });
     $root.on("click", "#sl-clock-clear", async () => { await saveChatData(d => { delete d.notebook.clockOverride; }); done(); });
+    $root.on("input", "[data-fudge-value]", e => {
+        const key = e.currentTarget.dataset.fudgeValue;
+        $root.find(`[data-fudge-lock="${key}"]`).prop("checked", true);
+        updatePreview();
+    });
+    $root.on("input", "[data-fudge-check]", () => { $root.find('[data-fudge-lock="checks"]').prop("checked", true); updatePreview(); });
+    $root.on("change", "[data-fudge-lock]", e => {
+        const key = e.currentTarget.dataset.fudgeLock;
+        if (!e.currentTarget.checked) {
+            if (key === "checks") [0, 1, 2].forEach(i => $root.find(`[data-fudge-check="${i}"]`).val(previewBaseDice.checks[i]));
+            else $root.find(`[data-fudge-value="${key}"]`).val(dieValue(previewBaseDice, key));
+        }
+        updatePreview();
+    });
+    $root.on("change", "#sl-fudge-tier, #sl-fudge-source, #sl-fudge-calm, #sl-fudge-fire", updatePreview);
+    $root.on("click", "#sl-reroll-unlocked", () => {
+        previewBaseDice = rollTurnDice();
+        for (const key of ["fate.a", "fate.b", "fate.c", "world"]) {
+            if (!$root.find(`[data-fudge-lock="${key}"]`).prop("checked")) $root.find(`[data-fudge-value="${key}"]`).val(dieValue(previewBaseDice, key));
+        }
+        if (!$root.find('[data-fudge-lock="checks"]').prop("checked")) [0, 1, 2].forEach(i => $root.find(`[data-fudge-check="${i}"]`).val(previewBaseDice.checks[i]));
+        updatePreview();
+    });
+    $root.on("click", "#sl-save-fudges", async () => {
+        const fudge = readFudgePanel($root);
+        const value = hasFudgeSettings(fudge) ? fudge : null;
+        await saveChatData(d => { d.fudges = value; });
+        done(value ? `Armed for the next reply: ${fudgeSummary(value)}.` : "No fudges are set.");
+    });
+    $root.on("click", "#sl-clear-fudges", async () => {
+        await saveChatData(d => { d.fudges = null; });
+        done("Fudges cleared.");
+    });
     $root.on("change", "[data-set]", e => {
         const el = e.currentTarget, k = el.dataset.set;
         settings()[k] = el.type === "checkbox" ? el.checked : (el.type === "number" ? Number(el.value) : el.value);
@@ -446,6 +589,9 @@ export async function openLedgerPopup(startTab = "rules") {
         const form = { firing: String($root.find("[data-chk-firing]").val() || "model") };
         $root.find("[data-chk]").each((_, el) => { form[el.dataset.chk] = el.value; });
         c.sectionConfig.chekhov = sanitizeChekhov(form, c.sectionConfig.chekhov);
+        const fateForm = {};
+        $root.find("[data-fate]").each((_, el) => { fateForm[el.dataset.fate] = el.value; });
+        c.sectionConfig.fate = sanitizeFate(fateForm, c.sectionConfig.fate);
         settings().config = c;
         saveSettings();
         done("Engine numbers saved. They apply from the next reply on.");
@@ -475,9 +621,66 @@ async function confirmRebuild(i) {
     if (ok) await rebuildMessage(i, { announce: false });
 }
 
+function registerSlashCommands() {
+    if (globalThis.__storyLedgerSlashCommandsRegistered) return;
+    const c = ctx();
+    const { SlashCommandParser, SlashCommand, SlashCommandArgument } = c;
+    const argumentType = c.ARGUMENT_TYPE?.STRING || globalThis.ARGUMENT_TYPE?.STRING || "string";
+    if (!SlashCommandParser || !SlashCommand || !SlashCommandArgument) return;
+
+    const add = (name, description, help, handler) => SlashCommandParser.addCommandObject(SlashCommand.fromProps({
+        name,
+        callback: async (_namedArgs, unnamedArgs) => {
+            try { await handler(String(unnamedArgs ?? "").trim()); }
+            catch (error) { toastr.warning(error.message || String(error), "📒 Story Ledger"); }
+            return "";
+        },
+        unnamedArgumentList: [SlashCommandArgument.fromProps({ description, typeList: argumentType, isRequired: false })],
+        helpString: `<div>${help}</div>`,
+    }));
+    const arm = async (fudge, message) => {
+        await saveChatData(d => { d.fudges = hasFudgeSettings(fudge) ? { ...fudge, appliedTo: null } : null; });
+        toastr.success(message, "🎲 Story Ledger");
+    };
+
+    add("ledger-dice", "dice locks, reroll, or clear", "Lock dice with <code>fate.a=20 world=7 checks=20,3,11</code>, use <code>reroll</code> to clear dice locks, or <code>clear</code> to clear every fudge.", async text => {
+        if (text.toLowerCase() === "clear") { await arm(null, "Fudges cleared."); return; }
+        const current = chatData().fudges || {};
+        if (text.toLowerCase() === "reroll") {
+            const next = { ...current };
+            delete next.dice;
+            next.appliedTo = null;
+            await arm(next, "Dice locks cleared; unlocked dice will roll next turn.");
+            return;
+        }
+        const parsed = parseDiceCommand(text);
+        const next = { ...current, dice: { ...(current.dice || {}), ...parsed.dice }, appliedTo: null };
+        await arm(next, `Armed for the next reply: ${fudgeSummary(next)}.`);
+    });
+    add("ledger-force", "tier, source, or calm", "Force an outcome with <code>MAJOR WEIGHTED</code>, <code>MINOR TRUE</code>, or <code>calm</code>.", async text => {
+        const current = { ...(chatData().fudges || {}) };
+        delete current.tier; delete current.source; delete current.calm;
+        const next = { ...current, ...parseForceCommand(text), appliedTo: null };
+        await arm(next, `Armed for the next reply: ${fudgeSummary(next)}.`);
+    });
+    add("ledger-fire", "bullet id or none", "Force a bullet with <code>B2</code> or prevent a bullet firing with <code>none</code>.", async text => {
+        const value = text.toLowerCase() === "none" ? "none" : (/^B\d+$/i.test(text) ? text.toUpperCase() : "");
+        if (!value) throw new Error("Use a loaded bullet id such as B2, or none.");
+        if (value !== "none") {
+            const chat = ctx().chat || [];
+            const state = stateBefore(chat, chat.length, engineConfig());
+            if (!state.chekhov.bullets.some(b => b.id.toLowerCase() === value.toLowerCase())) throw new Error(`${value} is not a loaded bullet.`);
+        }
+        const next = { ...(chatData().fudges || {}), fire: value, appliedTo: null };
+        await arm(next, `Armed for the next reply: ${fudgeSummary(next)}.`);
+    });
+    globalThis.__storyLedgerSlashCommandsRegistered = true;
+}
+
 function init() {
     const c = ctx();
     const t = c.eventTypes;
+    registerSlashCommands();
     c.eventSource.on(t.MESSAGE_RECEIVED, onMessageReceived);
     c.eventSource.on(t.CHAT_COMPLETION_PROMPT_READY, data => {
         const messages = data && (data.chat || data.messages);
@@ -500,6 +703,10 @@ function init() {
         e.preventDefault(); e.stopPropagation();
         const i = Number($(e.currentTarget).closest(".mes").attr("mesid"));
         if (Number.isInteger(i)) confirmRebuild(i);
+    });
+    $(document).on("click", ".sl-next-turn", e => {
+        e.preventDefault(); e.stopPropagation();
+        openLedgerPopup("dice");
     });
     if (!$("#sl-menu").length) {
         $("#extensionsMenu").append(`<div id="sl-menu" class="list-group-item flex-container flexGap5 interactable" tabindex="0" title="Story Ledger"><div class="fa-solid fa-book-bookmark extensionsMenuExtensionButton"></div><span>Story Ledger</span></div>`);

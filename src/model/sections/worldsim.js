@@ -58,7 +58,7 @@ export default {
             table,
             name: entry.name,
             text: entry.text,
-            fudged: ctx.config.fudges?.dice?.world !== undefined,
+            fudged: ctx.config.fudgedDice?.includes("world") || ctx.config.fudges?.dice?.world !== undefined,
         };
     },
     render(value) {

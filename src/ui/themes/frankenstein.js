@@ -46,15 +46,39 @@ function relationBars(section, config) {
     return wrap;
 }
 
+function syncNextTurnButton(outer, isNewest) {
+    const head = outer.querySelector(":scope > summary");
+    const existing = head && head.querySelector(".sl-next-turn");
+    if (!head) return;
+    if (isNewest && !existing) head.insertAdjacentHTML("beforeend", `<span class="sl-ui sl-next-turn" title="Set next turn dice and preview">🎲</span>`);
+    else if (!isNewest && existing) existing.remove();
+}
+
+function fateChips(section) {
+    const rows = [...section.querySelectorAll("li, p, div")].filter(el => !el.querySelector("li, p, div"));
+    for (const row of rows) {
+        let html = row.innerHTML;
+        if (/This turn:/i.test(row.textContent)) {
+            html = html.replace(/\b(AMBIENT|MINOR|MAJOR)\b/gi, tier => `<span class="sl-ui-inline sl-fk-tier sl-fk-tier-${tier.toLowerCase()}">${tier}</span>`);
+        }
+        if (/\(fudged(?::[^)]*)?\)/i.test(row.textContent)) {
+            html = html.replace(/\(fudged(?::[^)]*)?\)/gi, marker => `<span class="sl-ui-inline sl-fk-fudged">${marker}</span>`);
+        }
+        if (html !== row.innerHTML) { row.dataset.slOrig = row.innerHTML; row.innerHTML = html; }
+    }
+}
+
 /** Decorate the rendered block inside `root` (a .mes_text element). */
-export function decorate(root, { config }) {
+export function decorate(root, { config, isNewest = false }) {
     const outer = outerDetails(root);
-    if (!outer || outer.dataset.slTheme === "frankenstein") return;
+    if (!outer) return;
+    if (outer.dataset.slTheme === "frankenstein") { syncNextTurnButton(outer, isNewest); return; }
     undecorate(root);
     outer.dataset.slTheme = "frankenstein";
     outer.classList.add("sl-theme-frankenstein");
     const head = outer.querySelector(":scope > summary");
     head.insertAdjacentHTML("beforeend", `<span class="sl-ui sl-rebuild" title="Rebuild this block from the one before it and this reply's ledger comment">↻</span>`);
+    syncNextTurnButton(outer, isNewest);
     for (const d of outer.querySelectorAll("details")) {
         const s = d.querySelector(":scope > summary");
         if (!s) continue;
@@ -74,6 +98,7 @@ export function decorate(root, { config }) {
             }
         }
         if (/CHEKHOV/i.test(title)) chekhovChips(d);
+        if (/FATE ROUTINE/i.test(title)) fateChips(d);
     }
 }
 

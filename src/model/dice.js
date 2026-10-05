@@ -84,7 +84,7 @@ export function diceFromBlock(mes) {
     const world = rowValue(sections.get("WORLD SIM"), "Roll")?.match(/^(\d+)(?:\s+\(fudged\))?$/i);
     if (world) result.world = Number(world[1]);
     const checks = rowValue(sections.get("DND TASK SIM"), "Rolls") || rowValue(sections.get("WIND S ARROW"), "Rolls");
-    const parsedChecks = checks?.match(/^(\d+(?:\s*,\s*\d+)*)$/);
+    const parsedChecks = checks?.match(/^(\d+(?:\s*,\s*\d+)*)(?:\s+\(fudged\))?$/i);
     if (parsedChecks) result.checks = parsedChecks[1].split(/\s*,\s*/).map(Number);
     return result;
 }

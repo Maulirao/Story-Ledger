@@ -17,12 +17,13 @@ export default {
     empty: () => ({ rolls: [], lines: [] }),
     isEmpty: v => !v.rolls.length && !v.lines.length,
     render: value => [
-        ...(value.rolls.length ? [`- <b>Rolls:</b> ${value.rolls.join(", ")}`] : []),
+        ...(value.rolls.length ? [`- <b>Rolls:</b> ${value.rolls.join(", ")}${value.fudged ? " (fudged)" : ""}`] : []),
         ...value.lines.map(l => `- ${esc(l)}`),
     ],
     parse: () => ({ value: { rolls: [], lines: [] }, errors: [] }),
     apply(state, lines, ctx) {
         state.perTurn.checks.rolls = Array.isArray(ctx.rolls) ? [...ctx.rolls] : [];
+        state.perTurn.checks.fudged = ctx.fudgedDice.includes("checks");
         for (const l of lines) if (String(l).trim()) state.perTurn.checks.lines.push(String(l).trim());
         return [];
     },

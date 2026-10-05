@@ -109,7 +109,12 @@ export default {
         const dice = ctx.config.dice?.fate;
         if (!dice) return null;
         const cfg = { ...cfgOf(ctx), chekhov: ctx.config.sectionConfig?.chekhov };
-        return computeFate(prev, dice, ctx.config.fudges || null, cfg);
+        const outcome = computeFate(prev, dice, ctx.config.fudges || null, cfg);
+        outcome.fudged = [
+            ...(ctx.config.fudgedDice || []).filter(name => /^fate\.[abc]$/i.test(name)),
+            ...outcome.fudged,
+        ];
+        return outcome;
     },
     render(value) {
         const rows = [];

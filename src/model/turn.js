@@ -26,7 +26,8 @@ const linesUnder = (changes, heading) => {
 export function sectionContext(state, prevPresent, config, prevNow = "", changes = null) {
     return {
         config, userName: config.userName, present: state.scene.present, prevPresent: prevPresent || [], prevNow,
-        touched: new Set(), warnings: [], turn: {}, linesUnder: heading => linesUnder(changes, heading), sections: config.sections || {}, checkStyle: config.checkStyle || "dnd", rolls: config.rolls,
+        touched: new Set(), warnings: [], turn: {}, linesUnder: heading => linesUnder(changes, heading), sections: config.sections || {}, checkStyle: config.checkStyle || "dnd",
+        rolls: Array.isArray(config.dice?.checks) ? config.dice.checks : config.rolls, fudgedDice: config.fudgedDice || [],
     };
 }
 

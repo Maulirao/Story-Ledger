@@ -183,3 +183,14 @@ export function sanitizeChekhov(input, prev) {
     if (out.pruneAge <= out.eligibleAge) out.pruneAge = out.eligibleAge + 1;
     return out;
 }
+
+/** Fate settings shown in the popup: blanks preserve saved values and every scalar stays ≥ 1. */
+export function sanitizeFate(input = {}, prev = DEFAULT_SECTION_CONFIG.fate) {
+    const out = JSON.parse(JSON.stringify(prev));
+    for (const key of ["deferredExpire", "worldKeep", "reach1Drop", "pursuitLimit", "residueKeep"]) {
+        const raw = input[key];
+        if (raw === undefined || raw === null || String(raw).trim() === "" || !Number.isFinite(Number(raw))) continue;
+        out[key] = Math.max(1, Math.round(Number(raw)));
+    }
+    return out;
+}

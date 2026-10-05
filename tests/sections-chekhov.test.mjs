@@ -162,6 +162,15 @@ test("model mode ignores Fate's pick", () => {
     assert.equal(postTurn(s, null, cfg).state.chekhov.bullets[0].age, 7);
 });
 
+test("switching Fate off restores model-picked Chekhov timing", () => {
+    const cfg = { ...resolveConfig(), userName: "Jan", sections: { fate: false }, dice: { fate: { a: 1, b: 20, c: 5 } } };
+    const s = emptyState();
+    s.chekhov.bullets = [bullet("B1", { age: 6, hot: true })];
+    assert.match(preTurnFacts(s, cfg).join("\n"), /Eligible to fire/);
+    const result = postTurn(s, ch("Chekhov:\n- fire B1: an unexpected opening"), cfg);
+    assert.equal(result.warnings.some(w => /Fate's pick/.test(w.text)), false);
+});
+
 test("hotCount counts loaded hot bullets", () => {
     const s = emptyState();
     s.chekhov.bullets = [bullet("B1", { hot: true }), bullet("B2"), bullet("B3", { hot: true })];

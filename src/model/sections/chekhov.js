@@ -12,6 +12,7 @@ import { parseStoryTime, lockTime, isAtOrPast } from "../storytime.js";
 const cfgOf = ctx => (ctx && ctx.config && ctx.config.sectionConfig && ctx.config.sectionConfig.chekhov) || {
     eligibleAge: 6, pruneAge: 12, cap: 20, maxLoadsPerTurn: 1, firedKeep: 10, firing: "model",
 };
+const fateFiring = ctx => cfgOf(ctx).firing === "fate" && (!ctx?.sections || ctx.sections.fate !== false);
 
 // "·" separates a bullet's tags, so a lock reason writes its own "·" as an entity.
 const escTag = v => esc(v).replace(/·/g, "&#183;");
@@ -157,7 +158,7 @@ export default {
                 ctx.touched.add(`chekhov:${nb.id}`);
                 if (++loads > cfg.maxLoadsPerTurn) ctx.warnings.push({ section: "Chekhov", text: `More than ${cfg.maxLoadsPerTurn} setup loaded in one reply (${nb.id} "${nb.desc}" kept).` });
             } else if ((m = line.match(/^fire\s+(B\d+)\s*:\s*(.+)$/i)) && (b = byId(state.chekhov.bullets, m[1]))) {
-                if (cfg.firing === "fate" && eligible(b, state, cfg) && ctx.turn?.fate?.fire !== b.id) {
+                if (fateFiring(ctx) && eligible(b, state, cfg) && ctx.turn?.fate?.fire !== b.id) {
                     ctx.warnings.push({ section: "Chekhov", text: `${b.id} "${b.desc}" fired without Fate's pick.` });
                 }
                 if (!eligible(b, state, cfg) && !isDue(b, state)) ctx.warnings.push({ section: "Chekhov", text: `${b.id} "${b.desc}" fired before it was eligible (${holdReasons(b, state, cfg).join("; ")}).` });
@@ -182,7 +183,7 @@ export default {
             if (!waited && !b.at.hit && ctx.prevNow && isDue(b, { ...state, scene: { ...state.scene, now: ctx.prevNow } })) b.at.hit = true;
         }
         for (const b of state.chekhov.bullets) if (!isLocked(b, state) && !ctx.touched.has(`chekhov:${b.id}`)) b.age += 1;
-        const warmed = cfg.firing === "fate" && ctx.turn?.fate?.warm && byId(state.chekhov.bullets, ctx.turn.fate.warm);
+        const warmed = fateFiring(ctx) && ctx.turn?.fate?.warm && byId(state.chekhov.bullets, ctx.turn.fate.warm);
         if (warmed) warmed.age += 1;
         for (const b of [...state.chekhov.bullets]) if (!isLocked(b, state) && !isDue(b, state) && b.age >= cfg.pruneAge) toFired(state, b, "pruned");
         // over the cap: prune the lightest, then oldest — never a due or locked setup
@@ -206,7 +207,7 @@ export default {
                 ? `Overdue: ${b.id} "${b.desc}" [at ${clock(b.at)}] — pay it off when it fits, or \`lock ${b.id}: why\` to hold it.`
                 : `Due now: ${b.id} "${b.desc}" [at ${clock(b.at)}] — fire it this turn.`);
         }
-        if (cfg.firing !== "fate") {
+        if (!fateFiring(ctx)) {
             const ready = state.chekhov.bullets.filter(b => eligible(b, state, cfg))
                 .sort((a, z) => z.weight - a.weight || z.age - a.age)
                 .map(b => `${b.id} "${b.desc}" (w${b.weight}${b.hot ? ", hot" : ""})`);
@@ -234,7 +235,7 @@ export default {
         return [
             "Chekhov's Gun: load a setup only when the prose leaves narrative debt a reader would notice going unpaid — an unresolved setup, a promise, foreshadowing, a planted object, emotional tension. Ambient scenery, small talk and passing business load nothing.",
             `At most ${cfg.maxLoadsPerTurn} load per reply. Weight 1–3 by how much it matters. Mark it hot only when it exists because of something {{user}} said or did. A future time becomes an \`at\` lock written as a clock time — \`at 18:30\`, \`at noon\`, \`at midnight\` or \`at Day 4 09:00\` — worked out from the story time ("in an hour" at 17:30 is \`at 18:30\`). \`after B#\` makes it wait for another setup. A secret stays held while more than 2 people are present.`,
-            cfg.firing === "fate"
+            fateFiring(ctx)
                 ? "Firing: a bullet fires only when the turn says so (Fate's pick), or when it is due; pay it off naturally and never narrate the mechanics."
                 : "Firing: you judge the moment — fire an eligible bullet when the story offers a natural opening, never forced; a due bullet fires when its hour comes. Pay it off naturally and never narrate the mechanics.",
         ].join("\n");
