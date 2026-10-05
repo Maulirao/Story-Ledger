@@ -6,9 +6,10 @@
 // ──────────────────────────────────────────────────────────────────────────────
 
 import { emptyState } from "./state.js";
-import { parseBlock, findBlock, BLOCK_MARK } from "./block.js";
-import { applyTurn } from "./relations.js";
-import { importFromLegacyNotebook } from "./notebook.js";
+import { parseBlock, findBlock, BLOCK_MARK, SECTION_KEYS } from "./block.js";
+import { applyTurn, replayRelations } from "./relations.js";
+import { importFromLegacyNotebook, notebookBody, parseNotebookBlock } from "./notebook.js";
+import { parseChanges } from "./changes.js";
 
 const clone = o => JSON.parse(JSON.stringify(o));
 const key = s => String(s).trim().toLowerCase();
@@ -32,13 +33,22 @@ export function postTurn(prev, changes, config) {
     return { state: s, log: rel.log };
 }
 
-/** The newest Story Ledger block before `beforeIndex`: { state, index }, or null. */
+/**
+ * The newest Story Ledger block before `beforeIndex`: { state, index, errors }, or null.
+ * A section the block lacks (switched off when it was written) and a row that no longer
+ * parses (a hand-edit typo) keep the value from the block before it.
+ */
 export function latestState(chat, beforeIndex, config) {
     for (let i = Math.min(beforeIndex, (chat || []).length) - 1; i >= 0; i--) {
         const mes = chat[i] && chat[i].mes;
         if (!mes || !mes.includes(BLOCK_MARK)) continue;
-        const parsed = parseBlock(mes, { config });
-        if (parsed) return { state: parsed.state, index: i };
+        const first = parseBlock(mes, { config });
+        if (!first) continue;
+        if (!first.errors.length && SECTION_KEYS.every(k => first.sections.includes(k))) return { state: first.state, index: i, errors: [] };
+        const older = latestState(chat, i, config);
+        if (!older) return { state: first.state, index: i, errors: first.errors };
+        const again = parseBlock(mes, { prev: older.state, config });
+        return { state: again.state, index: i, errors: first.errors };
     }
     return null;
 }
@@ -54,18 +64,68 @@ export function importFfTurn(chat) {
     return null;
 }
 
-/** Starting state for a chat with no Story Ledger block yet. */
-export function initialState(chat, config) {
+/**
+ * A 0.1 chat: Story_Ledger comments, no block. 0.1 recomputed relationships by replaying
+ * every comment from the first, with the reader's corrections stamped by chat length.
+ */
+function replayLegacy(chat, config, { ctOffset = null, corrections = [] }) {
+    const msgs = chat || [];
+    const first = msgs.findIndex(m => m && !m.is_user && !m.is_system && notebookBody(m.mes) !== null);
+    if (first < 0) return null;
+    const turns = [], indexes = [];
+    let newest = null, threads = null;
+    for (let i = first; i < msgs.length; i++) {
+        const m = msgs[i];
+        if (!m || m.is_user || m.is_system) continue;
+        const ch = parseChanges(m.mes);
+        if (ch) newest = ch;
+        const nb = ch && parseNotebookBlock(m.mes);
+        if (nb && nb.threads.length) threads = nb.threads;
+        const present = new Set(ch && ch.present ? ch.present : []);
+        if (config.userName) present.add(config.userName);
+        turns.push({ events: ch ? ch.relations : null, present: [...present] });
+        indexes.push(i);
+    }
+    const at = c => indexes.filter(i => i < c.atLength).length;
+    const offset = ctOffset ?? importFfTurn(msgs.slice(0, first)) ?? 0;
+    const { state } = replayRelations(turns, (corrections || []).map(({ atLength, ...rest }) => ({ at: at({ atLength }), ...rest })), config, offset);
+    return { state, newest, threads };
+}
+
+/**
+ * Starting state for a chat with no Story Ledger block yet: an FF turn count and
+ * notebook, or a 0.1 chat's replayed comments (`legacy` = the 0.1 chat metadata's
+ * { ctOffset, corrections }).
+ */
+export function initialState(chat, config, legacy = {}) {
     const s = emptyState();
     s.ct = importFfTurn(chat) ?? 0;
     s.threads = importFromLegacyNotebook(chat).threads;
+    const old = replayLegacy(chat, config, legacy);
+    if (old) {
+        s.ct = old.state.ct;
+        s.rel = { pairs: old.state.pairs, selves: old.state.selves };
+        if (old.newest && old.newest.now !== null) s.scene.now = old.newest.now;
+        if (old.newest && old.newest.present !== null) s.scene.present = old.newest.present;
+        if (old.threads) s.threads = old.threads;   // 0.1 wrote the full list each reply
+    }
     return s;
 }
 
-/** The reply with every state block removed (ours or another preset's) and `blockText` appended. */
-export function writeBlockInto(mes, blockText) {
+/** The reply with every closed state block removed (ours or another preset's). */
+export function stripBlocks(mes) {
     let text = String(mes || "");
     let at;
     while ((at = findBlock(text))) text = text.slice(0, at.start) + text.slice(at.end);
-    return `${text.replace(/\s+$/, "")}\n\n${blockText}`;
+    return text;
+}
+
+/** The reply with every state block removed and `blockText` appended. */
+export function writeBlockInto(mes, blockText) {
+    return `${stripBlocks(mes).replace(/\s+$/, "")}\n\n${blockText}`;
+}
+
+/** How many messages of the raw chat a generation builds on: a swiped or continued reply is not its own past. */
+export function generationBase(chatLength, type) {
+    return type === "swipe" || type === "continue" ? chatLength - 1 : chatLength;
 }

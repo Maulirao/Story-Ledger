@@ -56,11 +56,17 @@ export function renderBlock(state, { rules = [], config, sections = {} }) {
 
 // ── Reading ─────────────────────────────────────────────────────────────────
 
-/** Our block or any FF-style block in a message: { start, end } of the first one, or null. */
+// A block is only ever cut out when it is CLOSED. A lazy match may not run across
+// another block's start or a Story_Ledger comment, so an unclosed foreign block can
+// never take the prose (or the model's comment) after it along.
+const NO_COMMENT = String.raw`(?!<!--\s*Story_Ledger\b)`;
+const GFX_CLOSED = new RegExp(String.raw`<!--\s*GFX_START\s*-->(?:(?!<!--\s*GFX_START\s*-->)${NO_COMMENT}[\s\S])*?<!--\s*GFX_END\s*-->`, "i");
+const IS_CLOSED = new RegExp(String.raw`(?:<!--\s*GFX_START\s*-->\s*)?<internal_states>(?:(?!<internal_states>)${NO_COMMENT}[\s\S])*?<\/internal_states>(?:\s*<!--\s*GFX_END\s*-->)?`, "i");
+
+/** Our block or any FF-style block in a message, closed: { start, end } of the first one, or null. */
 export function findBlock(mes) {
     const text = String(mes || "");
-    const m = text.match(/<!--\s*GFX_START\s*-->[\s\S]*?(?:<!--\s*GFX_END\s*-->|$)/i)
-        || text.match(/<internal_states>[\s\S]*?(?:<\/internal_states>|$)/i);
+    const m = text.match(GFX_CLOSED) || text.match(IS_CLOSED);
     return m ? { start: m.index, end: m.index + m[0].length } : null;
 }
 
@@ -79,6 +85,8 @@ function sectionsOf(text) {
     }
     return out;
 }
+
+export const SECTION_KEYS = ["SCENE", "RELATIONSHIPS", "NOTEBOOK"];
 
 const ROW = /^[-*•]\s*<b>([\s\S]*?)<\/b>\s*(.*)$/;
 
@@ -145,5 +153,5 @@ export function parseBlock(text, { prev = null, config }) {
     if (secs.NOTEBOOK) base.threads = secs.NOTEBOOK
         .map(r => r.match(/^[-*•]\s*\[T\]\s*(.*)$/i)).filter(Boolean).map(m => unesc(m[1])).filter(Boolean);
     base.perTurn = {};
-    return { state: base, errors };
+    return { state: base, errors, sections: Object.keys(secs).filter(k => SECTION_KEYS.includes(k)) };
 }

@@ -56,3 +56,65 @@ test("initialState continues an FF turn count", () => {
     const ff = { mes: "x\n<internal_states><details><summary>🎬 INTERNAL STATES (Turn: 309)</summary></details></internal_states>" };
     assert.equal(initialState([ff, { mes: "u", is_user: true }], C).ct, 309);
 });
+
+// ── final-review fixes ──────────────────────────────────────────────────────
+import { stripBlocks, generationBase } from "../src/model/turn.js";
+import { parseBlock as _parseBlock } from "../src/model/block.js";
+
+test("an unclosed foreign block never takes the prose with it", () => {
+    const mes = "<!-- GFX_START -->\n<internal_states>old</internal_states>\nShe walked in.\n<!-- Story_Ledger\nNow: Day 2\n-->";
+    const out = writeBlockInto(mes, "[OURS]");
+    assert.match(out, /She walked in\./);
+    assert.match(out, /Story_Ledger/);
+    assert.doesNotMatch(out, /old/);
+    const bare = "Prose here.\n<internal_states>never closed\nmore prose";
+    assert.match(writeBlockInto(bare, "[OURS]"), /more prose/);
+});
+
+test("a comment finished by continue after our block is read whole", () => {
+    const blk = renderBlock(emptyState(), { rules: [], config: C, sections: ALL });
+    const mes = `Prose.\n<!-- Story_Ledger\nNow: Day 4\n\n${blk}\nPresent: Mara\nThreads:\n- + [T] Fix the gate.\n-->`;
+    const ch = parseChanges(stripBlocks(mes));
+    assert.deepEqual(ch.present, ["Mara"]);
+    assert.deepEqual(ch.threads.add, ["Fix the gate."]);
+});
+
+test("a section missing from the newest block keeps the older block's value", () => {
+    const s = emptyState(); s.ct = 1; s.threads = ["Keep me."];
+    s.rel.pairs["A→B"] = { from: "A", to: "B", axes: Object.fromEntries(C.axes.map(a => [a.key, 5])), acc: Object.fromEntries(C.axes.map(a => [a.key, 0])) };
+    const older = renderBlock(s, { rules: [], config: C, sections: ALL });
+    const s2 = { ...s, ct: 2 };
+    const newer = renderBlock(s2, { rules: [], config: C, sections: { scene: true, relationships: false, notebook: false } });
+    const chat = [{ mes: older }, { mes: "u", is_user: true }, { mes: newer }];
+    const got = latestState(chat, 3, C);
+    assert.equal(got.state.ct, 2);
+    assert.deepEqual(got.state.threads, ["Keep me."]);
+    assert.ok(got.state.rel.pairs["A→B"]);
+});
+
+test("a broken row in the newest block keeps the older value and reports it", () => {
+    const s = emptyState(); s.ct = 1;
+    s.rel.pairs["A→B"] = { from: "A", to: "B", axes: Object.fromEntries(C.axes.map(a => [a.key, 5])), acc: Object.fromEntries(C.axes.map(a => [a.key, 0])) };
+    const older = renderBlock(s, { rules: [], config: C, sections: ALL });
+    const newer = renderBlock({ ...s, ct: 2 }, { rules: [], config: C, sections: ALL }).replace("E 5·0", "E lots");
+    const got = latestState([{ mes: older }, { mes: newer }], 2, C);
+    assert.equal(got.state.rel.pairs["A→B"].axes.E, 5);
+    assert.equal(got.errors.length, 1);
+});
+
+test("a 0.1 chat (comments, no block) replays its relationships, turn count and corrections", () => {
+    const c1 = "x\n<!-- Story_Ledger\nNow: Day 2\nPresent: Mara\nThreads:\n- [T] Old thread.\nRelationships:\n- NEW Mara → Jan: E 8, M 3, L 6, Er 3, Ph 9, Ec 3, Pr 5, St 3, Sg 4, Ad 3, Ag 6, Pt 3 | Φ 4 (x)\n-->";
+    const chat = [{ mes: c1 }, { mes: "u", is_user: true }, { mes: "y\n<!-- Story_Ledger\nNow: Day 2, later\n-->" }];
+    const s = initialState(chat, C, { ctOffset: 100, corrections: [{ atLength: 3, from: "Mara", to: "Jan", axes: { E: 12 } }] });
+    assert.equal(s.ct, 102);
+    assert.equal(s.rel.pairs["Mara→Jan"].axes.E, 12);
+    assert.equal(s.scene.now, "Day 2, later");
+    assert.deepEqual(s.threads, ["Old thread."]);
+});
+
+test("the state a generation starts from excludes the reply being swiped or continued", () => {
+    assert.equal(generationBase(10, "normal"), 10);
+    assert.equal(generationBase(10, "swipe"), 9);
+    assert.equal(generationBase(10, "continue"), 9);
+    assert.equal(generationBase(10, "regenerate"), 10);
+});

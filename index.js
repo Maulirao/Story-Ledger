@@ -17,7 +17,7 @@ import { resolveConfig } from "./src/model/config.js";
 import { describePair, PATTERN_GLOSS } from "./src/model/relations.js";
 import { parseChanges } from "./src/model/changes.js";
 import { renderBlock, BLOCK_MARK } from "./src/model/block.js";
-import { postTurn, latestState, initialState, writeBlockInto } from "./src/model/turn.js";
+import { postTurn, latestState, initialState, writeBlockInto, stripBlocks, generationBase } from "./src/model/turn.js";
 import { renderStatePrompt, needsHandover, stripForPrompt, RELATIONSHIP_RULES, LEDGER_TEMPLATE, HANDOVER } from "./src/model/prompt.js";
 import { decorate as decorateFrankenstein, undecorate } from "./src/ui/themes/frankenstein.js";
 
@@ -58,7 +58,8 @@ function chatData() {
     }
     const d = meta.storyLedger;
     d.notebook = { ...emptyNotebook(), ...(d.notebook || {}) };
-    delete d.corrections; delete d.ctOffset;   // 0.1's replay corrections; the block replaced them
+    // d.ctOffset / d.corrections are 0.1's replay inputs. They are kept: a 0.1 chat with
+    // no block yet is replayed from its comments with them (initialState).
     return d;
 }
 async function saveChatData(mutator) {
@@ -72,12 +73,17 @@ const activeRules = nb => (nb.enabled === false ? [] : nb.rules);
 // ── The state before message `index` ────────────────────────────────────────
 
 function stateBefore(chat, index, config) {
+    return startOf(chat, index, config).state;
+}
+
+/** { state, errors } — errors are rows of the previous block that no longer parse. */
+function startOf(chat, index, config) {
     const found = latestState(chat, index, config);
-    if (found) return found.state;
-    const s = initialState(chat.slice(0, index), config);
-    const nb = chatData().notebook;
-    if (!s.threads.length && nb.threads.length) s.threads = [...nb.threads];   // reader's starting list
-    return s;
+    if (found) return { state: found.state, errors: found.errors };
+    const d = chatData();
+    const s = initialState(chat.slice(0, index), config, { ctOffset: d.ctOffset ?? null, corrections: d.corrections || [] });
+    if (!s.threads.length && d.notebook.threads.length) s.threads = [...d.notebook.threads];   // reader's starting list
+    return { state: s, errors: [] };
 }
 
 function blockFor(state) {
@@ -87,10 +93,13 @@ function blockFor(state) {
 
 // ── What the model reads ────────────────────────────────────────────────────
 
-function buildInjection(chat) {
+// The raw chat, never the interceptor's coreChat: prompt-side regex may already have
+// trimmed the blocks out of that copy. `base` = how many messages this generation builds on.
+function buildInjection(type = "normal") {
     const s = settings();
     if (!s.enabled) return "";
-    const c = chat || ctx().chat || [];
+    const raw = ctx().chat || [];
+    const c = raw.slice(0, generationBase(raw.length, type));
     const config = engineConfig();
     const nb = chatData().notebook;
     const state = stateBefore(c, c.length, config);
@@ -110,11 +119,11 @@ function buildInjection(chat) {
 let lastInjection = "";
 const SKIP_TYPES = new Set(["quiet", "impersonate", "first_message"]);
 
-globalThis.storyLedgerInterceptor = async function (chat, _contextSize, _abort, type) {
+globalThis.storyLedgerInterceptor = async function (_chat, _contextSize, _abort, type) {
     try {
         const s = settings();
         // Background generations (summaries, other extensions' tasks) get nothing.
-        lastInjection = (SKIP_TYPES.has(type) || !s.enabled) ? "" : buildInjection(chat);
+        lastInjection = (SKIP_TYPES.has(type) || !s.enabled) ? "" : buildInjection(type);
         const auto = s.placement !== "macro" ? lastInjection : "";
         ctx().setExtensionPrompt(PROMPT_KEY, auto, IN_CHAT, Number(s.depth) || 0, false, Number(s.role) || 0);
     } catch (e) {
@@ -131,8 +140,11 @@ async function rebuildMessage(i, { announce = true } = {}) {
     const msg = c[i];
     if (!msg || msg.is_user || msg.is_system) return;
     const config = engineConfig();
-    const prev = stateBefore(c, i, config);
-    const changes = parseChanges(msg.mes);
+    const start = startOf(c, i, config);
+    const prev = start.state;
+    // Read the comment with every block taken out: after a continue, the rest of a
+    // cut-off comment sits after the block, and the block's own "-->" would end it early.
+    const changes = parseChanges(stripBlocks(msg.mes));
     const { state, log } = postTurn(prev, changes, config);
     msg.mes = writeBlockInto(msg.mes, blockFor(state));
     if (Array.isArray(msg.swipes) && msg.swipe_id !== undefined && msg.swipes[msg.swipe_id] !== undefined) msg.swipes[msg.swipe_id] = msg.mes;
@@ -142,6 +154,7 @@ async function rebuildMessage(i, { announce = true } = {}) {
     if (!announce) return;
 
     const s = settings();
+    if (start.errors.length) toastr.warning(`${start.errors.length} row(s) in the previous block could not be read and kept their earlier values: ${start.errors.map(e => `${e.section}: ${e.row}`).join("; ")}`, "📒 Story Ledger");
     if (!changes) {
         toastr.warning("No ledger comment in this reply — the turn still advanced. Swipe if you want it written.", "📒 Story Ledger");
         return;
