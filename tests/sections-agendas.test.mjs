@@ -46,13 +46,13 @@ test("facts announce an off-screen agenda about to finish", () => {
     assert.match(preTurnFacts(s, C).join("\n"), /Ana finishes "close the café" off-screen this turn/);
 });
 
-test("done removes the agenda; knows appends", () => {
+test("done ends the task but keeps what the person knows; knows appends", () => {
     const s = emptyState();
     s.agendas = { Ana: agenda("t", 2, 2, { aware: "a" }) };
     let r = postTurn(s, ch("Agendas:\n- ana knows: b"), C);
     assert.equal(r.state.agendas.Ana.aware, "a; b");
     r = postTurn(r.state, ch('Agendas:\n- Ana: done "t" → left the key with Mara'), C);
-    assert.equal(r.state.agendas.Ana, undefined);
+    assert.deepEqual(r.state.agendas.Ana, agenda("", 0, 0, { aware: "a; b" }));
 });
 
 test("a junk agenda line is unparsed", () => {

@@ -59,9 +59,11 @@ export default {
                 if (m[5]) setLocation(state, n, m[5].trim());
                 ctx.touched.add(n.toLowerCase());
             } else if ((m = line.match(/^(.+?)\s*:\s*done\b/i))) {
+                // Only the task ends: what the person knows, their lies, circle and body stay.
+                // A done for someone given a new agenda in this same reply is the old one finishing.
                 const n = findName(Object.keys(state.agendas), m[1]);
-                if (state.agendas[n]) delete state.agendas[n];
-                else unparsed.push(line);
+                if (!state.agendas[n]) unparsed.push(line);
+                else if (!ctx.touched.has(n.toLowerCase())) Object.assign(state.agendas[n], { task: "", step: 0, max: 0 });
             } else if ((m = line.match(/^(.+?)\s+(knows|fibs?|circle|body)\s*:\s*(.+)$/i))) {
                 const [, a] = entry(state, m[1]);
                 const field = { knows: "aware", fib: "fibs", fibs: "fibs", circle: "circle", body: "body" }[m[2].toLowerCase()];

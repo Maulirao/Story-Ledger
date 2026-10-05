@@ -9,7 +9,7 @@
 import { emptyState } from "./state.js";
 import { describePair } from "./relations.js";
 import { esc, unesc, ROW } from "./text.js";
-import { SECTIONS, enabledSections, CORE_KEYS } from "./sections/registry.js";
+import { SECTIONS, enabledSections, CORE_KEYS, needsPresent } from "./sections/registry.js";
 
 export const BLOCK_MARK = "<!-- story-ledger-state v1 -->";
 
@@ -40,11 +40,13 @@ export function renderBlock(state, { rules = [], config, sections = {} }) {
     const ids = Object.entries(state.ids || {}).filter(([, n]) => n > 0).map(([k, n]) => `${k}${n}`).join(" ");
     const out = ["<!-- GFX_START -->", BLOCK_MARK, ...(ids ? [`<!-- story-ledger-ids ${ids} -->`] : []), "<internal_states>",
         `<details><summary>🎬 INTERNAL STATES (Turn: ${state.ct}) </summary>`];
+    const presentRow = `- <b>Present:</b> ${state.scene.present.map(esc).join(", ")}`;
     if (on("scene")) out.push(...sectionHtml("🕰️ SCENE", [
         `- <b>Now:</b> ${esc(state.scene.now)}`,
-        `- <b>Present:</b> ${state.scene.present.map(esc).join(", ")}`,
+        presentRow,
         `- <b>Public:</b> ${state.scene.public ? "yes" : "no"}`,
     ]));
+    else if (needsPresent(sections)) out.push(...sectionHtml("🕰️ SCENE", [presentRow]));   // agendas/cast need it
     if (on("relationships")) out.push(...sectionHtml("💞 RELATIONSHIPS", relationRows(state, config)));
     if (on("notebook")) out.push(...sectionHtml("📓 NOTEBOOK", [
         ...rules.map(r => `- [R] ${esc(r)}`),

@@ -24,3 +24,7 @@ export const sectionByKey = key => SECTIONS.find(s => s.key === key) || null;
 
 /** The phase-1 sections, by key. */
 export const CORE_KEYS = ["scene", "relationships", "notebook"];
+
+/** Sections that read who is in the scene; while any is on, Present is asked for and kept even with Scene off. */
+const NEEDS_PRESENT = ["cast", "agendas", "locations"];
+export const needsPresent = (sections = {}) => (sections || {}).scene !== false || NEEDS_PRESENT.some(k => (sections || {})[k] !== false);

@@ -20,7 +20,7 @@ import { renderBlock, BLOCK_MARK } from "./src/model/block.js";
 import { postTurn, latestState, initialState, writeBlockInto, stripBlocks, generationBase } from "./src/model/turn.js";
 import { renderStatePrompt, needsHandover, stripForPrompt, stripPromptText, buildTemplate, renderRules, renderTurnFacts, HANDOVER } from "./src/model/prompt.js";
 import { SECTIONS } from "./src/model/sections/registry.js";
-import { rollD20s } from "./src/model/dice.js";
+import { rollsForGeneration, rollsForReceive } from "./src/model/dice.js";
 import { decorate as decorateFrankenstein, undecorate } from "./src/ui/themes/frankenstein.js";
 
 const NAME = "storyLedger";
@@ -125,16 +125,28 @@ function buildInjection(type = "normal") {
 
 let lastInjection = "";
 // This generation's dice, rolled when it starts and written into the reply's block when
-// it arrives. A continue keeps the dice of the reply it continues.
+// it arrives. Tagged with the chat and the reply index it was rolled for; a continue keeps
+// the dice the continued reply's block already shows.
 let pendingTurn = null;
+const chatId = () => (ctx().getCurrentChatId ? ctx().getCurrentChatId() : null);
+const shownRolls = mes => {
+    const m = String(mes || "").match(/<b>Rolls:<\/b>\s*([\d,\s]+)/);
+    return m ? m[1].split(/[,\s]+/).filter(Boolean).map(Number) : null;
+};
 const SKIP_TYPES = new Set(["quiet", "impersonate", "first_message"]);
 
 globalThis.storyLedgerInterceptor = async function (_chat, _contextSize, _abort, type) {
     try {
         const s = settings();
         // Background generations (summaries, other extensions' tasks) get nothing.
-        if (!SKIP_TYPES.has(type) && s.enabled && !(type === "continue" && pendingTurn)) {
-            pendingTurn = { rolls: s.sections.checks !== false ? rollD20s(3) : [] };
+        if (!SKIP_TYPES.has(type) && s.enabled) {
+            const raw = ctx().chat || [];
+            const index = generationBase(raw.length, type);
+            pendingTurn = rollsForGeneration({
+                type, chatId: chatId(), index, pending: pendingTurn,
+                shown: type === "continue" ? shownRolls(raw[index] && raw[index].mes) : null,
+                checksOn: s.sections.checks !== false,
+            });
         }
         lastInjection = (SKIP_TYPES.has(type) || !s.enabled) ? "" : buildInjection(type);
         const auto = s.placement !== "macro" ? lastInjection : "";
@@ -152,11 +164,10 @@ async function rebuildMessage(i, { announce = true } = {}) {
     const c = ctx().chat || [];
     const msg = c[i];
     if (!msg || msg.is_user || msg.is_system) return;
-    // The newest reply takes this generation's dice; an older one (↻ rebuild) keeps the
-    // dice its block already shows.
-    const shown = String(msg.mes || "").match(/<b>Rolls:<\/b>\s*([\d,\s]+)/);
-    const rolls = i === c.length - 1 && pendingTurn ? pendingTurn.rolls
-        : shown ? shown[1].split(/[,\s]+/).filter(Boolean).map(Number) : [];
+    // A received reply takes the dice rolled for it (same chat, same reply); ↻ rebuild keeps
+    // the dice its block already shows.
+    const shown = shownRolls(msg.mes);
+    const rolls = announce ? rollsForReceive({ chatId: chatId(), index: i, pending: pendingTurn, shown }) : (shown || []);
     const config = engineConfig({ rolls });
     const start = startOf(c, i, config);
     const prev = start.state;
@@ -418,6 +429,7 @@ function init() {
         if (ev) c.eventSource.on(ev, id => setTimeout(() => decorateMessage(Number(id)), 0));
     }
     for (const ev of [t.CHAT_CHANGED, t.MORE_MESSAGES_LOADED]) if (ev) c.eventSource.on(ev, () => setTimeout(decorateAll, 0));
+    if (t.CHAT_CHANGED) c.eventSource.on(t.CHAT_CHANGED, () => { pendingTurn = null; });
     if (t.STREAM_TOKEN_RECEIVED) c.eventSource.on(t.STREAM_TOKEN_RECEIVED, () => hideStreamingLedger());
 
     c.registerMacro("story_ledger", () => lastInjection || buildInjection());

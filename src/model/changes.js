@@ -55,7 +55,10 @@ export function parseChanges(mes) {
                 else out.unparsed.push({ section: name, line: clean(unbullet(l)) });
             }
         } else if (key !== "relationships" && key !== "proposed rules") {
-            out.sections[name] = lines.map(l => clean(unbullet(l))).filter(Boolean);
+            // A line still in its "[…]" template form is the model echoing the template, not a change.
+            const all = lines.map(l => clean(unbullet(l))).filter(Boolean);
+            for (const l of all.filter(isSkeleton)) out.unparsed.push({ section: name, line: l });
+            out.sections[name] = all.filter(l => !isSkeleton(l));
         }
     }
     out.relations = parseRelationLines(raw.Relationships || raw.relationships || []);

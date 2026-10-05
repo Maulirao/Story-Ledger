@@ -8,7 +8,7 @@
 import { notebookBody, renderNotebookPrompt, LEDGER_BLOCK_RE } from "./notebook.js";
 import { describePair, PATTERN_GLOSS } from "./relations.js";
 import { findBlock, BLOCK_MARK } from "./block.js";
-import { enabledSections } from "./sections/registry.js";
+import { enabledSections, needsPresent } from "./sections/registry.js";
 import { sectionContext, preTurnFacts } from "./turn.js";
 
 const COMMENT_RE = new RegExp(LEDGER_BLOCK_RE.source, "gi");
@@ -89,10 +89,12 @@ export function buildTemplate(config = {}) {
     const on = k => ((config.sections || {})[k] !== false);
     const ctx = { config, checkStyle: config.checkStyle || "dnd", sections: config.sections || {} };
     const lines = ["<!-- Story_Ledger"];
+    const present = "Present: [every named character in the scene, comma separated]";
     if (on("scene")) lines.push(
         "Now: [story time after this reply, free text — e.g. Day 12 — Tuesday, March 4, 21:44 | the lawn. Day N counts from the story's first day and never resets.]",
-        "Present: [every named character in the scene, comma separated]",
+        present,
         "Public: [yes when the scene is in a public or exposed place, else no]");
+    else if (needsPresent(config.sections)) lines.push(present);
     if (on("notebook")) lines.push(
         "Threads:",
         "- + [T] [a thread that opened: an intention, open question, promise, debt, appointment with day and time, unresolved arc]",
