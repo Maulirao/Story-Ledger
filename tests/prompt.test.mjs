@@ -69,3 +69,27 @@ test("the template asks for changes only", () => {
     assert.match(LEDGER_TEMPLATE, /\+ \[T\]/);
     assert.match(LEDGER_TEMPLATE, /only what changed/i);
 });
+
+import { stripPromptText } from "../src/model/prompt.js";
+
+test("text completion: blocks go, only the newest reply's comment stays, the injected template is untouched", () => {
+    const blk = renderBlock(emptyState(), { rules: [], config: C, sections: ALL });
+    const text = [
+        `A: one\n<!-- Story_Ledger\nNow: 1\n-->\n${blk}`,
+        `U: hi`,
+        `A: two\n<!-- Story_Ledger\nNow: 2\n-->\n${blk}`,
+        `<story_ledger>\n${LEDGER_TEMPLATE}\n</story_ledger>`,
+        `U: go on`,
+    ].join("\n");
+    const out = stripPromptText(text);
+    assert.doesNotMatch(out, /GFX_START|story-ledger-state/);
+    assert.doesNotMatch(out, /Now: 1\b/);
+    assert.match(out, /Now: 2\b/);
+    assert.ok(out.includes(LEDGER_TEMPLATE), "the template inside <story_ledger> is kept whole");
+});
+
+test("text completion continue: the continued reply's block is removed from the end of the prompt", () => {
+    const blk = renderBlock(emptyState(), { rules: [], config: C, sections: ALL });
+    const out = stripPromptText(`U: go\nA: Prose so far.\n<!-- Story_Ledger\nNow: 3\n-->\n\n${blk}`);
+    assert.match(out, /Now: 3\n-->$/);
+});

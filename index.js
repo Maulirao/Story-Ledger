@@ -18,7 +18,7 @@ import { describePair, PATTERN_GLOSS } from "./src/model/relations.js";
 import { parseChanges } from "./src/model/changes.js";
 import { renderBlock, BLOCK_MARK } from "./src/model/block.js";
 import { postTurn, latestState, initialState, writeBlockInto, stripBlocks, generationBase } from "./src/model/turn.js";
-import { renderStatePrompt, needsHandover, stripForPrompt, RELATIONSHIP_RULES, LEDGER_TEMPLATE, HANDOVER } from "./src/model/prompt.js";
+import { renderStatePrompt, needsHandover, stripForPrompt, stripPromptText, RELATIONSHIP_RULES, LEDGER_TEMPLATE, HANDOVER } from "./src/model/prompt.js";
 import { decorate as decorateFrankenstein, undecorate } from "./src/ui/themes/frankenstein.js";
 
 const NAME = "storyLedger";
@@ -388,6 +388,10 @@ function init() {
     c.eventSource.on(t.CHAT_COMPLETION_PROMPT_READY, data => {
         const messages = data && (data.chat || data.messages);
         if (Array.isArray(messages) && settings().enabled) stripForPrompt(messages);
+    });
+    // Text completion builds one prompt string instead of a message list.
+    if (t.GENERATE_AFTER_COMBINE_PROMPTS) c.eventSource.on(t.GENERATE_AFTER_COMBINE_PROMPTS, data => {
+        if (data && typeof data.prompt === "string" && settings().enabled) data.prompt = stripPromptText(data.prompt);
     });
     for (const ev of [t.CHARACTER_MESSAGE_RENDERED, t.MESSAGE_UPDATED, t.MESSAGE_SWIPED, t.MESSAGE_EDITED]) {
         if (ev) c.eventSource.on(ev, id => setTimeout(() => decorateMessage(Number(id)), 0));

@@ -112,3 +112,25 @@ export function stripForPrompt(messages) {
     });
     return messages;
 }
+
+/**
+ * Text completion: the whole prompt is one string. Remove every state block, and every
+ * ledger comment except the last one in the chat — never touching the injected
+ * <story_ledger> section, whose template looks like a comment.
+ */
+export function stripPromptText(text) {
+    const parts = String(text || "").split(/(<story_ledger>[\s\S]*?<\/story_ledger>)/);
+    const outside = i => i % 2 === 0;
+    let lastPart = -1;
+    parts.forEach((p, i) => { if (outside(i) && notebookBody(p) !== null) lastPart = i; });
+    return parts.map((p, i) => {
+        if (!outside(i)) return p;
+        let t = p, at;
+        while ((at = findBlock(t))) t = t.slice(0, at.start) + t.slice(at.end);
+        if (i !== lastPart) return t.replace(COMMENT_RE, "");
+        // keep only this part's last comment
+        const all = [...t.matchAll(COMMENT_RE)];
+        for (const m of all.slice(0, -1).reverse()) t = t.slice(0, m.index) + t.slice(m.index + m[0].length);
+        return i === parts.length - 1 ? t.replace(/\s+$/, "") : t;
+    }).join("");
+}
