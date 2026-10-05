@@ -3,7 +3,7 @@
 // the block for good (the reader's choice); ids are counted, never reused. Pure.
 // ──────────────────────────────────────────────────────────────────────────────
 
-import { esc, unesc, ROW, fieldsOf, unbullet } from "../text.js";
+import { esc, unesc, ROW, fieldsOf } from "../text.js";
 import { nextId } from "../state.js";
 
 const STATUS = ["active", "done", "dropped"];
@@ -40,7 +40,7 @@ export default {
     apply(state, lines) {
         const unparsed = [];
         for (const raw of lines) {
-            const line = unbullet(raw);
+            const line = String(raw).trim();   // parseChanges already removed the list bullet
             let m, q;
             if ((m = line.match(/^\+\s*(Main|Side)\s*:\s*(.+?)\s*(?:\(([^()]*)\))?$/i))) {
                 state.quests.push({ id: nextId(state, "Q"), kind: m[1][0].toUpperCase() + m[1].slice(1).toLowerCase(), status: "active",

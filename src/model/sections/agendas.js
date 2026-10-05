@@ -4,7 +4,7 @@
 // when one finishes, applies its effect and gives the person a new agenda. Pure.
 // ──────────────────────────────────────────────────────────────────────────────
 
-import { esc, unesc, ROW, fieldsOf, unbullet } from "../text.js";
+import { esc, unesc, ROW, fieldsOf } from "../text.js";
 import { findName, hasName } from "./people.js";
 import { locationLine, setLocation } from "./locations.js";
 
@@ -51,7 +51,7 @@ export default {
     apply(state, lines, ctx) {
         const unparsed = [];
         for (const raw of lines) {
-            const line = unbullet(raw);
+            const line = String(raw).trim();   // parseChanges already removed the list bullet
             let m;
             if ((m = line.match(/^(.+?)\s*:\s*new\s+"([^"]+)"\s+(\d+)\s*\/\s*(\d+)\s*(?:@\s*(.+))?$/i))) {
                 const [n, a] = entry(state, m[1]);

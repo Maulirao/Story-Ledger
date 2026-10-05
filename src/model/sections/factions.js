@@ -2,7 +2,7 @@
 // 🏳️ FACTIONS — groups with their own goals. Pure.
 // ──────────────────────────────────────────────────────────────────────────────
 
-import { esc, unesc, ROW, fieldsOf, unbullet } from "../text.js";
+import { esc, unesc, ROW, fieldsOf } from "../text.js";
 import { findName } from "./people.js";
 
 const FIELDS = ["goal", "intel", "fibs", "state", "conflict", "relations"];
@@ -36,7 +36,7 @@ export default {
     apply(state, lines) {
         const unparsed = [];
         for (const raw of lines) {
-            const line = unbullet(raw);
+            const line = String(raw).trim();   // parseChanges already removed the list bullet
             let m;
             if ((m = line.match(/^drop\s*:\s*(.+)$/i))) {
                 const n = findName(Object.keys(state.factions), m[1]);
