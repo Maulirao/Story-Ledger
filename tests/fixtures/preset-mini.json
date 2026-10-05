@@ -1,0 +1,13 @@
+{
+  "temperature": 1,
+  "prompts": [
+    { "identifier": "main", "name": "Main Prompt", "content": "Be good.\nStep 2. Update the internal states block." },
+    { "identifier": "p-states", "name": "👾Internal States 💾🎮", "content": "Write the block." },
+    { "identifier": "p-bonds", "name": " 🥰 Relationships RPG ❤️ 😡", "content": "Bonds." },
+    { "identifier": "p-style", "name": "Style", "content": "Write well." }
+  ],
+  "prompt_order": [
+    { "character_id": 100000, "order": [ { "identifier": "main", "enabled": true }, { "identifier": "p-states", "enabled": true } ] },
+    { "character_id": 100001, "order": [ { "identifier": "main", "enabled": true }, { "identifier": "p-states", "enabled": true }, { "identifier": "p-bonds", "enabled": true }, { "identifier": "p-style", "enabled": true } ] }
+  ]
+}
