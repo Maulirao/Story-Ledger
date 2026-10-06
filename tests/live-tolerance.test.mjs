@@ -88,3 +88,17 @@ test("a quest progress line with the quest's kind in it applies", () => {
     assert.equal(r.state.quests[0].progress, "race tomorrow");
     assert.ok(!r.unparsed.some(u => u.section === "Quests"));
 });
+
+test("a quest update written with its kind and title before the progress applies as progress", () => {
+    const s = emptyState();
+    s.quests = [{ id: "Q1", kind: "Main", status: "active", objective: "The Long Race", progress: "", reward: "", send: false }];
+    const r = run(s, "Quests:\n- Q1 Main — The Long Race · Day 3 Morning: the entry is signed, the race is close");
+    assert.equal(r.state.quests[0].progress, "Day 3 Morning: the entry is signed, the race is close");
+    assert.equal(r.state.quests[0].objective, "The Long Race");
+    assert.ok(!r.unparsed.some(u => u.section === "Quests"));
+});
+
+test("an update naming an unknown quest id stays unread", () => {
+    const r = run(emptyState(), "Quests:\n- Q9 Main — nothing: text");
+    assert.ok(r.unparsed.some(u => u.section === "Quests"));
+});

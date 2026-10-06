@@ -50,6 +50,12 @@ export default {
             } else if ((m = line.match(/^(Q\d+)\s*:?\s+(?:(?:Main|Side)\s+)?progress\s*:\s*(.+)$/i)) && (q = byId(state, m[1]))) q.progress = m[2].trim();   // "Q1 Main progress:" and "Q1: progress:" too
             else if ((m = line.match(/^(done|drop|reopen)\s+(Q\d+)$/i)) && (q = byId(state, m[2]))) {
                 q.status = { done: "done", drop: "dropped", reopen: "active" }[m[1].toLowerCase()];
+            } else if ((m = line.match(/^(Q\d+)\b\s*(.*:.*)$/i)) && (q = byId(state, m[1]))) {
+                // any other "Q# …: text" is a progress update ("Q1 Main — <title> · Day 3: …"):
+                // the kind and the quest's own title are dropped, the rest (a time, say) is kept
+                let rest = m[2].replace(/^[\s:·—–-]*(?:(?:Main|Side)\b)?[\s:·—–-]*/i, "");
+                if (q.objective && rest.toLowerCase().startsWith(q.objective.toLowerCase())) rest = rest.slice(q.objective.length);
+                q.progress = rest.replace(/^[\s:·—–-]+/, "").trim();
             } else unparsed.push(line);
         }
         return unparsed;
