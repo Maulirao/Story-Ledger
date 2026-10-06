@@ -7,7 +7,7 @@
 import { emptyState, nextId } from "../state.js";
 import { importFromLegacyNotebook } from "../notebook.js";
 import { lockTime, parseStoryTime } from "../storytime.js";
-import { plain, value, listOf, headerNow } from "./util.js";
+import { plain, value, listOf, headerNow, nowResolved, nowUnread, sameName } from "./util.js";
 
 const PER_TURN = new Set(["WORLD", "CHECK", "THOUGHTS"]);
 const TO_HANDOVER = new Set(["SCENE", "BONDS", "OFFSCREEN"]);
@@ -28,13 +28,13 @@ const dot = line => line.split(/\s+·\s+/).map(p => p.trim());
 
 /** The state an AA reply's <ledger> holds, as far as it can be read. */
 export function parseAa(mes, config = {}) {
-    const isUser = name => Boolean(config.userName) && plain(name).toLowerCase() === String(config.userName).toLowerCase() || /^\{\{user\}\}$/i.test(plain(name));
+    const isUser = name => sameName(name, config.userName || "");
     const s = emptyState();
     const imported = [], unread = [], rules = [];
     const body = (String(mes).match(/<ledger\b[^>]*>([\s\S]*?)(?:<\/ledger>|$)/i) || [])[1] || "";
     const f = fieldsOf(body);
     const now = headerNow(mes);
-    if (now) { s.scene.now = now; imported.push("scene"); }
+    if (now) { s.scene.now = now; if (nowResolved(now)) imported.push("scene"); else unread.push(nowUnread(now)); }
     const clock = parseStoryTime(s.scene.now);
     const mark = k => { if (!imported.includes(k)) imported.push(k); };
 

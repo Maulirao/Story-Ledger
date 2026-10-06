@@ -7,7 +7,7 @@
 
 import { emptyState, nextId } from "../state.js";
 import { importFromLegacyNotebook } from "../notebook.js";
-import { value, listOf } from "./util.js";
+import { value, listOf, nowResolved, nowUnread, sameName } from "./util.js";
 
 const tag = (mes, name) => (String(mes).match(new RegExp(`<${name}\\b[^>]*>([\\s\\S]*?)<\\/${name}>`, "i")) || [])[1] || "";
 const field = (body, key) => { const m = String(body).match(new RegExp(`^\\s*${key}\\s*:\\s*(.*)$`, "im")); return m ? value(m[1]) : ""; };
@@ -34,7 +34,7 @@ export function parseSola(mes, config = {}) {
     const s = emptyState();
     const imported = [], unread = [], rules = [];
     const mark = k => { if (!imported.includes(k)) imported.push(k); };
-    const isUser = name => config.userName && name.toLowerCase() === String(config.userName).toLowerCase();
+    const isUser = name => sameName(name, config.userName || "");
 
     const notes = tag(mes, "story_notes");
     const nb = importFromLegacyNotebook([{ is_user: false, mes }]);
@@ -48,7 +48,10 @@ export function parseSola(mes, config = {}) {
     const date = tag(mes, "date"), cast = tag(mes, "scene_cast");
     const day = field(date, "Day"), time = field(date, "Time"), place = field(cast, "Location");
     const when = [day && (/^day\b/i.test(day) ? day : `Day ${day}`), time].filter(Boolean).join(" — ");
-    if (when || place) { s.scene.now = [when, place].filter(Boolean).join(" | "); mark("scene"); }
+    if (when || place) {
+        s.scene.now = [when, place].filter(Boolean).join(" | ");
+        if (nowResolved(s.scene.now)) mark("scene"); else unread.push(nowUnread(s.scene.now));
+    }
     const present = [...listOf(field(cast, "Active Speakers")), ...listOf(field(cast, "Ambient NPCs"))].filter(n => !isUser(n));
     if (present.length) { s.scene.present = [...new Set(present)]; mark("scene"); }
 
@@ -57,7 +60,10 @@ export function parseSola(mes, config = {}) {
         s.cast[who] = { ...(s.cast[who] || blankCast()), wearing: value(f.layers), condition: value(f.condition) };
         mark("cast");
     }
-    for (const [who, f] of Object.entries(people(tag(mes, "inventory")))) {
+    const inventory = Object.entries(people(tag(mes, "inventory")));
+    // no entry recognisably the reader's: ask the handover rather than drop their items
+    if (inventory.length && !inventory.some(([who]) => isUser(who))) unread.push("Inventory — {{user}}'s entry was not recognised; restate {{user}}'s carried items");
+    for (const [who, f] of inventory) {
         if (isUser(who)) {
             s.inv.items = [...listOf(f.carried), ...listOf(f.concealed)];
             if (s.inv.items.length) mark("inv");

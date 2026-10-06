@@ -3,6 +3,8 @@
 // so everything here is tolerant — markup optional, separators varied. Pure.
 // ──────────────────────────────────────────────────────────────────────────────
 
+import { parseStoryTime } from "../storytime.js";
+
 /** Text with tags removed, entities decoded and whitespace collapsed. */
 export const plain = s => String(s ?? "")
     .replace(/<br\s*\/?>/gi, " ").replace(/<[^>]+>/g, "")
@@ -54,4 +56,25 @@ export function headerNow(mes) {
     const h = String(mes || "").match(HEADER);
     if (!h) return "";
     return h[1].split("|").map(p => plain(p).replace(/^[^\w]*(Time\s+)?/i, "").trim()).filter(Boolean).join(" | ");
+}
+
+/** True when an imported Now carries a clock time — without one, deadlines and due checks cannot run. */
+export const nowResolved = now => Boolean(now) && parseStoryTime(now) !== null;
+
+/** The handover note for an imported Now that has no clock time. */
+export const nowUnread = now => `Now — the imported time "${now}" has no clock time; restate Now with the time of day`;
+
+const nameWords = s => plain(s).toLowerCase().replace(/\([^)]*\)/g, " ").replace(/[^\p{L}\p{N}{} ]+/gu, " ").split(/\s+/).filter(Boolean);
+
+/**
+ * True when `name` is the reader's persona `userName`: case, punctuation and a
+ * parenthetical are ignored, "{{user}}" always matches, and either name may carry
+ * extra words ("Jan" ↔ "Jan Kowalski") as long as all of the shorter one's words match.
+ */
+export function sameName(name, userName) {
+    if (/^\s*\{\{user\}\}\s*$/i.test(plain(name))) return true;
+    const a = nameWords(name), b = nameWords(userName);
+    if (!a.length || !b.length) return false;
+    const [short, long] = a.length <= b.length ? [a, b] : [b, a];
+    return short.every((w, i) => long[i] === w);
 }

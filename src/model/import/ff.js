@@ -8,7 +8,7 @@
 import { emptyState, nextId } from "../state.js";
 import { importFromLegacyNotebook } from "../notebook.js";
 import { lockTime, parseStoryTime } from "../storytime.js";
-import { plain, value, summarySections, rowsOf, rowFields, listOf, headerNow } from "./util.js";
+import { plain, value, summarySections, rowsOf, rowFields, listOf, headerNow, nowResolved, nowUnread } from "./util.js";
 
 const PER_TURN = /THOUGHTS|DND|WORLD SIM|PHYSICS|INTERNAL STATES/;
 
@@ -106,7 +106,7 @@ function chekhov(body, s) {
                 if (!b.at) b.lock = lock[1].trim();
             } else if (lockedSeg) b.lock = "imported lock";
             const dep = flags.match(/\[depends:\s*([^\]]+)\]/i);
-            if (dep) b.lock = b.lock || `depends on ${dep[1].trim()}`;
+            if (dep) b.lock = [b.lock, `depends on ${dep[1].trim()}`].filter(Boolean).join("; ");   // keep both conditions
             b.id = nextId(s, "B", s.chekhov.bullets.map(x => x.id));
             s.chekhov.bullets.push(b);
         }
@@ -156,7 +156,7 @@ export function parseFf(mes) {
     const turn = String(mes).match(/INTERNAL STATES\s*\(Turn:\s*(\d+)\)/i);
     if (turn) s.ct = Number(turn[1]);
     const now = headerNow(mes);
-    if (now) { s.scene.now = now; imported.push("scene"); }
+    if (now) { s.scene.now = now; if (nowResolved(now)) imported.push("scene"); else unread.push(nowUnread(now)); }
     const handlers = [
         [/NPC AGENDAS/, sec => agendas(rowsOf(sec.body), s), "agendas", true],
         [/NPC LOCATIONS/, sec => locations(rowsOf(sec.body), s), "locations", true],
