@@ -14,7 +14,7 @@ import {
     emptyNotebook, collectProposals, applyDecision, importFromLegacyNotebook, storyTime, dayRegression,
 } from "./src/model/notebook.js";
 import { resolveConfig, sanitizeChekhov, sanitizeFate } from "./src/model/config.js";
-import { describePair, PATTERN_GLOSS } from "./src/model/relations.js";
+import { describePair, PATTERN_GLOSS, relationsNotice } from "./src/model/relations.js";
 import { parseChanges } from "./src/model/changes.js";
 import { renderBlock, BLOCK_MARK } from "./src/model/block.js";
 import { setSend } from "./src/model/sections/quests.js";
@@ -232,8 +232,8 @@ async function rebuildMessage(i, { announce = true } = {}) {
         const back = dayRegression([prev.scene.now, state.scene.now]);
         if (back) toastr.warning(`The story went from Day ${back.from} back to Day ${back.to}. Swipe, or edit the block's Now line.`, "🕰️ Story clock");
     }
-    const refused = log.filter(l => l.kind === "refused").length + changes.relations.unparsed.length;
-    if (s.sections.relationships && refused) toastr.info(`${refused} relationship line(s) could not be applied.`, "💞 Story Ledger");
+    const refused = relationsNotice(log, changes.relations.unparsed);
+    if (s.sections.relationships && refused) toastr.info(refused, "💞 Story Ledger");
     const unread = [...changes.unparsed, ...unparsed];
     if (unread.length) toastr.info(`Could not read: ${unread.map(u => `${u.section}: "${u.line}"`).join("; ")}`, "📒 Story Ledger");
     for (const w of warnings || []) toastr.warning(w.text, w.section === "Chekhov" ? "🔫 Story Ledger" : "📒 Story Ledger");

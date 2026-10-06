@@ -151,6 +151,7 @@ export default {
         const outcome = ctx.turn.fate;
         if (!outcome) return unparsed;
         const byDeferred = id => byId(fate.deferred, id);
+        const worldLines = [...ctx.linesUnder("World")];
         for (const raw of lines) {
             const line = String(raw).trim();
             let m, item;
@@ -180,15 +181,19 @@ export default {
             } else if ((m = line.match(/^residue\s*:\s*(.+)$/i))) {
                 appendResidue(fate, m[1].trim(), ctx);
                 if (fate.owed.length) fate.owed.shift();
+            } else if ((m = line.match(/^World\s*:\s*(.+)$/i))) {
+                worldLines.push(m[1]);   // a World line written inside the Fate list
             } else unparsed.push(line);
         }
-        for (const raw of ctx.linesUnder("World")) {
+        for (const raw of worldLines) {
             const line = String(raw).trim();
             let m, item;
-            if ((m = line.match(/^\+\s*(ELSEWHERE|REGIONAL|LOCAL)\s*:\s*(.+)$/i))) {
+            // "+ LOCAL: happening"; words before the band ("+ ARRIVAL landed LOCAL: …") stay in the happening
+            if ((m = line.match(/^\+\s*(?:(.+?)\s+)?(ELSEWHERE|REGIONAL|LOCAL)\s*:\s*(.+)$/i))) {
                 const c = outcome.dice.c;
-                const desc = m[2].trim().replace(/\s*\(Reach\s+\d+\)\s*$/i, "");
-                addWorld(fate, state, m[1].toUpperCase(), desc, c, ctx);
+                const what = m[3].trim().replace(/\s*\(Reach\s+\d+\)\s*$/i, "");
+                const desc = m[1] ? `${m[1].trim()} — ${what}` : what;
+                addWorld(fate, state, m[2].toUpperCase(), desc, c, ctx);
             } else if ((m = line.match(/^escalate\s+(W\d+)$/i)) && (item = byId(fate.world, m[1]))) {
                 item.prox = { ELSEWHERE: "REGIONAL", REGIONAL: "LOCAL", LOCAL: "LOCAL" }[item.prox];
                 item.reach = Math.min(3, item.reach + 1);

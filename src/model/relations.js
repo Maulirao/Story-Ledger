@@ -283,3 +283,11 @@ export function parseRelationLines(lines) {
     }
     return out;
 }
+
+/** The reader's notice for relationship lines that did nothing: each refusal's reason and each unreadable line; "" when none. */
+export function relationsNotice(log, unparsed) {
+    const refused = (log || []).filter(l => l.kind === "refused").map(l => l.text);
+    const unread = (unparsed || []).map(l => `could not read: "${l}"`);
+    const all = [...refused, ...unread];
+    return all.length ? `${all.length} relationship line(s) could not be applied: ${all.join("; ")}` : "";
+}
