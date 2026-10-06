@@ -28,3 +28,17 @@ test("sectionGroups puts every FF title in exactly one tab, in tab order", () =>
     assert.equal(groups.flatMap(g => g.titles).length, titles.length);
     assert.deepEqual(sectionGroups(["🕰️ SCENE"]).map(g => g.tab), ["Scene"], "empty tabs are left out");
 });
+
+import { pairRows } from "../src/ui/themes/layout.js";
+
+test("relationship bars read each pair row, with its description when there is one", () => {
+    const rows = pairRows([
+        "💞 RELATIONSHIPS",
+        "- Mara → Jan | E 1·0 M 1·0 L 12·2 | note: an aunt's fond teasing | she raised him",
+        "- Tom → Mara | E 3·0 M 4·1 | romance locked · reads as rival",
+        "- Mara | Φ 10·0",
+        "- Awaiting NEW: Ana → Jan | BOND: 4",
+    ]);
+    assert.deepEqual(rows.map(r => [r.from, r.to, r.note]), [["Mara", "Jan", "an aunt's fond teasing | she raised him"], ["Tom", "Mara", ""]]);
+    assert.deepEqual(rows[0].vals.L, { v: 12, acc: 2 });
+});

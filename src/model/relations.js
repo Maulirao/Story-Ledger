@@ -43,7 +43,7 @@ export function applyTurn(prev, events, present, config) {
     const log = [];
     const here = new Set(present || []);
     s.ct += 1;
-    const ev = { news: [], directs: [], ticks: [], phiTicks: [], ...(events || {}) };
+    const ev = { news: [], directs: [], ticks: [], phiTicks: [], notes: [], ...(events || {}) };
     // Pair keys are "A→B" internally; the reader's log reads "A → B".
     const say = (kind, where, text) => log.push({ kind, where, text: text.replace(/(\S)→(\S)/g, "$1 → $2"), ct: s.ct });
     // "A→B" → what the previous preset recorded ("" when nothing): imported bonds and pairs the
@@ -57,7 +57,8 @@ export function applyTurn(prev, events, present, config) {
         if (s.pairs[k]) { say("refused", k, `NEW ${k} ignored: the pair already exists.`); continue; }
         const axes = {};
         for (const a of config.axes) axes[a.key] = clamp(Math.round(Number((n.axes || {})[a.key] ?? 3)), config.axisMin, config.axisMax);
-        s.pairs[k] = { from: n.from, to: n.to, axes, acc: zeroAcc(config) };
+        // the NEW line's reason is the relationship's own description (the card shows it)
+        s.pairs[k] = { from: n.from, to: n.to, axes, acc: zeroAcc(config), ...(n.reason ? { note: n.reason } : {}) };
         for (const w of Object.keys(s.awaiting)) {   // tolerant: "Mara Kowal → Jan" clears "Mara→Jan"
             const [a, b] = w.split("→");
             if (sameName(a, n.from) && sameName(b, n.to)) delete s.awaiting[w];
@@ -66,6 +67,14 @@ export function applyTurn(prev, events, present, config) {
         if (n.phi !== undefined && !s.selves[n.from]) {
             s.selves[n.from] = { phi: clamp(Math.round(Number(n.phi)), config.phi.min, config.phi.max), acc: 0 };
         }
+    }
+
+    // NOTE: the model revises a relationship's description.
+    for (const n of ev.notes) {
+        const k = pairKey(n.from, n.to), p = s.pairs[k];
+        if (!p) { say("refused", k, `NOTE ${k} refused: no such pair (it needs a NEW line first).`); continue; }
+        p.note = n.text;
+        say("note", k, `${k} now reads: ${n.text}`);
     }
 
     // DIRECT shifts: +1 or +2, the only thing that breaks a WALL.
@@ -246,11 +255,16 @@ const isPhi = s => /^(?:Φ|phi|philautia)(?:_acc)?$/i.test(String(s).trim());
 
 /** The model's relationship lines → events. Lines it cannot read come back in `unparsed`. */
 export function parseRelationLines(lines) {
-    const out = { news: [], directs: [], ticks: [], phiTicks: [], unparsed: [] };
+    const out = { news: [], directs: [], ticks: [], phiTicks: [], notes: [], unparsed: [] };
     for (const raw of lines || []) {
         const line = String(raw).replace(/<[^>]+>/g, "").replace(/^\s*[-*•]\s*/, "").trim();
         if (!line) continue;
         let m;
+        // NOTE A → B: a new description of the relationship
+        if ((m = line.match(/^NOTE\s+(.+?)\s*(?:→|->|↔|<->|=>)\s*(.+?)\s*:\s*(.+)$/i))) {
+            out.notes.push({ from: m[1].trim(), to: m[2].trim(), text: m[3].trim() });
+            continue;
+        }
         // NEW A → B: E 3, M 4, … | Φ 2 (reason)
         if ((m = line.match(/^NEW\s+(.+?)\s*(?:→|->|↔|<->|=>)\s*(.+?)\s*:\s*(.+)$/i))) {
             const reason = reasonOf(m[3]);

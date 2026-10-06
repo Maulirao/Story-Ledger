@@ -40,6 +40,7 @@
 .sl-theme-frankenstein .sl-fk-has-bars > :not(summary):not(.sl-fk-pairs) { display: none; }
 .sl-fk-pair { margin: 4px 0 8px; }
 .sl-fk-pair-name { color: var(--sl-fk-gold); font-weight: 600; margin-bottom: 2px; }
+.sl-fk-pair-note { font-size: 0.85em; font-style: italic; opacity: 0.85; margin: 0 0 4px; }
 .sl-fk-row { display: grid; grid-template-columns: minmax(90px, 1fr) 1fr 1fr minmax(90px, 1fr); gap: 6px; align-items: center; margin: 2px 0; }
 .sl-fk-lab { font-size: 0.85em; white-space: nowrap; }
 .sl-fk-lab small { opacity: 0.7; margin-left: 2px; }

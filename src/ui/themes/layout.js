@@ -32,3 +32,22 @@ export function sectionGroups(titles) {
     }
     return groups.filter(g => g.titles.length);
 }
+
+const PAIR_ROW = /^\s*[-*•]?\s*([^|]+?)\s→\s([^|]+?)\s*\|\s*((?:[A-Za-z]{1,3}\s+-?\d+·-?\d+\s*)+)(?:\|\s*(?:note:\s*(.*)|.*))?$/;
+
+/**
+ * The relationship bars' rows from the section's text lines (one row per line):
+ * "A → B | E 3·0 … | note: description" → { from, to, vals: { E: { v, acc } }, note }.
+ * Lines that are not pair rows (self-regard, Awaiting NEW, the title) are skipped.
+ */
+export function pairRows(lines) {
+    const rows = [];
+    for (const line of lines) {
+        const m = String(line).match(PAIR_ROW);
+        if (!m || /^Awaiting NEW/i.test(m[1])) continue;
+        const vals = {};
+        for (const t of m[3].matchAll(/([A-Za-z]{1,3})\s+(-?\d+)·(-?\d+)/g)) vals[t[1]] = { v: Number(t[2]), acc: Number(t[3]) };
+        rows.push({ from: m[1].trim(), to: m[2].trim(), vals, note: (m[4] || "").trim() });
+    }
+    return rows;
+}

@@ -27,11 +27,16 @@ function relationRows(state, config) {
     const rel = { ct: state.ct, pairs: state.rel.pairs, selves: state.rel.selves };
     for (const p of Object.values(state.rel.pairs)) {
         const axes = config.axes.map(a => `${a.key} ${p.axes[a.key]}·${p.acc[a.key] ?? 0}`).join(" ");
-        const d = describePair(rel, p.from, p.to, config);
-        const flags = [`romance ${d.romance}`];
-        if (d.walls.length) flags.push(`WALL ${d.walls.join(", ")}`);
-        if (d.patterns.length) flags.push(`reads as ${d.patterns.join(", ")}`);
-        rows.push(`- <b>${esc(p.from)} → ${esc(p.to)}</b> | ${axes} | ${flags.join(" · ")}`);
+        // the model's own description of the pair when it wrote one, else the computed labels
+        let tail = `note: ${esc(p.note)}`;
+        if (!p.note) {
+            const d = describePair(rel, p.from, p.to, config);
+            const flags = [`romance ${d.romance}`];
+            if (d.walls.length) flags.push(`WALL ${d.walls.join(", ")}`);
+            if (d.patterns.length) flags.push(`reads as ${d.patterns.join(", ")}`);
+            tail = flags.join(" · ");
+        }
+        rows.push(`- <b>${esc(p.from)} → ${esc(p.to)}</b> | ${axes} | ${tail}`);
     }
     for (const [who, self] of Object.entries(state.rel.selves)) rows.push(`- <b>${esc(who)}</b> | Φ ${self.phi}·${self.acc}`);
     for (const [k, note] of Object.entries(state.rel.awaiting || {})) rows.push(`- <b>${AWAITING}: ${esc(k.replace("→", " → "))}</b> | ${note ? esc(note) : "—"}`);
@@ -135,8 +140,11 @@ function parseRelations(rows, base, prev, config, errors) {
             const from = name.slice(0, arrow).trim(), to = name.slice(arrow + 3).trim();
             const key = `${from}→${to}`;
             const axes = {}, acc = {};
-            for (const t of fields.matchAll(/\b([A-Za-z]{1,3})\s+(-?\d+)·(-?\d+)/g)) { axes[t[1]] = Number(t[2]); acc[t[1]] = Number(t[3]); }
-            if (config.axes.every(a => a.key in axes)) pairs[key] = { from, to, axes, acc };
+            const noteAt = fields.search(/\|\s*note:/);
+            const nums = noteAt >= 0 ? fields.slice(0, noteAt) : fields;
+            const note = noteAt >= 0 ? unesc(fields.slice(noteAt).replace(/^\|\s*note:\s*/, "")) : "";
+            for (const t of nums.matchAll(/\b([A-Za-z]{1,3})\s+(-?\d+)·(-?\d+)/g)) { axes[t[1]] = Number(t[2]); acc[t[1]] = Number(t[3]); }
+            if (config.axes.every(a => a.key in axes)) pairs[key] = { from, to, axes, acc, ...(note ? { note } : {}) };
             else {
                 errors.push({ section: "RELATIONSHIPS", row });
                 if (prev?.rel?.pairs?.[key]) pairs[key] = clone(prev.rel.pairs[key]);

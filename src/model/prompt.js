@@ -78,7 +78,8 @@ Fondness and friction coexist and tick independently; one interaction can tick b
 - Ticks: \`A → B: E_acc +1 (reason) | M_acc +2 (reason)\` — +1 or +2 per accumulator, only for what happened in this reply. Friction map: romance hurt → M, cruelty → Er, broken trust → Ec, practical frustration → St, neglect → Ad, resentment → Pt.
 - Self-regard: \`A: Φ_acc +1 (reason)\` or a negative value.
 - \`DIRECT A → B: E +1 (reason)\` — only for a genuinely significant moment; it is what breaks a stalemate.
-- \`NEW A → B: E 3, M 4, L 3, Er 3, Ph 4, Ec 5, Pr 3, St 4, Sg 3, Ad 3, Ag 3, Pt 4 | Φ 2 (why)\` — the first time a relationship matters: every axis at least 3, values varied, friction outweighing fondness unless the card says otherwise.
+- \`NEW A → B: E 3, M 4, L 3, Er 3, Ph 4, Ec 5, Pr 3, St 4, Sg 3, Ad 3, Ag 3, Pt 4 | Φ 2 (why)\` — the first time a relationship matters: every axis at least 3, values varied, friction outweighing fondness unless the card says otherwise. Its (why) is the relationship's description on the reader's card, so make it a short, specific line about the two of them.
+- \`NOTE A → B: description\` — rewrite that description, only when the relationship has genuinely changed.
 Never state the numbers in prose; show them through behavior. Romantic or sexual initiation happens only where the ledger says romance is allowed; forcing it elsewhere meets discomfort or anger. "Reads as" patterns are interpretation, not rules.
 </relationship_rules>`;
 

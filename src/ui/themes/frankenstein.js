@@ -12,6 +12,7 @@ const GROUPS = [
 ];
 
 import { undecorate } from "./common.js";
+import { pairRows } from "./layout.js";
 
 export { undecorate };
 
@@ -25,20 +26,19 @@ export function outerDetails(root) {
 }
 
 function relationBars(section, config) {
-    const text = section.textContent;
-    const rows = [];
-    const re = /([^\n|]+?)\s→\s([^\n|]+?)\s*\|\s*((?:[A-Za-z]{1,3}\s+-?\d+·-?\d+\s*)+)/g;
-    let m;
-    while ((m = re.exec(text))) {
-        const vals = {};
-        for (const t of m[3].matchAll(/([A-Za-z]{1,3})\s+(-?\d+)·(-?\d+)/g)) vals[t[1]] = { v: Number(t[2]), acc: Number(t[3]) };
-        rows.push({ from: m[1].replace(/^[-*•\s]+/, "").trim(), to: m[2].trim(), vals });
-    }
+    // one text line per row, however SillyTavern rendered them (<br>, newlines, list items, paragraphs)
+    const lines = section.innerHTML.split(/<br\s*\/?>|\n|<\/li>|<\/p>/i).map(html => {
+        const el = document.createElement("div");
+        el.innerHTML = html;
+        return el.textContent;
+    });
+    const rows = pairRows(lines);
     if (!rows.length) return null;
     const max = config.axisMax || 20;
     const wrap = document.createElement("div");
     wrap.className = "sl-ui sl-fk-pairs";
     wrap.innerHTML = rows.map(r => `<div class="sl-fk-pair"><div class="sl-fk-pair-name">${escHtml(r.from)} → ${escHtml(r.to)}</div>${
+        r.note ? `<div class="sl-fk-pair-note">${escHtml(r.note)}</div>` : ""}${
         config.axes.filter(a => a.kind === "fond").map(f => {
             const fv = r.vals[f.key] || { v: 0, acc: 0 }, mv = r.vals[f.mirror] || { v: 0, acc: 0 };
             const mirror = config.axes.find(a => a.key === f.mirror);
