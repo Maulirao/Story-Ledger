@@ -38,7 +38,7 @@ const ctx = () => SillyTavern.getContext();
 // ── Settings (global) and chat data (per chat) ──────────────────────────────
 
 const DEFAULT_SECTIONS = { scene: true, relationships: true, notebook: true, ...Object.fromEntries(SECTIONS.map(sec => [sec.key, true])) };
-const DEFAULT_SETTINGS = { enabled: true, depth: 1, role: 0, placement: "auto", theme: "frankenstein", checkStyle: "dnd", config: {} };
+const DEFAULT_SETTINGS = { enabled: true, stickyNotices: true, depth: 1, role: 0, placement: "auto", theme: "frankenstein", checkStyle: "dnd", config: {} };
 
 function settings() {
     const all = ctx().extensionSettings;
@@ -56,6 +56,10 @@ function settings() {
     return s;
 }
 const saveSettings = () => ctx().saveSettingsDebounced();
+// Warnings about a reply land when it finishes — often while the reader is in another
+// tab — so by default they stay until closed (✕ or a click) instead of fading out.
+const STICKY = { timeOut: 0, extendedTimeOut: 0, closeButton: true };
+const notice = (kind, message, title) => toastr[kind](message, title, settings().stickyNotices === false ? {} : STICKY);
 const engineConfig = (extra = {}) => ({
     ...resolveConfig(settings().config), userName: ctx().name1,
     sections: settings().sections, checkStyle: settings().checkStyle, ...extra,
@@ -135,7 +139,7 @@ function buildInjection(type = "normal") {
         const r = proposeImportedRules(d.notebook, imp.rules, d.imported);
         if (r.done && !d.imported) {
             saveChatData(x => { x.notebook = r.notebook; x.imported = { source: imp.source, index: imp.index }; })
-                .then(() => toastr.info(`${imp.rules.length} rule(s) from the previous preset are waiting in the 📜 Rules inbox.`, "📒 Story Ledger"))
+                .then(() => notice("info", `${imp.rules.length} rule(s) from the previous preset are waiting in the 📜 Rules inbox.`, "📒 Story Ledger"))
                 .catch(e => console.error("[Story Ledger] could not save imported rules", e));
         }
     }
@@ -223,27 +227,27 @@ async function rebuildMessage(i, { announce = true } = {}) {
     if (!announce) return;
 
     const s = settings();
-    if (start.errors.length) toastr.warning(`${start.errors.length} row(s) in the previous block could not be read and kept their earlier values: ${start.errors.map(e => `${e.section}: ${e.row}`).join("; ")}`, "📒 Story Ledger");
+    if (start.errors.length) notice("warning", `${start.errors.length} row(s) in the previous block could not be read and kept their earlier values: ${start.errors.map(e => `${e.section}: ${e.row}`).join("; ")}`, "📒 Story Ledger");
     if (!changes) {
-        toastr.warning("No ledger comment in this reply — the turn still advanced. Swipe if you want it written.", "📒 Story Ledger");
+        notice("warning", "No ledger comment in this reply — the turn still advanced. Swipe if you want it written.", "📒 Story Ledger");
         return;
     }
     if (s.sections.scene) {
         const back = dayRegression([prev.scene.now, state.scene.now]);
-        if (back) toastr.warning(`The story went from Day ${back.from} back to Day ${back.to}. Swipe, or edit the block's Now line.`, "🕰️ Story clock");
+        if (back) notice("warning", `The story went from Day ${back.from} back to Day ${back.to}. Swipe, or edit the block's Now line.`, "🕰️ Story clock");
     }
     const refused = relationsNotice(log, changes.relations.unparsed);
-    if (s.sections.relationships && refused) toastr.info(refused, "💞 Story Ledger");
+    if (s.sections.relationships && refused) notice("info", refused, "💞 Story Ledger");
     const unread = [...changes.unparsed, ...unparsed];
-    if (unread.length) toastr.info(`Could not read: ${unread.map(u => `${u.section}: "${u.line}"`).join("; ")}`, "📒 Story Ledger");
-    for (const w of warnings || []) toastr.warning(w.text, w.section === "Chekhov" ? "🔫 Story Ledger" : "📒 Story Ledger");
+    if (unread.length) notice("info", `Could not read: ${unread.map(u => `${u.section}: "${u.line}"`).join("; ")}`, "📒 Story Ledger");
+    for (const w of warnings || []) notice("warning", w.text, w.section === "Chekhov" ? "🔫 Story Ledger" : "📒 Story Ledger");
     if (s.sections.notebook && changes.proposals.length) {
         const before = chatData().notebook;
         const after = collectProposals(before, changes.proposals, `m${i}s${msg.swipe_id ?? 0}`);
         const added = after.inbox.length - before.inbox.length;
         if (added > 0) {
             await saveChatData(d => { d.notebook = after; });
-            toastr.info(`${added} rule proposal${added > 1 ? "s" : ""} waiting.`, "📜 Story Ledger");
+            notice("info", `${added} rule proposal${added > 1 ? "s" : ""} waiting.`, "📜 Story Ledger");
         }
     }
 }
@@ -468,6 +472,7 @@ function popupHtml(tab, previewBaseDice = null) {
         const sec = { scene: "🕰️ Scene & story clock", relationships: "💞 Relationships", notebook: "📓 Rules notebook & threads",
             ...Object.fromEntries(SECTIONS.map(x => [x.key, typeof x.title === "function" ? x.title({ checkStyle: s.checkStyle }) : x.title])) };
         body = `<label class="checkbox_label"><input type="checkbox" data-set="enabled" ${s.enabled ? "checked" : ""}> Story Ledger on</label>
+            <label class="checkbox_label" title="Warnings about a reply stay on screen until closed, so they are not missed while you are in another tab"><input type="checkbox" data-set="stickyNotices" ${s.stickyNotices !== false ? "checked" : ""}> Keep reply warnings until dismissed</label>
             <h4>Sections</h4>
             ${Object.entries(sec).map(([k, label]) => `<label class="checkbox_label"><input type="checkbox" data-section="${k}" ${s.sections[k] ? "checked" : ""}> ${label}</label>`).join("")}
             <h4>Look</h4>
