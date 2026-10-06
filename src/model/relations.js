@@ -14,6 +14,7 @@
 // ──────────────────────────────────────────────────────────────────────────────
 
 import { axisByKey } from "./config.js";
+import { sameName } from "./import/util.js";
 
 export const pairKey = (from, to) => `${from}→${to}`;
 
@@ -45,9 +46,10 @@ export function applyTurn(prev, events, present, config) {
     const ev = { news: [], directs: [], ticks: [], phiTicks: [], ...(events || {}) };
     // Pair keys are "A→B" internally; the reader's log reads "A → B".
     const say = (kind, where, text) => log.push({ kind, where, text: text.replace(/(\S)→(\S)/g, "$1 → $2"), ct: s.ct });
-    // pairs the model ticked before writing their NEW line; asked for each turn until it does
-    s.awaiting = [...(prev.awaiting || [])];
-    const await_ = k => { if (!s.awaiting.includes(k)) s.awaiting.push(k); };
+    // "A→B" → what the previous preset recorded ("" when nothing): imported bonds and pairs the
+    // model ticked before their NEW line. The turn facts ask for them until the NEW line is written.
+    s.awaiting = { ...(prev.awaiting || {}) };
+    const await_ = k => { if (!(k in s.awaiting)) s.awaiting[k] = ""; };
 
     // NEW pairs (the model's one-time calibration from the card and the history).
     for (const n of ev.news) {
@@ -56,7 +58,10 @@ export function applyTurn(prev, events, present, config) {
         const axes = {};
         for (const a of config.axes) axes[a.key] = clamp(Math.round(Number((n.axes || {})[a.key] ?? 3)), config.axisMin, config.axisMax);
         s.pairs[k] = { from: n.from, to: n.to, axes, acc: zeroAcc(config) };
-        s.awaiting = s.awaiting.filter(x => x !== k);
+        for (const w of Object.keys(s.awaiting)) {   // tolerant: "Mara Kowal → Jan" clears "Mara→Jan"
+            const [a, b] = w.split("→");
+            if (sameName(a, n.from) && sameName(b, n.to)) delete s.awaiting[w];
+        }
         say("new", k, `NEW ${k}${n.reason ? ` (${n.reason})` : ""}.`);
         if (n.phi !== undefined && !s.selves[n.from]) {
             s.selves[n.from] = { phi: clamp(Math.round(Number(n.phi)), config.phi.min, config.phi.max), acc: 0 };

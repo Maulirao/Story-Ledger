@@ -78,3 +78,27 @@ export function sameName(name, userName) {
     const [short, long] = a.length <= b.length ? [a, b] : [b, a];
     return short.every((w, i) => long[i] === w);
 }
+
+/**
+ * Bond rows ("Mara ↔ Jan · BOND: 18 · Sparks: 3", "Tom → Mara: wary, 6") → { "A→B": what the
+ * row recorded }. A two-way bond is one relationship per direction, except that {{user}}'s
+ * own feelings are never tracked. Unreadable rows are left out.
+ */
+export function bondsOf(rows, userName) {
+    const out = {};
+    for (const row of rows) {
+        const m = plain(row).replace(/^[-*•]\s*/, "").match(/^(.+?)\s*(↔|<->|→|->)\s*(.+?)\s*(?:[:·|—–]\s*(.*))?$/);
+        if (!m || !value(m[1]) || !value(m[3])) continue;
+        const a = m[1].trim(), b = m[3].trim(), note = (m[4] || "").trim();
+        const two = m[2] === "↔" || m[2] === "<->";
+        if (!sameName(a, userName)) out[`${a}→${b}`] = note;
+        if (two && !sameName(b, userName)) out[`${b}→${a}`] = note;
+    }
+    return out;
+}
+
+/** A section the importer could not read, quoted for the handover (the old block is stripped from the prompt). */
+export function quoted(title, body, max = 600) {
+    const text = plain(body);
+    return text ? `${title}: "${text.length > max ? `${text.slice(0, max)}…` : text}"` : title;
+}

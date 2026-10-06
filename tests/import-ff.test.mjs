@@ -34,8 +34,8 @@ test("an FF block imports every section it carries", () => {
     assert.deepEqual(r.state.fate.ambitions, [{ desc: "open the café", progress: 1 }]);
     assert.match(r.state.scene.now, /Day 3/);
     for (const k of ["agendas", "locations", "factions", "quests", "inv", "chekhov", "fate", "threads", "scene"]) assert.ok(r.imported.includes(k), k);
-    assert.ok(!r.imported.includes("rel"));
-    assert.ok(r.unread.some(u => /BONDS/.test(u)));
+    assert.deepEqual(r.state.rel.pairs, {}, "bonds never become relationships by code");
+    assert.ok(Object.keys(r.state.rel.awaiting).length, "BONDS are carried as relationships awaiting NEW");
 });
 
 test("a partial FF block imports what it can and reports the rest", () => {

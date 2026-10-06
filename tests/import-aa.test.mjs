@@ -25,5 +25,6 @@ test("an Ancient Access ledger imports turn, last beats, agendas, notebook, gun,
     assert.deepEqual(r.state.quests.map(q => [q.id, q.kind, q.objective]), [["Q1", "Main", "find the spare key"]]);
     assert.equal(r.state.factions["Harbour Guild"].goal, "wants the docks");
     assert.match(r.state.scene.now, /Day 7/);
-    assert.ok(r.unread.includes("SCENE") && r.unread.includes("BONDS"));
+    assert.ok(r.unread.some(u => u.startsWith("SCENE")));
+    assert.ok(Object.keys(r.state.rel.awaiting).length, "BONDS are carried as relationships awaiting NEW");
 });

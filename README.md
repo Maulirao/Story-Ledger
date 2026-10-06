@@ -75,7 +75,11 @@ under is read **by the extension**, not the model:
 - **Sola**: story notes and seeds, the date, the scene cast, wardrobe and inventory.
 
 The first reply then gets a short handover asking the model only for what could not be read —
-always the relationships (one number such as FF's BOND cannot become twelve axes), and the time
+always the relationships (one number such as FF's BOND cannot become twelve axes). FF and AA
+bonds are kept as **Awaiting NEW** rows in the relationships card, each with what the old preset
+recorded; every turn quotes them to the model until it writes their NEW lines, so the old levels
+are never lost to a reply that skips them. Ticks on a relationship with no NEW line join that list
+too. The handover also asks for the time
 or the cast when the old block lacked them. Rules (`[R]`) from the old notebook wait in the
 📜 Rules inbox for your approval.
 

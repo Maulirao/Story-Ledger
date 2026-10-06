@@ -1,14 +1,15 @@
 // ──────────────────────────────────────────────────────────────────────────────
 // Freaky / Realistic Frankenstein <internal_states> → Story Ledger state.
 // Best effort: what a section's rows do not yield is reported in `unread` and
-// left to the handover. Bonds are never mapped (12 axes cannot come from one
-// number). Per-turn sections (thoughts, DnD, World Sim, physics) are skipped. Pure.
+// left to the handover. Bonds are carried as relationships awaiting the model's
+// NEW line (12 axes cannot come from one number). Per-turn sections (thoughts, DnD,
+// World Sim, physics) are skipped. Pure.
 // ──────────────────────────────────────────────────────────────────────────────
 
 import { emptyState, nextId } from "../state.js";
 import { importFromLegacyNotebook } from "../notebook.js";
 import { lockTime, parseStoryTime } from "../storytime.js";
-import { plain, value, summarySections, rowsOf, rowFields, listOf, headerNow, nowResolved, nowUnread } from "./util.js";
+import { plain, value, summarySections, rowsOf, rowFields, listOf, headerNow, nowResolved, nowUnread, bondsOf, quoted } from "./util.js";
 
 const PER_TURN = /THOUGHTS|DND|WORLD SIM|PHYSICS|INTERNAL STATES/;
 
@@ -150,7 +151,7 @@ function fate(rows, s) {
 }
 
 /** The state an FF/RF reply's block holds, as far as it can be read. */
-export function parseFf(mes) {
+export function parseFf(mes, config = {}) {
     const s = emptyState();
     const imported = [], unread = [], rules = [];
     const turn = String(mes).match(/INTERNAL STATES\s*\(Turn:\s*(\d+)\)/i);
@@ -165,18 +166,20 @@ export function parseFf(mes) {
         [/^INV/, sec => inventory(rowsOf(sec.body), s), "inv", true],
         [/CHEKHOV/, sec => chekhov(sec.body, s), "chekhov"],
         [/FATE ROUTINE/, sec => fate(rowsOf(sec.body), s), "fate"],
+        // bonds cannot become 12 axes by code: each awaits the model's NEW line, carrying what FF recorded
+        [/BONDS|RELATIONSHIP/, sec => { s.rel.awaiting = bondsOf(rowsOf(sec.body), config.userName); return Object.keys(s.rel.awaiting).length; }, "rel"],
     ];
     for (const sec of summarySections(String(mes))) {
         if (PER_TURN.test(sec.key) || /NOTEBOOK/.test(sec.key)) continue;
         const h = handlers.find(([re]) => re.test(sec.key));
-        if (!h) { unread.push(sec.title); continue; }
+        if (!h) { unread.push(quoted(sec.title, sec.body)); continue; }
         const n = h[1](sec);
         const rows = rowsOf(sec.body).filter(r => value(r)).length;
         if (n > 0) {
             if (!imported.includes(h[2])) imported.push(h[2]);
             // row-per-item sections: rows that yielded nothing go to the handover
             if (h[3] && rows > n) unread.push(`${sec.title} (${rows - n} row${rows - n > 1 ? "s" : ""} not read)`);
-        } else if (rows) unread.push(sec.title);
+        } else if (rows) unread.push(quoted(sec.title, sec.body));
     }
     const nb = importFromLegacyNotebook([{ is_user: false, mes }]);
     if (nb.rules.length || nb.threads.length) {

@@ -125,9 +125,10 @@ export function renderRules(config = {}) {
 /** What this turn already holds before the reply is written: announcements and dice. "" when nothing. */
 export function renderTurnFacts(state, config = {}) {
     const facts = preTurnFacts(state, config);
-    const awaiting = (config.sections || {}).relationships !== false ? (state.rel.awaiting || []) : [];
+    const awaiting = (config.sections || {}).relationships !== false ? Object.entries(state.rel.awaiting || {}) : [];
     if (awaiting.length) {
-        facts.push(`No relationship exists yet for ${awaiting.map(k => k.replace("→", " → ")).join(", ")}: write a NEW line for each in this reply, calibrated from the story so far. Ticks on them are refused until it exists.`);
+        const list = awaiting.map(([k, note]) => `${k.replace("→", " → ")}${note ? ` (the previous preset recorded: ${note})` : ""}`);
+        facts.push(`These relationships have no NEW line yet: ${list.join("; ")}. Write a NEW line for each in this reply, calibrated from that record and the story so far — a high BOND or affection means fondness on the axes that fit, Grudge or hostility means friction. Ticks on them are refused until it exists.`);
     }
     if (!facts.length) return "";
     const head = [`Turn ${state.ct + 1}`, state.scene.now, state.scene.present.length ? `present: ${state.scene.present.join(", ")}` : ""].filter(Boolean).join(" · ");
@@ -161,11 +162,11 @@ export function buildHandover(imported = [], { hasNow = false, sections = {}, un
         "This chat ran under another preset until now. The story continues exactly where it stands; only the bookkeeping changes. The ledger has already read what it could from the newest state block in the history (a Freaky/Realistic Frankenstein <internal_states>, Megumin's <Blocks>, Sola's trackers, or Ancient Access's <ledger>). In this reply's Story_Ledger comment, add only what is still missing:",
     ];
     if (!hasNow && on("scene")) lines.push("- Now: from that state's time, date and place. Keep its Day number and continue counting from it.");
-    if (on("relationships")) lines.push("- Relationships: one NEW line for every relationship that state tracked, calibrated from what it recorded (FF's BOND −5…20 with Sparks and Grudge, Megumin's Affection/Trust/Desire, Sola's named dynamics, AA's bonds) and from the story so far. High BOND means fondness on the axes that fit this relationship; Grudge and hostility mean friction.");
+    if (on("relationships")) lines.push("- Relationships: the NEW lines <story_ledger_turn> lists, with what the previous preset recorded for each, plus one NEW line for any other relationship that state tracked, calibrated from the story so far. High BOND means fondness on the axes that fit this relationship; Grudge and hostility mean friction.");
     for (const [key, ask] of HANDOVER_ASKS) if (on(key === "threads" ? "notebook" : key) && !have.has(key)) lines.push(`- ${ask}`);
     if (on("notebook")) lines.push("- Proposed rules: if the reader's notebook below does not already hold that state's [R] rules, propose each as add:.");
     if ((unread || []).length) lines.push(`- These parts of that block could not be read — carry them over with the change lines that fit: ${unread.join("; ")}.`);
-    lines.push("Stop writing the old preset's state block from this reply on, even though it is still visible in the history.", "</ledger_handover>");
+    lines.push("Stop writing the old preset's state block from this reply on.", "</ledger_handover>");
     return lines.join("\n");
 }
 

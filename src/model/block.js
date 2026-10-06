@@ -34,8 +34,7 @@ function relationRows(state, config) {
         rows.push(`- <b>${esc(p.from)} → ${esc(p.to)}</b> | ${axes} | ${flags.join(" · ")}`);
     }
     for (const [who, self] of Object.entries(state.rel.selves)) rows.push(`- <b>${esc(who)}</b> | Φ ${self.phi}·${self.acc}`);
-    const awaiting = state.rel.awaiting || [];
-    if (awaiting.length) rows.push(`- <b>${AWAITING}</b> | ${awaiting.map(k => esc(k.replace("→", " → "))).join(" · ")}`);
+    for (const [k, note] of Object.entries(state.rel.awaiting || {})) rows.push(`- <b>${AWAITING}: ${esc(k.replace("→", " → "))}</b> | ${note ? esc(note) : "—"}`);
     return rows;
 }
 
@@ -116,14 +115,19 @@ function parseScene(rows, base, errors) {
 }
 
 function parseRelations(rows, base, prev, config, errors) {
-    const pairs = {}, selves = {}, awaiting = [];
+    const pairs = {}, selves = {}, awaiting = {};
     for (const row of rows) {
         const m = row.match(ROW);
         if (!m) { errors.push({ section: "RELATIONSHIPS", row }); continue; }
         const name = unesc(m[1]);
         const fields = m[2].replace(/^\|\s*/, "");
-        if (name === AWAITING) {
-            for (const k of fields.split(/\s+·\s+/).map(x => unesc(x).trim()).filter(Boolean)) awaiting.push(k.replace(/\s*→\s*/, "→"));
+        if (name === AWAITING) {   // the first build's one-row form: "Awaiting NEW | A → B · C → D"
+            for (const k of fields.split(/\s+·\s+/).map(x => unesc(x).trim()).filter(Boolean)) awaiting[k.replace(/\s*→\s*/, "→")] = "";
+            continue;
+        }
+        if (name.startsWith(`${AWAITING}:`)) {
+            const note = unesc(fields).trim();
+            awaiting[name.slice(AWAITING.length + 1).trim().replace(/\s*→\s*/, "→")] = note === "—" ? "" : note;
             continue;
         }
         const arrow = name.lastIndexOf(" → ");

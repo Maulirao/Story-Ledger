@@ -59,7 +59,7 @@ const NEW_LINE = "NEW Mara → Jan: E 3, M 4, L 3, Er 3, Ph 4, Ec 5, Pr 3, St 4,
 
 test("ticks on a relationship that does not exist yet are remembered as awaiting a NEW line", () => {
     const r = run(emptyState(), "Relationships:\n- Mara → Jan: E_acc +1 (helped) | L_acc +1 (joked)\n- Tom → Jan: Ph_acc +1 (shared work)");
-    assert.deepEqual(r.state.rel.awaiting, ["Mara→Jan", "Tom→Jan"]);
+    assert.deepEqual(r.state.rel.awaiting, { "Mara→Jan": "", "Tom→Jan": "" });
 });
 
 test("the next turn asks for the awaited NEW lines, and the block keeps the list", () => {
@@ -69,13 +69,13 @@ test("the next turn asks for the awaited NEW lines, and the block keeps the list
     assert.match(facts, /NEW/);
     const back = parseBlock(renderBlock(r.state, { rules: [], config: C, sections: {} }), { config: C });
     assert.deepEqual(back.errors, []);
-    assert.deepEqual(back.state.rel.awaiting, ["Mara→Jan"]);
+    assert.deepEqual(back.state.rel.awaiting, { "Mara→Jan": "" });
 });
 
 test("a NEW line clears the pair from the awaiting list", () => {
     let r = run(emptyState(), "Relationships:\n- Mara → Jan: E_acc +1 (helped)");
     r = run(r.state, `Relationships:\n- ${NEW_LINE}`);
-    assert.deepEqual(r.state.rel.awaiting, []);
+    assert.deepEqual(r.state.rel.awaiting, {});
     assert.ok(r.state.rel.pairs["Mara→Jan"]);
 });
 

@@ -12,7 +12,7 @@ export function emptyState() {
         ct: 0,
         scene: { now: "", present: [], public: false },
         threads: [],
-        rel: { pairs: {}, selves: {}, awaiting: [] },
+        rel: { pairs: {}, selves: {}, awaiting: {} },
         perTurn: {},
     };
     for (const sec of SECTIONS) if (sec.carried) s[sec.key] = sec.empty();

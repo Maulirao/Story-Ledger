@@ -1,16 +1,17 @@
 // ──────────────────────────────────────────────────────────────────────────────
 // Ancient Access <ledger> → Story Ledger state. KEY: lines, continued on the
-// following lines until the next KEY:. SCENE (free prose) and BONDS go to the
-// handover; per-turn lines (WORLD, CHECK, THOUGHTS) are skipped. Pure.
+// following lines until the next KEY:. SCENE and OFFSCREEN (free prose) are quoted
+// to the handover; BONDS await the model's NEW lines; per-turn lines (WORLD, CHECK,
+// THOUGHTS) are skipped. Pure.
 // ──────────────────────────────────────────────────────────────────────────────
 
 import { emptyState, nextId } from "../state.js";
 import { importFromLegacyNotebook } from "../notebook.js";
 import { lockTime, parseStoryTime } from "../storytime.js";
-import { plain, value, listOf, headerNow, nowResolved, nowUnread, sameName } from "./util.js";
+import { plain, value, listOf, headerNow, nowResolved, nowUnread, sameName, bondsOf, quoted } from "./util.js";
 
 const PER_TURN = new Set(["WORLD", "CHECK", "THOUGHTS"]);
-const TO_HANDOVER = new Set(["SCENE", "BONDS", "OFFSCREEN"]);
+const TO_HANDOVER = new Set(["SCENE", "OFFSCREEN"]);
 
 /** KEY → lines (the KEY: line's text first, then continuation lines). */
 function fieldsOf(body) {
@@ -40,9 +41,14 @@ export function parseAa(mes, config = {}) {
 
     for (const [key, lines] of Object.entries(f)) {
         if (PER_TURN.has(key) || key === "NOTEBOOK") continue;
-        if (TO_HANDOVER.has(key)) { if (lines.some(l => value(l))) unread.push(key); continue; }
+        if (TO_HANDOVER.has(key)) { if (lines.some(l => value(l))) unread.push(quoted(key, lines.join("\n"))); continue; }
         let n = 0;
-        if (key === "TURN") { const t = parseInt(lines[0], 10); if (Number.isFinite(t)) { s.ct = t; mark("ct"); n++; } }
+        if (key === "BONDS") {
+            // each bond awaits the model's NEW line, carrying what AA recorded
+            s.rel.awaiting = bondsOf(lines, config.userName);
+            n = Object.keys(s.rel.awaiting).length;
+            if (n) mark("rel");
+        } else if (key === "TURN") { const t = parseInt(lines[0], 10); if (Number.isFinite(t)) { s.ct = t; mark("ct"); n++; } }
         else if (key === "LAST") {
             s.last = lines.flatMap(l => l.split(/\s+\/\s+/)).map(value).filter(Boolean);
             if (s.last.length) { mark("last"); n++; }
@@ -138,7 +144,7 @@ export function parseAa(mes, config = {}) {
             }
             if (n) mark("factions");
         }
-        if (!n && lines.some(l => value(l))) unread.push(key);
+        if (!n && lines.some(l => value(l))) unread.push(quoted(key, lines.join("\n")));
     }
     const nb = importFromLegacyNotebook([{ is_user: false, mes }]);
     if (nb.rules.length || nb.threads.length) { rules.push(...nb.rules); s.threads = nb.threads; mark("threads"); }
