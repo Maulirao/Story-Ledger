@@ -47,7 +47,7 @@ export default {
             if ((m = line.match(/^\+\s*(Main|Side)\s*:\s*(.+?)\s*(?:\(([^()]*)\))?$/i))) {
                 state.quests.push({ id: nextId(state, "Q", state.quests.map(x => x.id)), kind: m[1][0].toUpperCase() + m[1].slice(1).toLowerCase(), status: "active",
                     objective: m[2].trim(), progress: "", reward: (m[3] || "").trim(), send: false });
-            } else if ((m = line.match(/^(Q\d+)\s+progress\s*:\s*(.+)$/i)) && (q = byId(state, m[1]))) q.progress = m[2].trim();
+            } else if ((m = line.match(/^(Q\d+)\s*:?\s+(?:(?:Main|Side)\s+)?progress\s*:\s*(.+)$/i)) && (q = byId(state, m[1]))) q.progress = m[2].trim();   // "Q1 Main progress:" and "Q1: progress:" too
             else if ((m = line.match(/^(done|drop|reopen)\s+(Q\d+)$/i)) && (q = byId(state, m[2]))) {
                 q.status = { done: "done", drop: "dropped", reopen: "active" }[m[1].toLowerCase()];
             } else unparsed.push(line);

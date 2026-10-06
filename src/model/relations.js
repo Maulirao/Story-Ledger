@@ -45,6 +45,9 @@ export function applyTurn(prev, events, present, config) {
     const ev = { news: [], directs: [], ticks: [], phiTicks: [], ...(events || {}) };
     // Pair keys are "A→B" internally; the reader's log reads "A → B".
     const say = (kind, where, text) => log.push({ kind, where, text: text.replace(/(\S)→(\S)/g, "$1 → $2"), ct: s.ct });
+    // pairs the model ticked before writing their NEW line; asked for each turn until it does
+    s.awaiting = [...(prev.awaiting || [])];
+    const await_ = k => { if (!s.awaiting.includes(k)) s.awaiting.push(k); };
 
     // NEW pairs (the model's one-time calibration from the card and the history).
     for (const n of ev.news) {
@@ -53,6 +56,7 @@ export function applyTurn(prev, events, present, config) {
         const axes = {};
         for (const a of config.axes) axes[a.key] = clamp(Math.round(Number((n.axes || {})[a.key] ?? 3)), config.axisMin, config.axisMax);
         s.pairs[k] = { from: n.from, to: n.to, axes, acc: zeroAcc(config) };
+        s.awaiting = s.awaiting.filter(x => x !== k);
         say("new", k, `NEW ${k}${n.reason ? ` (${n.reason})` : ""}.`);
         if (n.phi !== undefined && !s.selves[n.from]) {
             s.selves[n.from] = { phi: clamp(Math.round(Number(n.phi)), config.phi.min, config.phi.max), acc: 0 };
@@ -62,7 +66,7 @@ export function applyTurn(prev, events, present, config) {
     // DIRECT shifts: +1 or +2, the only thing that breaks a WALL.
     for (const d of ev.directs) {
         const k = pairKey(d.from, d.to), p = s.pairs[k];
-        if (!p || !axisByKey(config, d.axis)) { say("refused", k, `DIRECT ${k} ${d.axis} refused: no such pair or axis.`); continue; }
+        if (!p || !axisByKey(config, d.axis)) { if (!p) await_(k); say("refused", k, `DIRECT ${k} ${d.axis} refused: no such pair or axis.`); continue; }
         const amt = clamp(Math.round(Number(d.amount) || 0), 1, config.directMax);
         p.axes[d.axis] = clamp(p.axes[d.axis] + amt, config.axisMin, config.axisMax);
         say("direct", k, `${d.axis} +${amt} (direct${d.reason ? `: ${d.reason}` : ""}).`);
@@ -72,7 +76,7 @@ export function applyTurn(prev, events, present, config) {
     const sums = {};
     for (const t of ev.ticks) {
         const k = pairKey(t.from, t.to);
-        if (!s.pairs[k]) { say("refused", k, `${k} ${t.acc}_acc refused: no such pair (it needs a NEW line first).`); continue; }
+        if (!s.pairs[k]) { await_(k); say("refused", k, `${k} ${t.acc}_acc refused: no such pair (it needs a NEW line first).`); continue; }
         if (!axisByKey(config, t.acc)) { say("refused", k, `${k}: unknown accumulator ${t.acc}.`); continue; }
         const amt = Math.round(Number(t.amount) || 0);
         if (amt <= 0) { say("refused", k, `${k} ${t.acc}_acc ${amt} refused: accumulators only tick up — friction has its own axis.`); continue; }

@@ -17,6 +17,9 @@ const clone = o => JSON.parse(JSON.stringify(o));
 
 // ── Writing ─────────────────────────────────────────────────────────────────
 
+// the relationships section's row for pairs the model ticked before writing their NEW line
+const AWAITING = "Awaiting NEW";
+
 const sectionHtml = (title, rows) => [`<details><summary>${title}</summary>`, ...rows, "</details>"];
 
 function relationRows(state, config) {
@@ -31,6 +34,8 @@ function relationRows(state, config) {
         rows.push(`- <b>${esc(p.from)} → ${esc(p.to)}</b> | ${axes} | ${flags.join(" · ")}`);
     }
     for (const [who, self] of Object.entries(state.rel.selves)) rows.push(`- <b>${esc(who)}</b> | Φ ${self.phi}·${self.acc}`);
+    const awaiting = state.rel.awaiting || [];
+    if (awaiting.length) rows.push(`- <b>${AWAITING}</b> | ${awaiting.map(k => esc(k.replace("→", " → "))).join(" · ")}`);
     return rows;
 }
 
@@ -111,12 +116,16 @@ function parseScene(rows, base, errors) {
 }
 
 function parseRelations(rows, base, prev, config, errors) {
-    const pairs = {}, selves = {};
+    const pairs = {}, selves = {}, awaiting = [];
     for (const row of rows) {
         const m = row.match(ROW);
         if (!m) { errors.push({ section: "RELATIONSHIPS", row }); continue; }
         const name = unesc(m[1]);
         const fields = m[2].replace(/^\|\s*/, "");
+        if (name === AWAITING) {
+            for (const k of fields.split(/\s+·\s+/).map(x => unesc(x).trim()).filter(Boolean)) awaiting.push(k.replace(/\s*→\s*/, "→"));
+            continue;
+        }
         const arrow = name.lastIndexOf(" → ");
         if (arrow > 0) {
             const from = name.slice(0, arrow).trim(), to = name.slice(arrow + 3).trim();
@@ -137,7 +146,7 @@ function parseRelations(rows, base, prev, config, errors) {
             }
         }
     }
-    base.rel = { pairs, selves };
+    base.rel = { pairs, selves, awaiting };
 }
 
 /**

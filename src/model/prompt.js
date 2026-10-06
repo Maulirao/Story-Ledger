@@ -125,6 +125,10 @@ export function renderRules(config = {}) {
 /** What this turn already holds before the reply is written: announcements and dice. "" when nothing. */
 export function renderTurnFacts(state, config = {}) {
     const facts = preTurnFacts(state, config);
+    const awaiting = (config.sections || {}).relationships !== false ? (state.rel.awaiting || []) : [];
+    if (awaiting.length) {
+        facts.push(`No relationship exists yet for ${awaiting.map(k => k.replace("→", " → ")).join(", ")}: write a NEW line for each in this reply, calibrated from the story so far. Ticks on them are refused until it exists.`);
+    }
     if (!facts.length) return "";
     const head = [`Turn ${state.ct + 1}`, state.scene.now, state.scene.present.length ? `present: ${state.scene.present.join(", ")}` : ""].filter(Boolean).join(" · ");
     return `<story_ledger_turn>\n${head}\n${facts.join("\n")}\n</story_ledger_turn>`;

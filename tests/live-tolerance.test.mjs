@@ -50,3 +50,41 @@ test("the relationship notice names each refused line and why", () => {
     assert.match(text, /could not read: "Mara likes Jan more"/);
     assert.equal(relationsNotice([{ kind: "tick", text: "ok" }], []), "");
 });
+
+// ── second live turn ──
+import { renderTurnFacts } from "../src/model/prompt.js";
+import { renderBlock, parseBlock } from "../src/model/block.js";
+
+const NEW_LINE = "NEW Mara → Jan: E 3, M 4, L 3, Er 3, Ph 4, Ec 5, Pr 3, St 4, Sg 3, Ad 3, Ag 3, Pt 4 | Φ 2 (old friends)";
+
+test("ticks on a relationship that does not exist yet are remembered as awaiting a NEW line", () => {
+    const r = run(emptyState(), "Relationships:\n- Mara → Jan: E_acc +1 (helped) | L_acc +1 (joked)\n- Tom → Jan: Ph_acc +1 (shared work)");
+    assert.deepEqual(r.state.rel.awaiting, ["Mara→Jan", "Tom→Jan"]);
+});
+
+test("the next turn asks for the awaited NEW lines, and the block keeps the list", () => {
+    const r = run(emptyState(), "Relationships:\n- Mara → Jan: E_acc +1 (helped)");
+    const facts = renderTurnFacts(r.state, { ...C, dice: { fate: { a: 10, b: 1, c: 5 } } });
+    assert.match(facts, /Mara → Jan/);
+    assert.match(facts, /NEW/);
+    const back = parseBlock(renderBlock(r.state, { rules: [], config: C, sections: {} }), { config: C });
+    assert.deepEqual(back.errors, []);
+    assert.deepEqual(back.state.rel.awaiting, ["Mara→Jan"]);
+});
+
+test("a NEW line clears the pair from the awaiting list", () => {
+    let r = run(emptyState(), "Relationships:\n- Mara → Jan: E_acc +1 (helped)");
+    r = run(r.state, `Relationships:\n- ${NEW_LINE}`);
+    assert.deepEqual(r.state.rel.awaiting, []);
+    assert.ok(r.state.rel.pairs["Mara→Jan"]);
+});
+
+test("a quest progress line with the quest's kind in it applies", () => {
+    const s = emptyState();
+    s.quests = [{ id: "Q1", kind: "Main", status: "active", objective: "win the race", progress: "", reward: "", send: false }];
+    let r = run(s, "Quests:\n- Q1 Main progress: the declaration is ratified");
+    assert.equal(r.state.quests[0].progress, "the declaration is ratified");
+    r = run(r.state, "Quests:\n- Q1: progress: race tomorrow");
+    assert.equal(r.state.quests[0].progress, "race tomorrow");
+    assert.ok(!r.unparsed.some(u => u.section === "Quests"));
+});

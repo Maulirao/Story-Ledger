@@ -231,7 +231,7 @@ export function renderNotebookPrompt(notebook, threads, time = null) {
         parts.push("Advance time only by what actually happens; a conversation takes minutes, sleep and travel skip ahead. Day numbers never go backwards.");
     }
     if (rules.length) parts.push("", "Rules:", ...rules.map((r, n) => `R${n + 1}. ${r}`));
-    if ((threads || []).length) parts.push("", "Open threads (yours to maintain):", ...threads.map(t => `- [T] ${t}`));
+    if ((threads || []).length) parts.push("", "Open threads (yours to maintain; to update one, write `- [T]` with its old wording and `+ [T]` with the new):", ...threads.map(t => `- [T] ${t}`));
     if (inbox.length) parts.push("", "Already proposed, awaiting the reader — do not propose these again:", ...inbox.map(describe));
     parts.push("</rules_notebook>");
     return parts.join("\n");

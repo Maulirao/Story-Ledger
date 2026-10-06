@@ -49,9 +49,9 @@ export function postTurn(prev, changes, config) {
     }
     const present = [...new Set([...s.scene.present, ...(config.userName ? [config.userName] : [])])];
     const events = changes && coreOn("relationships") ? changes.relations : null;   // the turn count still advances
-    const rel = applyTurn({ ct: prev.ct, pairs: prev.rel.pairs, selves: prev.rel.selves }, events, present, config);
+    const rel = applyTurn({ ct: prev.ct, pairs: prev.rel.pairs, selves: prev.rel.selves, awaiting: prev.rel.awaiting || [] }, events, present, config);
     s.ct = rel.state.ct;
-    s.rel = { pairs: rel.state.pairs, selves: rel.state.selves };
+    s.rel = { pairs: rel.state.pairs, selves: rel.state.selves, awaiting: rel.state.awaiting };
     s.perTurn = {};
     const ctx = sectionContext(s, prev.scene.present, config, prev.scene.now, changes);
     const unparsed = [];
@@ -157,7 +157,7 @@ export function initialState(chat, config, legacy = {}) {
     const old = replayLegacy(chat, config, legacy);
     if (old) {
         s.ct = old.state.ct;
-        s.rel = { pairs: old.state.pairs, selves: old.state.selves };
+        s.rel = { pairs: old.state.pairs, selves: old.state.selves, awaiting: old.state.awaiting || [] };
         if (old.newest && old.newest.now !== null) s.scene.now = old.newest.now;
         if (old.newest && old.newest.present !== null) s.scene.present = old.newest.present;
         if (old.threads) s.threads = old.threads;   // 0.1 wrote the full list each reply
