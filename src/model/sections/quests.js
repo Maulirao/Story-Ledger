@@ -54,6 +54,8 @@ export default {
         const unparsed = [];
         // the comment path accepts one terminal punctuation mark on a closed form
         const closed = ctx && ctx.normalizedChanges ? closedForm : s => s;
+        // there a free-form "Q# …: text" update needs text after its colon ("Q1 progress:" is empty)
+        const update = ctx && ctx.normalizedChanges ? /^(Q\d+)\b\s*(.*:\s*\S.*)$/i : /^(Q\d+)\b\s*(.*:.*)$/i;
         for (const raw of lines) {
             const line = String(raw).trim();   // parseChanges already removed the list bullet
             let m, q;
@@ -63,7 +65,7 @@ export default {
             } else if ((m = line.match(/^(Q\d+)\s*:?\s+(?:(?:Main|Side)\s+)?progress\s*:\s*(.+)$/i)) && (q = byId(state, m[1]))) q.progress = m[2].trim();   // "Q1 Main progress:" and "Q1: progress:" too
             else if ((m = closed(line).match(/^(done|drop|reopen)\s+(Q\d+)$/i)) && (q = byId(state, m[2]))) {
                 q.status = { done: "done", drop: "dropped", reopen: "active" }[m[1].toLowerCase()];
-            } else if ((m = line.match(/^(Q\d+)\b\s*(.*:.*)$/i)) && (q = byId(state, m[1]))) {
+            } else if ((m = line.match(update)) && (q = byId(state, m[1]))) {
                 // any other "Q# …: text" is a progress update ("Q1 Main — <title> · Day 3: …"):
                 // the kind and the quest's own title are dropped, the rest (a time, say) is kept
                 let rest = m[2].replace(/^[\s:·—–-]*(?:(?:Main|Side)\b)?[\s:·—–-]*/i, "");

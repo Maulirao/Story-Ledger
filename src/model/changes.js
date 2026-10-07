@@ -18,6 +18,8 @@ const CORE_FIELD = /^(Now|Present|Public)\s*:\s*(.*)$/i;
 const HEADING = /^([A-Za-z][A-Za-z ]{0,30}):\s*$/;
 // headings whose lines are read here, not handed on in `sections`
 const OWN = new Set(["Threads", "Relationships", "Proposed rules"]);
+// the diagnostic section of a line written under no heading
+const NO_HEADING = "(no heading)";
 
 const emptyChanges = () => ({
     now: null, present: null, public: null,
@@ -56,13 +58,15 @@ function parseComment(records) {
             if (h.known && !OWN.has(h.name)) { out.sections[h.name] = out.sections[h.name] || []; out.raw[h.name] = out.raw[h.name] || []; }
             continue;
         }
-        if (!current) continue;
+        // a line under no heading (before the first, or after a core field) is no command
+        if (!current) { out.unparsed.push({ section: NO_HEADING, line: rec.text, raw: rec.raw }); continue; }
         if (typeof current === "object") { out.unparsed.push({ section: current.unknown, line: rec.text, raw: rec.raw }); continue; }
         if (current === "Threads") readThread(out, rec);
         else if (current === "Relationships") relationships.push(rec);
-        else if (current === "Proposed rules") continue;
         // a line still in its "[…]" template form is the model echoing the template, not a change
+        // (other Proposed rules lines are the notebook reader's, below)
         else if (isSkeleton(rec.text)) out.unparsed.push({ section: current, line: rec.text });
+        else if (current === "Proposed rules") continue;
         else { out.sections[current].push(rec.text); out.raw[current].push(rec.unfolded); }
     }
     out.relations = parseRelationLines(relationships);
