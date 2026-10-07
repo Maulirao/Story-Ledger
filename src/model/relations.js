@@ -16,6 +16,7 @@
 import { axisByKey } from "./config.js";
 import { sameName } from "./import/util.js";
 import { normalizeLine } from "./normalize.js";
+import { isCommandPlaceholder } from "./commands.js";
 
 export const pairKey = (from, to) => `${from}→${to}`;
 
@@ -51,6 +52,12 @@ export function applyTurn(prev, events, present, config) {
     // model ticked before their NEW line. The turn facts ask for them until the NEW line is written.
     s.awaiting = { ...(prev.awaiting || {}) };
     const await_ = k => { if (!(k in s.awaiting)) s.awaiting[k] = ""; };
+    const queue = (kind, event) => {
+        const k = pairKey(event.from, event.to);
+        await_(k);
+        (s.pending ||= []).push({ ct: s.ct, kind, ...event });
+        say("queued", k, `${k}: ${kind} saved until its NEW baseline is written.`);
+    };
 
     // NEW pairs (the model's one-time calibration from the card and the history).
     for (const n of ev.news) {
@@ -73,10 +80,33 @@ export function applyTurn(prev, events, present, config) {
         }
     }
 
+    // A saved event is consumed only after an exact or unique full-name baseline exists.
+    const ready = { notes: [], directs: [], ticks: [] }, waiting = [];
+    const matchesName = (a, b) => {
+        const macro = /^\s*\{\{user\}\}\s*$/i;
+        const resolve = name => macro.test(name) && config.userName ? config.userName : name;
+        const x = resolve(a), y = resolve(b);
+        // sameName treats {{user}} as a wildcard for imports; a queue needs a real identity.
+        return macro.test(x) || macro.test(y) ? x.trim().toLowerCase() === y.trim().toLowerCase() : sameName(x, y);
+    };
+    for (const event of s.pending || []) {
+        const exact = s.pairs[pairKey(event.from, event.to)];
+        const candidates = exact ? [exact] : Object.values(s.pairs).filter(p => matchesName(p.from, event.from) && matchesName(p.to, event.to));
+        if (candidates.length !== 1) { waiting.push(event); await_(pairKey(event.from, event.to)); continue; }
+        const p = candidates[0];
+        const list = { note: "notes", direct: "directs", tick: "ticks" }[event.kind];
+        if (!list) { waiting.push(event); continue; }
+        ready[list].push({ ...event, from: p.from, to: p.to });
+        delete s.awaiting[pairKey(event.from, event.to)];
+    }
+    if (waiting.length) s.pending = waiting;
+    else delete s.pending;
+    for (const list of Object.keys(ready)) ev[list] = [...ready[list], ...ev[list]];
+
     // NOTE: the model revises a relationship's description.
     for (const n of ev.notes) {
         const k = pairKey(n.from, n.to), p = s.pairs[k];
-        if (!p) { say("refused", k, `NOTE ${k} refused: no such pair (it needs a NEW line first).`); continue; }
+        if (!p) { queue("note", n); continue; }
         p.note = n.text;
         say("note", k, `${k} now reads: ${n.text}`);
     }
@@ -84,7 +114,8 @@ export function applyTurn(prev, events, present, config) {
     // DIRECT shifts: +1 or +2, the only thing that breaks a WALL.
     for (const d of ev.directs) {
         const k = pairKey(d.from, d.to), p = s.pairs[k];
-        if (!p || !axisByKey(config, d.axis)) { if (!p) await_(k); say("refused", k, `DIRECT ${k} ${d.axis} refused: no such pair or axis.`); continue; }
+        if (!axisByKey(config, d.axis)) { say("refused", k, `DIRECT ${k} ${d.axis} refused: unknown axis.`); continue; }
+        if (!p) { queue("direct", d); continue; }
         const amt = clamp(Math.round(Number(d.amount) || 0), 1, config.directMax);
         p.axes[d.axis] = clamp(p.axes[d.axis] + amt, config.axisMin, config.axisMax);
         say("direct", k, `${d.axis} +${amt} (direct${d.reason ? `: ${d.reason}` : ""}).`);
@@ -94,11 +125,11 @@ export function applyTurn(prev, events, present, config) {
     const sums = {};
     for (const t of ev.ticks) {
         const k = pairKey(t.from, t.to);
-        if (!s.pairs[k]) { await_(k); say("refused", k, `${k} ${t.acc}_acc refused: no such pair (it needs a NEW line first).`); continue; }
         if (!axisByKey(config, t.acc)) { say("refused", k, `${k}: unknown accumulator ${t.acc}.`); continue; }
         const amt = Math.round(Number(t.amount) || 0);
         if (amt <= 0) { say("refused", k, `${k} ${t.acc}_acc ${amt} refused: accumulators only tick up — friction has its own axis.`); continue; }
-        const id = `${k}|${t.acc}`;
+        if (!s.pairs[k]) { queue("tick", t); continue; }
+        const id = `${t.ct ?? s.ct}|${k}|${t.acc}`;
         sums[id] = sums[id] || { k, acc: t.acc, amount: 0, reasons: [] };
         sums[id].amount += amt;
         if (t.reason) sums[id].reasons.push(t.reason);
@@ -295,7 +326,7 @@ export function parseRelationLines(lines, { legacy = false } = {}) {
             : normalizeLine(String(raw)).text;
         if (!line) continue;
         // a line still in its "[…]" template form is an echo, not an event
-        if (!legacy && /^\[.*\]$/.test(line)) { out.unparsed.push(line); continue; }
+        if (!legacy && (/^\[.*\]$/.test(line) || isCommandPlaceholder(line, RELATION_COMMANDS))) { out.unparsed.push(line); continue; }
         let m;
         // NOTE A → B: a new description of the relationship
         if ((m = line.match(NOTE))) {

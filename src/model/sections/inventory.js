@@ -6,6 +6,7 @@
 
 import { esc, unesc, ROW, removeByName } from "../text.js";
 import { commandTemplate } from "../commands.js";
+import { foldQuotes } from "../normalize.js";
 
 const COMMANDS = [
     { id: "inv.add", form: "+ item", example: "+ brass key", keywords: [] },
@@ -40,6 +41,23 @@ function removeItem(list, text, rawText, del) {
     const single = item.match(/^1\s+(.+)$/);
     const rawSingle = rawItem === undefined ? null : rawItem.match(/^1\s+(.+)$/);
     return Boolean(single && del(list, single[1], rawSingle ? rawSingle[1] : undefined));
+}
+
+// A conversion annotation describes why the old condition ended; it does not add the new one.
+const hasFoldedName = (list, text) => list.some(value => same(foldQuotes(value), foldQuotes(text)));
+function removeStatus(list, text, rawText, del, normalized) {
+    if (del(list, text, rawText)) return true;
+    // A failed removal with quote-equivalent candidates is ambiguous, not an annotation.
+    if (!normalized || hasFoldedName(list, text)) return false;
+    const converted = /\s+converted\s+to\s+\S.*$/i;
+    const name = text.replace(converted, "").trim();
+    const rawName = rawText === undefined ? undefined : rawText.replace(converted, "").trim();
+    if (name !== text) {
+        if (del(list, name, rawName)) return true;
+        if (hasFoldedName(list, name)) return false;
+    }
+    // Clearing an absent condition already has the requested result. No fuzzy deletion.
+    return true;
 }
 
 export default {
@@ -92,13 +110,14 @@ export default {
                 // Keep literal legacy values containing semicolons removable by their exact name.
                 const rawValue = rawOf(/^status\s*-\s*(.+)$/i);
                 if (del(inv.status, m[1], rawValue)) return;
+                if (normalized && hasFoldedName(inv.status, m[1])) { unparsed.push(line); return; }
                 const conditions = readList(m[1]);
                 // folding never moves a ";", so both forms split into the same members
                 const rawConditions = rawValue === undefined ? [] : readList(rawValue);
                 const aligned = rawConditions.length === conditions.length;
                 if (!conditions.length) unparsed.push(line);
                 conditions.forEach((condition, j) => {
-                    if (!del(inv.status, condition, aligned ? rawConditions[j] : undefined)) unparsed.push(`status - ${condition}`);
+                    if (!removeStatus(inv.status, condition, aligned ? rawConditions[j] : undefined, del, normalized)) unparsed.push(`status - ${condition}`);
                 });
             }
             else if ((m = line.match(/^mods\s*:\s*(.*)$/i))) inv.mods = m[1].trim();
@@ -116,7 +135,7 @@ export default {
         if (value.mods) parts.push(`mods ${value.mods}`);
         return parts.length ? `{{user}}: ${parts.join(" · ")}` : "";
     },
-    rules: () => "Inventory is {{user}}'s alone: add items when found, remove them when lost or used; award a title for a real accomplishment; track temporary conditions (Injured, Tired, Inspired) and clear them with time or action. Mods are ±1–2 on rolls in the domain they fit only. Never put stats, modifiers or title names in prose.",
+    rules: () => "Inventory is {{user}}'s alone: add items when found, remove them when lost or used; award a title for a real accomplishment; track temporary conditions (Injured, Tired, Inspired) and clear them with time or action. Active conditions are in Status; condition text inside items or titles does not create a Status entry. For status removals, copy the existing condition name exactly, without explanations; clearing an already-absent condition is harmless. A changed condition needs two lines: `status - old condition` and `status + new condition`. Mods are ±1–2 on rolls in the domain they fit only. Never put stats, modifiers or title names in prose.",
     commands: COMMANDS,
     template: ctx => commandTemplate("Inventory", COMMANDS, ctx),
 };

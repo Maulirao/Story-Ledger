@@ -5,10 +5,12 @@
 // Pure: no SillyTavern, no DOM.
 // ──────────────────────────────────────────────────────────────────────────────
 
-import { lastLedgerBlock, parseNotebookBlock, notebookFromRecords } from "./notebook.js";
+import { lastLedgerBlock, parseNotebookBlock, notebookFromRecords, THREAD_COMMANDS, PROPOSAL_COMMANDS } from "./notebook.js";
 import { parseRelationLines } from "./relations.js";
 import { ledgerLines } from "./normalize.js";
 import { headingOf } from "./headings.js";
+import { isCommandPlaceholder } from "./commands.js";
+import { SECTIONS } from "./sections/registry.js";
 
 const clean = s => String(s || "").replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim();
 const unbullet = s => s.replace(/^\s*[-*•]\s+/, "");
@@ -22,6 +24,10 @@ const OWN = new Set(["Threads", "Relationships", "Proposed rules"]);
 const NO_HEADING = "(no heading)";
 // a label, a colon, then a value: what a field or command line looks like
 const LABELLED = /^[A-Za-z][\w ]{0,30}\s*:\s*\S/;
+
+const commandsUnder = heading => heading === "Threads" ? THREAD_COMMANDS
+    : heading === "Proposed rules" ? PROPOSAL_COMMANDS
+    : SECTIONS.filter(s => s.change === heading || (heading === "World" && s.key === "fate")).flatMap(s => s.commands || []);
 
 const emptyChanges = () => ({
     now: null, present: null, public: null,
@@ -64,6 +70,7 @@ function parseComment(records) {
         // is reported; framing remnants (`---`, a fence, `No changes.`, `(changes only)`) are not
         if (!current) { if (rec.bulleted || LABELLED.test(rec.text)) out.unparsed.push({ section: NO_HEADING, line: rec.text, raw: rec.raw }); continue; }
         if (typeof current === "object") { out.unparsed.push({ section: current.unknown, line: rec.text, raw: rec.raw }); continue; }
+        if (isCommandPlaceholder(rec.text, commandsUnder(current))) { out.unparsed.push({ section: current, line: rec.text }); continue; }
         if (current === "Threads") readThread(out, rec);
         else if (current === "Relationships") relationships.push(rec);
         // a line still in its "[…]" template form is the model echoing the template, not a change

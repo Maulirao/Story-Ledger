@@ -28,7 +28,7 @@ export default {
         return unparsed;
     },
     prompt: () => "",
-    rules: () => "Thoughts: up to 3 NPCs, on-screen first (an off-screen one names where they are and what they are doing); 1–3 lines each, fragmented, impulsive and raw but true to the person, their mood and instincts. Let them drive what the NPC does next.",
+    rules: () => "Thoughts: include 1–3 NPCs whenever NPCs are involved in this reply, on-screen first (an off-screen one names where they are and what they are doing); 1–3 lines each, fragmented, impulsive and raw but true to the person, their mood and instincts. These are fictional character thoughts, written anew for this reply. Let them drive what the NPC does next.",
     commands: COMMANDS,
     template: ctx => commandTemplate("Thoughts", COMMANDS, ctx),
 };

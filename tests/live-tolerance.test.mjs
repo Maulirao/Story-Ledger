@@ -56,13 +56,13 @@ test("incomplete and unknown faction labels stay unread without partial updates"
     assert.deepEqual(r.state.factions, s.factions);
 });
 
-test("the faction template demonstrates concrete field updates", () => {
-    const examples = factions.template().filter(line => line.startsWith("- [Name:")).map(line => line.slice(3, -1));
+test("the faction command examples demonstrate concrete field updates", () => {
+    const examples = factions.commands.filter(c => c.id !== "factions.drop").map(c => c.example);
     const r = run(emptyState(), `Factions:\n${examples.map(line => `- ${line}`).join("\n")}`);
     assert.deepEqual(r.unparsed, []);
-    assert.equal(r.state.factions.Name?.goal, "text");
-    assert.equal(r.state.factions.Name?.state, "text");
-    assert.equal(r.state.factions.Name?.intel, "text");
+    assert.equal(r.state.factions["Harbour Guild"].goal, "control the docks");
+    assert.equal(r.state.factions["Harbour Guild"].state, "shaken after the fire");
+    assert.equal(r.state.factions["Harbour Guild"].intel, "knows about the smuggling");
 });
 
 test("a World line written inside the Fate list is read as a World line", () => {
@@ -300,12 +300,12 @@ test("status plus lists store conditions separately, including an escaped semico
     assert.deepEqual(r.unparsed, []);
 });
 
-test("status list removals report only unknown conditions", () => {
+test("status list removals clear known conditions and ignore absent conditions", () => {
     const s = emptyState();
     s.inv.status = ["Tired", "Injured"];
     const r = run(s, "Inventory:\n- status - tired; Unknown");
     assert.deepEqual(r.state.inv.status, ["Injured"]);
-    assert.deepEqual(r.unparsed, [{ section: "Inventory", line: "status - Unknown" }]);
+    assert.deepEqual(r.unparsed, []);
 });
 
 test("a literal carried status containing a semicolon is removed exactly first", () => {
@@ -465,5 +465,70 @@ test("landed World Sim reports require a rolled enabled event and a TRUE Fate so
         const r = postTurn(emptyState(), ch(`Fate:\n- ${line}`), config);
         assert.deepEqual(r.unparsed, [{ section: "Fate", line }]);
         assert.deepEqual(r.state.fate.residue, []);
+    }
+});
+
+test("a status conversion explanation removes only the named old condition", () => {
+    const s = emptyState();
+    s.inv.status = ["warm-up fatigue", "Inspired"];
+    const r = run(s, "Inventory:\n- status - warm-up fatigue converted to full arm/shoulder spend (race spent)");
+    assert.deepEqual(r.unparsed, []);
+    assert.deepEqual(r.state.inv.status, ["Inspired"]);
+    assert.deepEqual(s.inv.status, ["warm-up fatigue", "Inspired"]);
+    const legacy = parseChanges('<Story_Ledger>\nInventory:\n- status - warm-up fatigue converted to full arm/shoulder spend (race spent)\n</Story_Ledger>');
+    const tagged = postTurn(s, legacy, C);
+    assert.deepEqual(tagged.state.inv.status, s.inv.status);
+    assert.equal(tagged.unparsed.length, 1);
+});
+
+test("status conversion removals prefer exact names, ignore absent names and refuse ambiguous names", () => {
+    const s = emptyState();
+    s.inv.status = ["Tired", "Tired converted to rested", '“race fatigue”', '„race fatigue‟'];
+    const r = run(s, 'Inventory:\n- status - Tired converted to rested\n- status - Unknown converted to rested\n- status - "race fatigue" converted to rested');
+    assert.deepEqual(r.state.inv.status, ["Tired", '“race fatigue”', '„race fatigue‟']);
+    assert.deepEqual(r.unparsed.map(x => x.line), ['status - "race fatigue" converted to rested']);
+});
+
+test("status conversion explanations cannot swallow another list member", () => {
+    const s = emptyState();
+    s.inv.status = ["Tired", "Inspired"];
+    const r = run(s, "Inventory:\n- status - Tired converted to rested; Inspired; Unknown");
+    assert.deepEqual(r.state.inv.status, []);
+    assert.deepEqual(r.unparsed, []);
+});
+
+test("ambiguous full status names never fall back to a shorter conversion prefix", () => {
+    const s = emptyState();
+    s.inv.status = ["Tired converted to “rested”", "Tired converted to „rested‟", "Tired"];
+    const line = 'status - Tired converted to "rested"';
+    const r = run(s, `Inventory:\n- ${line}`);
+    assert.deepEqual(r.state.inv.status, s.inv.status);
+    assert.deepEqual(r.unparsed, [{ section: "Inventory", line }]);
+});
+
+test("the labelled World EVENT aftermath form matches only the rolled event", () => {
+    const config = { ...C, dice: { fate: { a: 10, b: 1, c: 5 }, world: 3 }, sectionConfig: { ...C.sectionConfig, worldsim: { ...C.sectionConfig.worldsim, duo: [{ from: 1, to: 20, name: "CONFLICT", text: "a dispute" }] } } };
+    const s = emptyState();
+    s.fate.owed = ["unrelated debt"];
+    const text = "Bryce's judging-authority appeal vs the pack tribunal went public on the main dock mid-race, ended by Gilles's three-word verdict";
+    const line = `World EVENT landed as aftermath: CONFLICT — ${text}`;
+    const r = postTurn(s, ch(`Fate:\n- ${line}`), config);
+    assert.deepEqual(r.unparsed, []);
+    assert.deepEqual(r.state.fate.residue, [`CONFLICT — ${text}`]);
+    assert.deepEqual(r.state.fate.world, []);
+    assert.deepEqual(r.state.fate.owed, s.fate.owed);
+    const legacy = parseChanges(`<Story_Ledger>\nFate:\n- ${line}\n</Story_Ledger>`);
+    const tagged = postTurn(s, legacy, config);
+    assert.deepEqual(tagged.state.fate.residue, []);
+    assert.deepEqual(tagged.unparsed, [{ section: "Fate", line }]);
+    for (const bad of ["World EVENT landed as aftermath: ARRIVAL — a cousin", "World EVENT landed as aftermath: CONFLICT —", "World EVENT landed as aftermath: CONFLICT", "World EVENT landed as aftermath: CONFLICTING — a dispute"]) {
+        const refused = postTurn(s, ch(`Fate:\n- ${bad}`), config);
+        assert.deepEqual(refused.unparsed, [{ section: "Fate", line: bad }]);
+        assert.deepEqual(refused.state.fate.residue, []);
+    }
+    for (const guarded of [{ ...config, sections: { worldsim: false } }, { ...config, fudges: { source: "WEIGHTED" } }]) {
+        const refused = postTurn(s, ch(`Fate:\n- ${line}`), guarded);
+        assert.deepEqual(refused.unparsed, [{ section: "Fate", line }]);
+        assert.deepEqual(refused.state.fate.residue, []);
     }
 });

@@ -40,6 +40,10 @@ function relationRows(state, config) {
     }
     for (const [who, self] of Object.entries(state.rel.selves)) rows.push(`- <b>${esc(who)}</b> | Φ ${self.phi}·${self.acc}`);
     for (const [k, note] of Object.entries(state.rel.awaiting || {})) rows.push(`- <b>${AWAITING}: ${esc(k.replace("→", " → "))}</b> | ${note ? esc(note) : "—"}`);
+    for (const p of state.rel.pending || []) {
+        const detail = p.kind === "note" ? `note: ${esc(p.text)}` : `${p.acc || p.axis} +${p.amount} | reason: ${esc(p.reason || "")}`;
+        rows.push(`- <b>Pending ${p.kind}: ${esc(p.from)} → ${esc(p.to)}</b> | turn ${p.ct} | ${detail}`);
+    }
     return rows;
 }
 
@@ -120,12 +124,40 @@ function parseScene(rows, base, errors) {
 }
 
 function parseRelations(rows, base, prev, config, errors) {
-    const pairs = {}, selves = {}, awaiting = {};
+    const pairs = {}, selves = {}, awaiting = {}, pending = [];
+    let pendingError = false;
     for (const row of rows) {
         const m = row.match(ROW);
         if (!m) { errors.push({ section: "RELATIONSHIPS", row }); continue; }
         const name = unesc(m[1]);
         const fields = m[2].replace(/^\|\s*/, "");
+        const saved = name.match(/^Pending (tick|direct|note):\s*(.+)$/);
+        if (!saved && /^Pending\b/.test(name)) {
+            pendingError = true; errors.push({ section: "RELATIONSHIPS", row }); continue;
+        }
+        if (saved) {
+            const arrow = saved[2].lastIndexOf(" → ");
+            const parts = fields.split(/\s*\|\s*/);
+            const turn = parts[0].match(/^turn (\d+)$/);
+            const ct = turn ? Number(turn[1]) : 0;
+            const from = saved[2].slice(0, arrow).trim(), to = saved[2].slice(arrow + 3).trim();
+            const event = { ct, kind: saved[1], from, to };
+            let valid = arrow > 0 && Boolean(to) && ct > 0 && ct <= base.ct;
+            if (event.kind === "note") {
+                const note = parts[1]?.match(/^note:\s*(\S.*)$/);
+                valid &&= parts.length === 2 && Boolean(note);
+                if (note) event.text = unesc(note[1]);
+            } else {
+                const value = parts[1]?.match(/^([A-Za-z]{1,3}) \+(\d+)$/);
+                const reason = parts[2]?.match(/^reason:\s*(.*)$/);
+                valid &&= parts.length === 3 && Boolean(value && reason) && config.axes.some(a => a.key === value?.[1]) && Number(value?.[2]) > 0;
+                if (value) { event[event.kind === "tick" ? "acc" : "axis"] = value[1]; event.amount = Number(value[2]); }
+                if (reason) event.reason = unesc(reason[1]);
+            }
+            if (valid) pending.push(event);
+            else { pendingError = true; errors.push({ section: "RELATIONSHIPS", row }); }
+            continue;
+        }
         if (name === AWAITING) {   // the first build's one-row form: "Awaiting NEW | A → B · C → D"
             for (const k of fields.split(/\s+·\s+/).map(x => unesc(x).trim()).filter(Boolean)) awaiting[k.replace(/\s*→\s*/, "→")] = "";
             continue;
@@ -158,7 +190,8 @@ function parseRelations(rows, base, prev, config, errors) {
             }
         }
     }
-    base.rel = { pairs, selves, awaiting };
+    const savedPending = pendingError && prev?.rel?.pending ? clone(prev.rel.pending) : pending;
+    base.rel = { pairs, selves, awaiting, ...(savedPending.length ? { pending: savedPending } : {}) };
 }
 
 /**

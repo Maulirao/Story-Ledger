@@ -25,3 +25,33 @@ test("+ / - / title / status / mods lines apply; removing an unknown item is unp
     assert.deepEqual(r.state.inv.titles, []);
     assert.deepEqual(r.unparsed, [{ section: "Inventory", line: "- lantern" }]);
 });
+
+test("the reported race status removals apply even when a condition is already absent", () => {
+    const s = emptyState();
+    s.inv.status = ["Jan arms/shoulders spent after warm-up lap (stacks with -2 legs for race)", "soaked, at dock mark, race start, dive pending"];
+    const changes = ch(`Inventory:
+- status - legs spent (-2 for Buoy Race)
+- status - Jan arms/shoulders spent after warm-up lap (stacks with -2 legs for race)
+- status + post-race spent (arms and shoulders drained, race swum honest)`);
+    const first = postTurn(s, changes, C);
+    assert.deepEqual(first.unparsed, []);
+    assert.deepEqual(first.state.inv.status, ["soaked, at dock mark, race start, dive pending", "post-race spent (arms and shoulders drained, race swum honest)"]);
+    const repeated = postTurn(first.state, changes, C);
+    assert.deepEqual(repeated.unparsed, []);
+    assert.deepEqual(repeated.state.inv, first.state.inv);
+    assert.deepEqual(s.inv.status, ["Jan arms/shoulders spent after warm-up lap (stacks with -2 legs for race)", "soaked, at dock mark, race start, dive pending"]);
+});
+
+test("absent status removal never deletes a differently worded existing condition", () => {
+    const s = emptyState();
+    s.inv.status = ["legs spent (-2 stands, race penalty live)"];
+    const r = postTurn(s, ch("Inventory:\n- status - legs spent (-2 for Buoy Race)"), C);
+    assert.deepEqual(r.unparsed, []);
+    assert.deepEqual(r.state.inv, s.inv);
+});
+
+test("tagged replies retain unknown-status warnings", () => {
+    const changes = parseChanges("<Story_Ledger>\nInventory:\n- status - Unknown\n</Story_Ledger>");
+    const r = postTurn(emptyState(), changes, C);
+    assert.deepEqual(r.unparsed, [{ section: "Inventory", line: "status - Unknown" }]);
+});

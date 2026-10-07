@@ -16,6 +16,7 @@
 
 import { ledgerLines } from "./normalize.js";
 import { headingOf } from "./headings.js";
+import { isCommandPlaceholder } from "./commands.js";
 
 export const NOTEBOOK_TAG = "Story_Ledger";
 // <Story_Ledger> is this extension's tag — deliberately not "<ledger>", which Ancient
@@ -126,6 +127,7 @@ export function notebookFromRecords(records) {
         }
         const h = headingOf(rec);
         if (h) { current = h.known ? h.name : null; continue; }
+        if (isCommandPlaceholder(rec.text, current === "Threads" ? THREAD_COMMANDS : current === "Proposed rules" ? PROPOSAL_COMMANDS : [])) continue;
         if (current === "Threads") {
             const t = rec.text.replace(/^\[T\]\s*/i, "");
             if (t && !isSkeleton(t)) threads.push(t);

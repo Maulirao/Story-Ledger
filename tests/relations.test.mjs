@@ -34,7 +34,7 @@ test("NEW creates a directional pair, clamped to 1..20, accumulators at 0; a sec
     assert.ok(r.log.some(l => /already exists/.test(l.text)));
 });
 
-test("ticks: several in one turn sum, capped at +2 per accumulator; non-positive and unknown-pair ticks are refused", () => {
+test("ticks sum and cap per turn; non-positive ticks are refused and unknown-pair ticks saved", () => {
     let s = withPair();
     const r = applyTurn(s, ev({ ticks: [
         { from: "Emilia", to: "Jan", acc: "E", amount: 2 }, { from: "Emilia", to: "Jan", acc: "E", amount: 2 },
@@ -45,7 +45,8 @@ test("ticks: several in one turn sum, capped at +2 per accumulator; non-positive
     assert.equal(P(r.state).acc.Ph, 1);
     assert.equal(P(r.state).acc.M, 0);
     assert.ok(r.log.some(l => /capped/.test(l.text)));
-    assert.ok(r.log.some(l => /Sofia → Jan.*no such pair/.test(l.text)));
+    assert.ok(r.log.some(l => l.kind === "queued" && /Sofia → Jan/.test(l.text)));
+    assert.deepEqual(r.state.pending, [{ ct: r.state.ct, kind: "tick", from: "Sofia", to: "Jan", acc: "Sg", amount: 1 }]);
 });
 
 test("conversion happens only on the axis's schedule turn and only at threshold; the accumulator resets", () => {

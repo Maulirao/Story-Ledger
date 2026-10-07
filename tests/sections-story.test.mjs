@@ -146,7 +146,7 @@ test("status members retain raw-precedence and partial success", () => {
     s.inv.status = ['"rope; burn"', "“rope; burn”", '"x"', "“x”"];
     const r = postTurn(s, ch("Inventory:\n- status - “x”; “rope&#59; burn”; Unknown"), C);
     assert.deepEqual(r.state.inv.status, ['"rope; burn"', '"x"']);
-    assert.deepEqual(r.unparsed, [{ section: "Inventory", line: "status - Unknown" }]);
+    assert.deepEqual(r.unparsed, []);
     const t = emptyState();
     t.inv.status = ["“Tired; Inspired”", "Tired", "Inspired"];
     assert.deepEqual(postTurn(t, ch("Inventory:\n- status - “Tired; Inspired”"), C).state.inv.status, ["Tired", "Inspired"]);

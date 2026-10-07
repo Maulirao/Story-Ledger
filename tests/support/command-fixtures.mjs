@@ -49,6 +49,21 @@ const awaits = (line, key) => ({
     },
 });
 
+// Valid changes awaiting a baseline have their own persisted bookkeeping.
+const queued = (line, key, event) => ({
+    line, awaiting: [key], pending: [event],
+    expect(r, base) {
+        clean(r);
+        assert.ok(r.log.some(l => l.kind === "queued"));
+        assert.equal(r.log.some(l => l.kind === "refused"), false);
+        assert.deepEqual(r.state.rel.pairs, base.state.rel.pairs);
+        assert.deepEqual(r.state.rel.selves, base.state.rel.selves);
+        assert.deepEqual(r.state.rel.awaiting, { ...base.state.rel.awaiting, [key]: "" });
+        assert.deepEqual(r.state.rel.pending, [{ ct: r.state.ct, ...event }]);
+        assert.deepEqual({ ...r.state, rel: null }, { ...base.state, rel: null });
+    },
+});
+
 // ── seeds (additive, so a group's seeds compose without overwriting). A seed that creates an
 // id takes `id`, which the mixed runs use to give each command its own (B1 → B3).
 
@@ -207,7 +222,7 @@ export const FIXTURES = {
             "Mara → Jan:",
             "Mara → Jan: E_acx +1 (he remembered her song)",
             "Mara → Jan: E_acc (he remembered her song)",
-            awaits("Mara → Nora: E_acc +1 (she waved)", "Mara→Nora"),
+            queued("Mara → Nora: E_acc +1 (she waved)", "Mara→Nora", { kind: "tick", from: "Mara", to: "Nora", acc: "E", amount: 1, reason: "she waved" }),
         ],
     },
     "rel.phi": {
@@ -231,7 +246,7 @@ export const FIXTURES = {
         malformed: [
             "DIRECT Mara → Jan:",
             "DIRECT Mara → Jan: E (he pulled her from the river)",
-            awaits("DIRECT Bo → Jan: E +1 (she waved)", "Bo→Jan"),
+            queued("DIRECT Bo → Jan: E +1 (she waved)", "Bo→Jan", { kind: "direct", from: "Bo", to: "Jan", axis: "E", amount: 1, reason: "she waved" }),
         ],
     },
     "rel.new": {
@@ -428,7 +443,8 @@ export const FIXTURES = {
             clean(r);
             assert.deepEqual(r.state.inv.status, []);
         },
-        malformed: ["status - Unknown", "status -", "stauts - Tired"],
+        valid: ["status - Unknown"],
+        malformed: ["status -", "stauts - Tired"],
     },
     // "mods:" clears the modifiers: a valid form, not an empty-value rejection
     "inv.mods": {

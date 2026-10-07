@@ -126,6 +126,23 @@ import * as promptModule from "../src/model/prompt.js";
 import * as relationsModule from "../src/model/relations.js";
 import * as notebookModule from "../src/model/notebook.js";
 import { SECTIONS } from "../src/model/sections/registry.js";
+import { commandTemplate } from "../src/model/commands.js";
+
+test("template framing produces readable concrete commands from both first-run warnings", () => {
+    const body = [
+        ...commandTemplate("Threads", [{ form: "+ [T] FOOT MASSAGE DEBT: Jan owes Emilia a foot massage tonight" }]),
+        ...commandTemplate("Relationships", [{ form: 'Emilia → Jan: L_acc +1 (his honest full effort) | E_acc +1 (carried into the water)' }]),
+        ...commandTemplate("Locations", [{ form: "Emilia @ main dock, ladder edge" }]),
+        ...commandTemplate("Quests", [{ form: "Q1 progress: race complete, Emilia's title secured" }]),
+    ].join("\n");
+    const ch = parseChanges(comment(body));
+    assert.deepEqual(ch.unparsed, []);
+    assert.deepEqual(ch.relations.unparsed, []);
+    assert.deepEqual(ch.threads.add, ["FOOT MASSAGE DEBT: Jan owes Emilia a foot massage tonight"]);
+    assert.deepEqual(ch.relations.ticks.map(t => [t.from, t.to, t.acc, t.amount]), [["Emilia", "Jan", "L", 1], ["Emilia", "Jan", "E", 1]]);
+    assert.deepEqual(ch.sections.Locations, ["Emilia @ main dock, ladder edge"]);
+    assert.deepEqual(ch.sections.Quests, ["Q1 progress: race complete, Emilia's title secured"]);
+});
 
 const STYLES = ["dnd", "arrow"];
 const ctxFor = checkStyle => ({ config: { sections: {}, checkStyle }, checkStyle, sections: {} });
@@ -144,13 +161,13 @@ test("every template line is one declared command", () => {
         const ctx = ctxFor(checkStyle);
         const all = allCommands();
         const forms = all.map(c => resolve(c.form, ctx));
-        const lines = buildTemplate({ sections: {}, checkStyle }).split("\n").filter(l => l.startsWith("- ["));
+        const lines = buildTemplate({ sections: {}, checkStyle }).split("\n").filter(l => l.startsWith("- "));
         assert.ok(lines.length > 0);
-        for (const line of lines) assert.equal(forms.filter(f => `- [${f}]` === line).length, 1, `${checkStyle}: ${line}`);
+        for (const line of lines) assert.equal(forms.filter(f => `- ${f}` === line).length, 1, `${checkStyle}: ${line}`);
         // and every bulleted command is taught, once
         const core = new Set((promptModule.CORE_COMMANDS || []).map(c => c.id));
         for (const c of all.filter(x => !core.has(x.id))) {
-            assert.equal(lines.filter(l => l === `- [${resolve(c.form, ctx)}]`).length, 1, `${checkStyle}: ${c.id}`);
+            assert.equal(lines.filter(l => l === `- ${resolve(c.form, ctx)}`).length, 1, `${checkStyle}: ${c.id}`);
         }
     }
 });

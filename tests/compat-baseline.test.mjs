@@ -37,7 +37,7 @@ test("a Relationships tick reason keeps its curly quotes", () => {
     const got = tagged("Relationships:\n- Emilia → Jan: E_acc +2 (he said “hello there”)");
     assert.deepEqual(got.relations.ticks, [{ from: "Emilia", to: "Jan", acc: "E", amount: 2, reason: "he said “hello there”" }]);
     const { state, unparsed } = postTurn(emptyState(), got, C);
-    assert.deepEqual(state.rel, { pairs: {}, selves: {}, awaiting: { "Emilia→Jan": "" } });
+    assert.deepEqual(state.rel, { pairs: {}, selves: {}, awaiting: { "Emilia→Jan": "" }, pending: [{ ct: 1, kind: "tick", ...got.relations.ticks[0] }] });
     assert.deepEqual(unparsed, []);
 });
 

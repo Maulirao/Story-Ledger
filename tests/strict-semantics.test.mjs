@@ -34,14 +34,14 @@ test("a World Sim landed report for an event other than the rolled one stays unp
     assert.deepEqual(r.state, run(emptyState(), "", config).state);
 });
 
-test("a tick on a pair awaiting its NEW line is refused and keeps the exact awaiting key", () => {
+test("a tick awaiting NEW is saved without inventing a baseline and keeps the import note", () => {
     let s = run(emptyState(), list("Relationships", [`NEW Jan → Mara: ${AXES} | Φ 2 (old friends)`])).state;
     assert.ok(s.rel.pairs["Jan→Mara"]);
     s = { ...s, rel: { ...s.rel, awaiting: { "Mara→Jan": "BOND 18" } } };
     const r = run(s, list("Relationships", ["Mara → Jan: E_acc +1 (helped)"]));
     const refused = r.log.filter(l => l.kind === "refused");
-    assert.equal(refused.length, 1);
-    assert.match(refused[0].text, /Mara → Jan E_acc refused: no such pair/);
+    assert.equal(refused.length, 0);
+    assert.deepEqual(r.state.rel.pending, [{ ct: r.state.ct, kind: "tick", from: "Mara", to: "Jan", acc: "E", amount: 1, reason: "helped" }]);
     assert.deepEqual(r.state.rel.pairs, run(s, "").state.rel.pairs);
     assert.equal(r.state.rel.pairs["Mara→Jan"], undefined);
     assert.deepEqual(r.state.rel.awaiting, { "Mara→Jan": "BOND 18" });
@@ -78,19 +78,19 @@ test("ambition +1 with no matching ambition stays unparsed", () => {
     assert.deepEqual(r.state, run(s, "").state);
 });
 
-test("removing an item, title or status not held stays unparsed; a status list reports only the unknown member", () => {
+test("unknown item and title removals stay unparsed; absent status removals are harmless", () => {
     const s = emptyState();
     s.inv.items = ["key"];
     s.inv.titles = ["Captain"];
     s.inv.status = ["Tired", "Injured"];
     const lines = ["- lantern", "title - Duke", "status - Unknown"];
     const r = run(s, list("Inventory", lines));
-    assert.deepEqual(r.unparsed, unread("Inventory", lines));
+    assert.deepEqual(r.unparsed, unread("Inventory", lines.slice(0, 2)));
     assert.deepEqual(r.state.inv, s.inv);
     assert.deepEqual(r.state, run(s, "").state);
     const partial = run(s, list("Inventory", ["status - Tired; Unknown"]));
     assert.deepEqual(partial.state.inv.status, ["Injured"]);
-    assert.deepEqual(partial.unparsed, [{ section: "Inventory", line: "status - Unknown" }]);
+    assert.deepEqual(partial.unparsed, []);
 });
 
 test("fire, lock, unlock and prune for a pruned or unknown bullet stay unparsed", () => {

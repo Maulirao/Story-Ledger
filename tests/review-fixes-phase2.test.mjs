@@ -25,14 +25,23 @@ test("done keeps what the person knows; done after new keeps the new agenda", ()
 });
 
 test("echoed template placeholders are unparsed, never stored", () => {
-    const tpl = buildTemplate({ sections: {} });
-    const body = tpl.slice(tpl.indexOf("<!-- Story_Ledger") + "<!-- Story_Ledger".length, tpl.lastIndexOf("-->"));
-    const r = postTurn(emptyState(), parseChanges(`x\n<!-- Story_Ledger${body}-->`), C);
-    assert.deepEqual(r.state.locations, {});
-    assert.deepEqual(r.state.agendas, {});
-    assert.deepEqual(r.state.last, []);
-    assert.deepEqual(r.state.perTurn.thoughts, []);
-    assert.ok(r.unparsed.length + parseChanges(`x\n<!-- Story_Ledger${body}-->`).unparsed.length > 0);
+    for (const checkStyle of ["dnd", "arrow"]) {
+        const tpl = buildTemplate({ sections: {}, checkStyle });
+        const body = tpl.slice(tpl.indexOf("<!-- Story_Ledger") + "<!-- Story_Ledger".length, tpl.lastIndexOf("-->"));
+        const changes = parseChanges(`x\n<!-- Story_Ledger${body}-->`);
+        const r = postTurn(emptyState(), changes, C);
+        assert.deepEqual(r.state.locations, {});
+        assert.deepEqual(r.state.agendas, {});
+        assert.deepEqual(r.state.factions, {});
+        assert.deepEqual(r.state.inv, { items: [], titles: [], status: [], mods: "" });
+        assert.deepEqual(r.state.rel, { pairs: {}, selves: {}, awaiting: {} });
+        assert.deepEqual(r.state.threads, []);
+        assert.deepEqual(r.state.last, []);
+        assert.deepEqual(r.state.perTurn.thoughts, []);
+        assert.deepEqual(r.state.perTurn.checks.lines, []);
+        assert.deepEqual(changes.proposals, []);
+        assert.ok(r.unparsed.length + changes.unparsed.length > 0);
+    }
 });
 
 test("a hand-added quest id is never handed out again", () => {
@@ -41,6 +50,25 @@ test("a hand-added quest id is never handed out again", () => {
     const { state } = postTurn(s, ch("Quests:\n- + Side: b"), C);
     assert.deepEqual(state.quests.map(q => q.id), ["Q1", "Q2"]);
     assert.equal(nextId({ ids: { Q: 1 } }, "Q", ["Q7"]), "Q8");
+});
+
+test("spacing around a placeholder command's colon never creates a rule proposal", () => {
+    const changes = ch("Proposed rules:\n- add : rule\n- add: Boats need lights at night");
+    assert.deepEqual(changes.proposals, [{ op: "add", target: null, text: "Boats need lights at night" }]);
+    assert.ok(changes.unparsed.some(x => x.line === "add : rule"));
+});
+
+test("placeholder relationships with alternate arrows or colon spacing never queue a pair", () => {
+    for (const line of [
+        "A → B : E_acc +1 (reason) | M_acc +2 (reason)",
+        "A -> B: E_acc +1 (reason) | M_acc +2 (reason)",
+        "A<->B: E_acc +1 (reason) | M_acc +2 (reason)",
+    ]) {
+        const changes = ch(`Relationships:\n- ${line}`);
+        const r = postTurn(emptyState(), changes, C);
+        assert.deepEqual(r.state.rel, { pairs: {}, selves: {}, awaiting: {} }, line);
+        assert.deepEqual(changes.relations.unparsed, [line]);
+    }
 });
 
 test("with Scene off, Present is still asked for and kept while Agendas/Cast need it", () => {

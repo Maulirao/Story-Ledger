@@ -183,5 +183,5 @@ test("the prompt lists active bullets with their state; the template offers the 
     const s = emptyState();
     s.chekhov.bullets = [bullet("B2", { desc: "the letter", weight: 2, age: 6, hot: true })];
     assert.match(renderStatePrompt(s, { notebook: emptyNotebook(), config: C, sections: {} }), /B2 the letter · w2 · age 6\/12 · hot · eligible/);
-    assert.match(buildTemplate(C), /Chekhov:\n- \[load: /);
+    assert.match(buildTemplate(C), /Chekhov:\n- load: /);
 });

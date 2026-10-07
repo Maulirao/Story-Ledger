@@ -106,7 +106,7 @@ export const CORE_COMMANDS = [
 ];
 const coreLine = id => CORE_COMMANDS.find(c => c.id === id).form;
 
-const TEMPLATE_HEAD = `At the very end of your reply, after the prose, write exactly one ledger comment as below. Report only what changed in this reply — the ledger keeps everything else and writes the full state block itself; never write a state block, <internal_states> or GFX markers yourself. Omit any section where nothing changed. The reader never sees the comment; never write "-->" inside it.`;
+const TEMPLATE_HEAD = `At the very end of your reply, after the prose, write exactly one ledger comment as below. Report only what changed in this reply — the ledger keeps everything else and writes the full state block itself; never write a state block, <internal_states> or GFX markers yourself. Replace placeholders with actual names, IDs and values. Use one command per line and keep its command syntax; write completed commands without enclosing square brackets, keeping literal [T] tags. Omit any section where nothing changed. The reader never sees the comment; never write "-->" inside it.`;
 
 /** The comment template for the sections that are switched on, in block order. */
 export function buildTemplate(config = {}) {
@@ -144,7 +144,11 @@ export function renderTurnFacts(state, config = {}) {
     const awaiting = (config.sections || {}).relationships !== false ? Object.entries(state.rel.awaiting || {}) : [];
     if (awaiting.length) {
         const list = awaiting.map(([k, note]) => `${k.replace("→", " → ")}${note ? ` (the previous preset recorded: ${note})` : ""}`);
-        facts.push(`These relationships have no NEW line yet: ${list.join("; ")}. Write a NEW line for each in this reply, calibrated from that record and the story so far — a high BOND or affection means fondness on the axes that fit, Grudge or hostility means friction. Ticks on them are refused until it exists.`);
+        facts.push(`These relationships have no NEW line yet: ${list.join("; ")}. Write a complete NEW line for each in this reply, calibrated from that record and the story before the queued interactions — a high BOND or affection means fondness on the axes that fit, Grudge or hostility means friction. Their changes are saved and will apply automatically once NEW exists; do not report those saved changes again.`);
+        for (const p of state.rel.pending || []) {
+            const change = p.kind === "tick" ? `${p.acc}_acc +${p.amount}` : p.kind === "direct" ? `DIRECT ${p.axis} +${p.amount}` : `NOTE ${p.text}`;
+            facts.push(`Saved turn ${p.ct}: ${p.from} → ${p.to}: ${change}${p.reason ? ` (${p.reason})` : ""}.`);
+        }
     }
     if (!facts.length) return "";
     const head = [`Turn ${state.ct + 1}`, state.scene.now, state.scene.present.length ? `present: ${state.scene.present.join(", ")}` : ""].filter(Boolean).join(" · ");

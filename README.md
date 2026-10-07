@@ -101,6 +101,23 @@ node tools/presets/convert.mjs tools/presets/recipes/rf-glm-bolt.json           
 node tools/presets/convert.mjs tools/presets/recipes/rf-glm-bolt.json --write    # write the copy
 ```
 
+In ledger comments, `status - condition` safely clears a condition even if it is
+already absent. Ambiguous names and malformed commands still produce notices.
+Item and title removals still require a matching entry. Install updates and use ↻
+to rebuild an existing reply with the current parser.
+
+Relationship ticks, DIRECT shifts and NOTE changes written before `NEW` are saved
+in the reply's Relationships section. The next prompt requests the missing baseline
+and shows the saved interactions. Once a complete baseline arrives, those changes
+apply once; ticks retain the cap for each original turn. Conversion and decay run
+at the turn of initialization, without rewriting earlier turns. Swipes and rebuilds
+use their own preceding snapshot, so discarded alternatives do not add changes.
+
+Automatic placement adds a short system reminder at chat depth zero for the ledger
+comment, enabled NPC Thoughts, and missing relationship baselines. Macro placement
+includes that reminder in `{{story_ledger}}`. This improves prompt emphasis; it cannot
+guarantee that every provider will include the requested content.
+
 ## Tests
 
 ```

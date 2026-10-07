@@ -55,6 +55,19 @@ function oweResidue(fate, text) {
     if (text) fate.owed.push(String(text).trim());
 }
 
+function realizedWorldAftermath(line, eventName, normalized) {
+    if (!eventName) return null;
+    // A copied template label is harmless only when its payload identifies the rolled event.
+    const labelled = normalized && line.match(/^World\s+EVENT\s+landed\s+as\s+aftermath\s*:\s*(.+)$/i);
+    if (labelled) {
+        const payload = labelled[1];
+        if (payload.slice(0, eventName.length).toLowerCase() !== eventName.toLowerCase()) return null;
+        return payload.slice(eventName.length).match(/^\s+[—–-]\s+(\S.*)$/)?.[1].trim() || null;
+    }
+    const m = line.match(/^World\s+(.+?)\s+landed\s+as\s+(\S.*)$/i);
+    return m && m[1].trim().toLowerCase() === eventName.trim().toLowerCase() ? m[2].trim() : null;
+}
+
 function addWorld(fate, state, prox, desc, c, ctx) {
     const id = nextId(state, "W", fate.world.map(item => item.id));
     fate.world.push({ id, desc, prox, reach: reachFor(prox, c), age: 0 });
@@ -179,6 +192,7 @@ export default {
         const closed = ctx.normalizedChanges ? closedForm : s => s;
         for (const raw of lines) {
             const line = String(raw).trim();
+            const worldAftermath = realizedWorldAftermath(line, ctx.turn.worldsim?.name, ctx.normalizedChanges);
             let m, item;
             if ((m = line.match(/^pursuit\s*:\s*(.+)$/i))) {
                 fate.state = "THREAD"; fate.pursuit = m[1].trim(); fate.ts = 0;
@@ -206,10 +220,9 @@ export default {
             } else if ((m = line.match(/^residue\s*:\s*(.+)$/i))) {
                 appendResidue(fate, m[1].trim(), ctx);
                 if (fate.owed.length) fate.owed.shift();
-            } else if ((m = line.match(/^World\s+(.+?)\s+landed\s+as\s+(\S.*)$/i)) && outcome.source === "TRUE"
-                && ctx.turn.worldsim && m[1].trim().toLowerCase() === String(ctx.turn.worldsim.name).trim().toLowerCase()) {
+            } else if (worldAftermath !== null && outcome.source === "TRUE" && ctx.turn.worldsim) {
                 // A realized World Sim event is aftermath, not a new tracked happening or payment of unrelated debt.
-                appendResidue(fate, `${ctx.turn.worldsim.name} — ${m[2].trim()}`, ctx);
+                appendResidue(fate, `${ctx.turn.worldsim.name} — ${worldAftermath}`, ctx);
             } else if ((m = line.match(/^World\s*:\s*(.+)$/i))) {
                 worldLines.push(m[1]);   // a World line written inside the Fate list
             } else if (/^(ELSEWHERE|REGIONAL|LOCAL)\s*:/i.test(line)) {
@@ -329,7 +342,7 @@ export default {
         return [
             "Fate & Routine: open a THREAD pursuit for a story-bearing question; close or park it with the consequence when answered or set aside. Defer a pursuit only when its result cannot land yet; `resolve D#` records that it was paid off.",
             "A WILL is a concrete thing someone wants. Track meaningful progress with `ambition +1`; progress never falls from Fate, and 5/5 becomes a LOCAL happening with residue owed.",
-            "For world news, keep the reported channel recognizable, allow a plausible in-world distortion, and scale reactions to the event's actual reach. Keep ordinary scenes ordinary when Fate says AMBIENT. The ledger already records the turn's tier and source; omit Fate when no pursuit, deferred item, ambition or residue changed, rather than writing an AMBIENT/MINOR/MAJOR recap. Omit unchanged World entries instead of repeating their proximity or W#. For a realized World Sim event, write `World EVENT landed as aftermath` under Fate using the announced event name; this records its residue without creating a new World entry.",
+            "For world news, keep the reported channel recognizable, allow a plausible in-world distortion, and scale reactions to the event's actual reach. Keep ordinary scenes ordinary when Fate says AMBIENT. The ledger already records the turn's tier and source; omit Fate when no pursuit, deferred item, ambition or residue changed, rather than writing an AMBIENT/MINOR/MAJOR recap. Omit unchanged World entries instead of repeating their proximity or W#. For a realized World Sim event, write `World EVENT landed as aftermath` under Fate using the announced event name; replace EVENT with that name and aftermath with the actual consequence, e.g. `World CONFLICT landed as the tribunal rejected the appeal`. This records its residue without creating a new World entry.",
             `A twice-deferred item cannot be deferred again. Pursuits at ts ${cfg.pursuitLimit ?? 8} must close or park. Record a concise residue line for each owed aftermath; do not erase old residue except by the configured tail.`,
         ].join("\n");
     },

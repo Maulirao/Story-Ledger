@@ -21,8 +21,8 @@ const ctxOf = style => ({ checkStyle: style || "dnd", config: { sections: {} }, 
 const ran = new Map(INVENTORY.map(c => [c.id, new Set()]));
 
 /**
- * Malformed lines for a command: the fixture's own, plus the echoed skeleton where the
- * public template emits it. A core field's template line is its placeholder, which is
+ * Malformed lines for a command: the fixture's own, plus a square-wrapped echo even
+ * though the public template no longer teaches that wrapper. A core field's template line is its placeholder, which is
  * skipped silently today.
  */
 function malformedOf(command, fixture, style) {
@@ -32,7 +32,7 @@ function malformedOf(command, fixture, style) {
     if (fixture.heading === null) {
         const form = formOf(command, ctx);
         if (template.includes(form)) out.push({ line: form, expect: (r, base) => { assert.deepEqual(r.unparsed, []); assert.deepEqual(r.state, base.state); } });
-    } else if (template.includes(`- ${skeleton(command, ctx)}`)) out.push(skeleton(command, ctx));
+    } else out.push(skeleton(command, ctx));
     return out;
 }
 
@@ -122,7 +122,7 @@ const FREE_LINES = new Set(["Last", "Check"]);
 // a group's lines: each valid example, then its malformed lines beside it
 function groupLines(heading, members) {
     const ctx = ctxOf(null);
-    const valid = [], mixed = [], rejected = [], awaiting = [];
+    const valid = [], mixed = [], rejected = [], awaiting = [], pending = [];
     for (const { c, f, rename } of members) {
         const line = canonicalLine(rename(exampleOf(c, ctx)), heading);
         valid.push(line);
@@ -132,6 +132,7 @@ function groupLines(heading, members) {
             mixed.push(canonicalLine(text, heading));
             if (typeof m === "string") rejected.push(text);
             awaiting.push(...(m.awaiting || []));
+            pending.push(...(m.pending || []));
         }
     }
     // a heading-looking empty field must not open a section and swallow later lines
@@ -139,17 +140,19 @@ function groupLines(heading, members) {
     if (heading !== null && !FREE_LINES.has(heading)) { mixed.push("- Mara:"); rejected.push("Mara:"); }
     mixed.push(...valid.slice(0, 1));
     valid.push(...valid.slice(0, 1));
-    return { valid, mixed, rejected, awaiting };
+    return { valid, mixed, rejected, awaiting, pending };
 }
 
 // the valid-only run applies every line cleanly; then the mixed run's target state and notebook
 // equal it, except the semantic awaiting bookkeeping its refusals declare
-function assertMixed(validRun, mixedRun, awaiting) {
+function assertMixed(validRun, mixedRun, awaiting, pending) {
     assert.deepEqual([validRun.unparsed, validRun.relationUnparsed, validRun.diagnostics], [[], [], []], "valid-only run is not clean");
     assert.deepEqual(validRun.log.filter(l => l.kind === "refused"), [], "valid-only run has refusals");
-    const target = r => ({ ...r.state, rel: { ...r.state.rel, awaiting: null } });
+    const target = r => ({ ...r.state, rel: { ...r.state.rel, awaiting: null, pending: null } });
     assert.deepEqual(target(mixedRun), target(validRun));
     assert.deepEqual(mixedRun.state.rel.awaiting, { ...validRun.state.rel.awaiting, ...Object.fromEntries(awaiting.map(k => [k, ""])) });
+    const sort = events => [...events].sort((a, b) => `${a.kind}|${a.from}|${a.to}`.localeCompare(`${b.kind}|${b.from}|${b.to}`));
+    assert.deepEqual(sort(mixedRun.state.rel.pending || []), sort([...(validRun.state.rel.pending || []), ...pending.map(p => ({ ct: mixedRun.state.ct, ...p }))]));
     assert.deepEqual(mixedRun.notebook && mixedRun.notebook.inbox, validRun.notebook && validRun.notebook.inbox);
 }
 
@@ -158,10 +161,10 @@ for (const g of groups) {
     test(`mixed: ${name}`, () => {
         const members = isolated(g.commands);
         const fx = composite(members, g.heading);
-        const { valid, mixed, rejected, awaiting } = groupLines(g.heading, members);
+        const { valid, mixed, rejected, awaiting, pending } = groupLines(g.heading, members);
         const a = runFixture(fx, valid);
         const b = runFixture(fx, mixed);
-        assertMixed(a, b, awaiting);
+        assertMixed(a, b, awaiting, pending);
         for (const line of rejected) assert.ok(mentions(b, line, g.heading), `not reported: ${line}`);
     });
 }
@@ -176,7 +179,7 @@ test("mixed: every section in one reply", () => {
     const body = pick => parts.map(p => commentBody(p.g.heading === null ? null : `${p.g.heading}:`, p[pick])).join("\n");
     const a = runComment(fx, body("valid"));
     const b = runComment(fx, body("mixed"));
-    assertMixed(a, b, parts.flatMap(p => p.awaiting));
+    assertMixed(a, b, parts.flatMap(p => p.awaiting), parts.flatMap(p => p.pending));
     for (const { g, rejected } of parts) for (const line of rejected) assert.ok(mentions(b, line, g.heading), `not reported: ${g.heading}: ${line}`);
 });
 

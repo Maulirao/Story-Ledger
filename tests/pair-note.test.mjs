@@ -38,13 +38,14 @@ test("a pair without a description keeps the computed labels", () => {
     assert.equal(back.state.rel.pairs["Mara→Jan"].note || "", "");
 });
 
-test("NOTE revises the description; on a missing pair it is refused", () => {
+test("NOTE revises the description; on a missing pair it is saved", () => {
     let r = run(emptyState(), `Relationships:\n- ${NEW_MARA}`);
     r = run(r.state, "Relationships:\n- NOTE Mara → Jan: proud of him, worried about the race");
     assert.equal(r.state.rel.pairs["Mara→Jan"].note, "proud of him, worried about the race");
     assert.ok(!r.log.some(l => l.kind === "refused"));
     r = run(r.state, "Relationships:\n- NOTE Tom → Jan: a stranger");
-    assert.ok(r.log.some(l => l.kind === "refused" && /Tom → Jan/.test(l.text)));
+    assert.ok(r.log.some(l => l.kind === "queued" && /Tom → Jan/.test(l.text)));
+    assert.deepEqual(r.state.rel.pending, [{ ct: r.state.ct, kind: "note", from: "Tom", to: "Jan", text: "a stranger" }]);
 });
 
 test("ticks keep the description", () => {

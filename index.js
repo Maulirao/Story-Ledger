@@ -20,6 +20,7 @@ import { renderBlock, BLOCK_MARK } from "./src/model/block.js";
 import { setSend } from "./src/model/sections/quests.js";
 import { postTurn, latestState, initialState, writeBlockInto, stripBlocks, generationBase, rewriteNewestSection, withClockOverride, unreadNotices } from "./src/model/turn.js";
 import { renderStatePrompt, needsHandover, stripForPrompt, stripPromptText, buildTemplate, renderRules, renderTurnFacts, buildHandover } from "./src/model/prompt.js";
+import { buildGenerationReminder } from "./src/model/generation-reminder.js";
 import { importForeign, proposeImportedRules } from "./src/model/import/index.js";
 import { SECTIONS } from "./src/model/sections/registry.js";
 import { rollTurnDice, withFudges, fudgesForGeneration, diceFromBlock, parseDiceCommand, parseForceCommand } from "./src/model/dice.js";
@@ -32,6 +33,7 @@ const THEMES = { frankenstein: frankensteinTheme, sola: solaTheme, megumin: megu
 
 const NAME = "storyLedger";
 const PROMPT_KEY = "story_ledger";
+const REMINDER_KEY = "story_ledger_reminder";
 const IN_CHAT = 1;
 const ctx = () => SillyTavern.getContext();
 
@@ -118,7 +120,7 @@ function blockFor(state) {
 // trimmed the blocks out of that copy. `base` = how many messages this generation builds on.
 function buildInjection(type = "normal") {
     const s = settings();
-    if (!s.enabled) return "";
+    if (!s.enabled || SKIP_TYPES.has(type)) { lastReminder = ""; return ""; }
     const raw = ctx().chat || [];
     const c = raw.slice(0, generationBase(raw.length, type));
     const index = generationBase(raw.length, type);
@@ -151,10 +153,21 @@ function buildInjection(type = "normal") {
     parts.push(buildTemplate(config));
     const facts = renderTurnFacts(state, config);
     if (facts) parts.push(facts);
-    return ctx().substituteParams(`<story_ledger>\n${parts.join("\n\n")}\n</story_ledger>`);
+    lastReminder = ctx().substituteParams(buildGenerationReminder(state, config, type));
+    const reminder = s.placement === "macro" ? `\n\n${lastReminder}` : "";
+    return ctx().substituteParams(`<story_ledger>\n${parts.join("\n\n")}\n</story_ledger>${reminder}`);
 }
 
 let lastInjection = "";
+let lastReminder = "";
+let lastGenerationType = "normal";
+
+function clearInjection() {
+    lastInjection = "";
+    lastReminder = "";
+    ctx().setExtensionPrompt(PROMPT_KEY, "", IN_CHAT, 1);
+    ctx().setExtensionPrompt(REMINDER_KEY, "", IN_CHAT, 0, false, 0);
+}
 // This generation's dice and fudge controls, tied to its chat/reply index. A continuation
 // reads the existing block's dice; swipes reuse the same reply's armed fudges.
 let pendingTurn = null;
@@ -170,6 +183,7 @@ const SKIP_TYPES = new Set(["quiet", "impersonate", "first_message"]);
 globalThis.storyLedgerInterceptor = async function (_chat, _contextSize, _abort, type) {
     try {
         const s = settings();
+        lastGenerationType = type || "normal";
         // Background generations (summaries, other extensions' tasks) get nothing.
         if (!SKIP_TYPES.has(type) && s.enabled) {
             const raw = ctx().chat || [];
@@ -187,12 +201,14 @@ globalThis.storyLedgerInterceptor = async function (_chat, _contextSize, _abort,
             const applied = withFudges(baseDice, lifecycle.active);
             pendingTurn = { chatId: chatId(), index, dice: applied.dice, fudges: lifecycle.active, fudged: applied.fudged };
         }
+        lastReminder = "";
         lastInjection = (SKIP_TYPES.has(type) || !s.enabled) ? "" : buildInjection(type);
         const auto = s.placement !== "macro" ? lastInjection : "";
         ctx().setExtensionPrompt(PROMPT_KEY, auto, IN_CHAT, Number(s.depth) || 0, false, Number(s.role) || 0);
+        ctx().setExtensionPrompt(REMINDER_KEY, s.placement !== "macro" ? lastReminder : "", IN_CHAT, 0, false, 0);
     } catch (e) {
         console.error("[Story Ledger] interceptor failed", e);
-        ctx().setExtensionPrompt(PROMPT_KEY, "", IN_CHAT, 1);
+        clearInjection();
     }
 };
 
@@ -596,6 +612,7 @@ export async function openLedgerPopup(startTab = "rules") {
     $root.on("change", "[data-set]", e => {
         const el = e.currentTarget, k = el.dataset.set;
         settings()[k] = el.type === "checkbox" ? el.checked : (el.type === "number" ? Number(el.value) : el.value);
+        if (k === "placement" || (k === "enabled" && !settings().enabled)) clearInjection();
         saveSettings();
         decorateAll();
     });
@@ -722,7 +739,7 @@ function init() {
     if (t.CHAT_CHANGED) c.eventSource.on(t.CHAT_CHANGED, () => { pendingTurn = null; });
     if (t.STREAM_TOKEN_RECEIVED) c.eventSource.on(t.STREAM_TOKEN_RECEIVED, () => hideStreamingLedger());
 
-    c.registerMacro("story_ledger", () => lastInjection || buildInjection());
+    c.registerMacro("story_ledger", () => lastInjection || buildInjection(lastGenerationType));
 
     $(document).on("click", ".sl-rebuild", e => {
         e.preventDefault(); e.stopPropagation();
