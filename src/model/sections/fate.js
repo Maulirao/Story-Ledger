@@ -9,6 +9,12 @@ import { nextId } from "../state.js";
 import { computeFate, reachFor } from "../fate-engine.js";
 import { commandTemplate } from "../commands.js";
 
+// W# entries are displayed in Fate; updates and escalations work under either heading.
+const WORLD_ENTRY_COMMANDS = [
+    { id: "world.update", form: "update W#: new development", example: "update W2: replacement part sourced; Thursday is now earliest", keywords: ["update"] },
+    { id: "world.escalate", form: "escalate W#: new development", example: "escalate W1: fuel shortage now reaches the neighbouring town", keywords: ["escalate"] },
+];
+
 const FATE_COMMANDS = [
     { id: "fate.pursuit", form: "pursuit: question", example: "pursuit: who set the boathouse fire?", keywords: ["pursuit"] },
     { id: "fate.close", form: "close: aftermath", example: "close: the arsonist fled town; the guild blames the union", keywords: ["close"] },
@@ -19,6 +25,7 @@ const FATE_COMMANDS = [
     { id: "fate.ambition", form: "ambition: want", example: "ambition: Mara wants her own boat", keywords: ["ambition"] },
     { id: "fate.ambition-progress", form: "ambition +1 prefix", example: "ambition +1 Mara wants", keywords: ["ambition"] },
     { id: "fate.residue", form: "residue: owed aftermath", example: "residue: the burnt pier is fenced off", keywords: ["residue"] },
+    ...WORLD_ENTRY_COMMANDS,
     { id: "fate.world-landed", form: "World EVENT landed as aftermath", example: "World ARRIVAL landed as a cousin turns up four hours early", keywords: ["World", "landed", "as"] },
 ];
 
@@ -26,7 +33,7 @@ const WORLD_COMMANDS = [
     { id: "world.add-elsewhere", form: "+ ELSEWHERE: …", example: "+ ELSEWHERE: a war breaks out across the sea", keywords: ["ELSEWHERE"] },
     { id: "world.add-regional", form: "+ REGIONAL: …", example: "+ REGIONAL: the river road is flooded", keywords: ["REGIONAL"] },
     { id: "world.add-local", form: "+ LOCAL: …", example: "+ LOCAL: the bakery closes for a funeral", keywords: ["LOCAL"] },
-    { id: "world.escalate", form: "escalate W#", example: "escalate W1", keywords: ["escalate"] },
+    ...WORLD_ENTRY_COMMANDS,
     { id: "world.land", form: "land W#: how it lands", example: "land W1: refugees reach the harbour", keywords: ["land"] },
 ];
 
@@ -50,6 +57,17 @@ function appendResidue(fate, text, ctx) {
     const keep = cfgOf(ctx).residueKeep ?? 12;
     if (keep >= 0 && fate.residue.length > keep) fate.residue = keep ? fate.residue.slice(-keep) : [];
 }
+
+// Preserve the initial report. New developments are chronological, not replacements.
+function appendWorldUpdate(entry, raw) {
+    const note = String(raw || "").trim();
+    if (!note) return;
+    const updates = Array.isArray(entry.updates) ? entry.updates : [];
+    if (!updates.some(previous => previous.toLowerCase() === note.toLowerCase()))
+        entry.updates = [...updates, note];
+}
+
+const worldHistory = item => [item.desc, ...(item.updates || [])].join("; ");
 
 function oweResidue(fate, text) {
     if (text) fate.owed.push(String(text).trim());
@@ -77,6 +95,7 @@ function addWorld(fate, state, prox, desc, c, ctx) {
 
 function parseLastTurnRows(rows, value, errors) {
     let dice = null, turn = null;
+    const updateRows = new Map();
     for (const row of rows) {
         const m = row.match(ROW);
         if (!m) { errors.push(row); continue; }
@@ -112,6 +131,12 @@ function parseLastTurnRows(rows, value, errors) {
             const hit = rest.match(/^([\s\S]*?)\s+\|\s+deferred\s+×(\d+)\s+·\s+age\s+(\d+)$/i);
             if (!hit) { errors.push(row); continue; }
             value.deferred.push({ id: field.toUpperCase(), desc: unesc(hit[1]), times: Number(hit[2]), age: Number(hit[3]) });
+        } else if (/^W\d+ update$/i.test(field)) {
+            if (!rest) { errors.push(row); continue; }
+            const id = field.match(/^W\d+/i)[0].toUpperCase();
+            const notes = updateRows.get(id) || [];
+            notes.push({ row, text: unesc(rest) });
+            updateRows.set(id, notes);
         } else if (/^W\d+$/i.test(field)) {
             const hit = rest.match(/^([\s\S]*?)\s+\|\s+(ELSEWHERE|REGIONAL|LOCAL)\s+·\s+Reach\s+(\d+)\s+·\s+age\s+(\d+)$/i);
             if (!hit) { errors.push(row); continue; }
@@ -123,6 +148,11 @@ function parseLastTurnRows(rows, value, errors) {
         } else if (field === "residue") value.residue.push(unesc(rest));
         else if (field === "owed") value.owed.push(unesc(rest));
         else errors.push(row);
+    }
+    for (const [id, notes] of updateRows) {
+        const entry = byId(value.world, id);
+        if (entry) entry.updates = notes.map(note => note.text);
+        else errors.push(...notes.map(note => note.row));
     }
     delete value._fudged;
     value.lastTurn = turn ? { dice, ...turn, fudged: turn.fudged || value._fudged || [] } : null;
@@ -168,7 +198,10 @@ export default {
         const state = value.state === "THREAD" ? `THREAD "${esc(value.pursuit)}" (ts ${value.ts})` : "ROUTINE";
         rows.push(`- <b>State:</b> ${state} · <b>Quiet:</b> ${value.q} · <b>Since MAJOR:</b> ${value.sinceMajor}`);
         rows.push(...value.deferred.map(item => `- <b>${item.id}</b> ${esc(item.desc)} | deferred ×${item.times} · age ${item.age}`));
-        rows.push(...value.world.map(item => `- <b>${item.id}</b> ${esc(item.desc)} | ${item.prox} · Reach ${item.reach} · age ${item.age}`));
+        for (const item of value.world) {
+            rows.push(`- <b>${item.id}</b> ${esc(item.desc)} | ${item.prox} · Reach ${item.reach} · age ${item.age}`);
+            for (const update of item.updates || []) rows.push(`- <b>${item.id} update:</b> ${esc(update)}`);
+        }
         rows.push(...value.ambitions.map(item => `- <b>Ambition:</b> ${esc(item.desc)} | ${item.progress}/5`));
         rows.push(...value.residue.map(item => `- <b>Residue:</b> ${esc(item)}`));
         rows.push(...value.owed.map(item => `- <b>Owed:</b> ${esc(item)}`));
@@ -225,6 +258,8 @@ export default {
                 appendResidue(fate, `${ctx.turn.worldsim.name} — ${worldAftermath}`, ctx);
             } else if ((m = line.match(/^World\s*:\s*(.+)$/i))) {
                 worldLines.push(m[1]);   // a World line written inside the Fate list
+            } else if (/^(?:update|escalate)\b/i.test(line)) {
+                worldLines.push(line);   // W# entries are displayed in Fate; accept both headings
             } else if (/^(ELSEWHERE|REGIONAL|LOCAL)\s*:/i.test(line)) {
                 worldLines.push(line);   // proximity recaps sometimes appear under Fate
             } else if ((m = line.match(/^(MINOR|MAJOR)\s+(?:consequence\s+)?landed\s*:\s*(.+)$/i)) && m[1].toUpperCase() === outcome.tier) {
@@ -244,12 +279,16 @@ export default {
                 const what = m[3].trim().replace(/\s*\(Reach\s+\d+\)\s*$/i, "");
                 const desc = m[1] ? `${m[1].trim()} — ${what}` : what;
                 addWorld(fate, state, m[2].toUpperCase(), desc, c, ctx);
-            } else if ((m = closed(line).match(/^escalate\s+(W\d+)$/i)) && (item = byId(fate.world, m[1]))) {
+            } else if ((m = line.match(/^update\s+(W\d+)\s*:\s*(\S.*)$/i)) && (item = byId(fate.world, m[1]))) {
+                appendWorldUpdate(item, m[2]);
+            } else if ((m = line.match(/^escalate\s+(W\d+)(?:\s*:\s*(\S.*))?$/i) || closed(line).match(/^escalate\s+(W\d+)$/i))
+                && (item = byId(fate.world, m[1]))) {
                 item.prox = { ELSEWHERE: "REGIONAL", REGIONAL: "LOCAL", LOCAL: "LOCAL" }[item.prox];
                 item.reach = Math.min(3, item.reach + 1);
+                if (m[2]) appendWorldUpdate(item, m[2]);
             } else if ((m = line.match(/^land\s+(W\d+)\s*:\s*(.+)$/i)) && (item = byId(fate.world, m[1]))) {
                 fate.world = fate.world.filter(w => w !== item);
-                oweResidue(fate, `${item.id} “${item.desc}” landed: ${m[2].trim()}`);
+                oweResidue(fate, `${item.id} “${worldHistory(item)}” landed: ${m[2].trim()}`);
             } else if ((m = line.match(/^(ELSEWHERE|REGIONAL|LOCAL)\s*:\s*(\S.*?)\s+\((W\d+)\s+unchanged\)$/i))
                 && (item = byId(fate.world, m[3])) && item.prox === m[1].toUpperCase() && outcome.world?.id !== item.id) {
                 // A matching recap is informational; aging and scheduled world effects still belong to the engine.
@@ -277,7 +316,7 @@ export default {
             if (entry && outcome.world.action === "first-effect") entry.reach = Math.min(3, entry.reach + 1);
             else if (entry && outcome.world.action === "land") {
                 fate.world = fate.world.filter(w => w !== entry);
-                oweResidue(fate, `${entry.id} “${entry.desc}” landed; write its residue.`);
+                oweResidue(fate, `${entry.id} “${worldHistory(entry)}” landed; write its residue.`);
             }
         }
 
@@ -331,7 +370,10 @@ export default {
     prompt(value) {
         const parts = [`Fate & Routine: ${value.state === "THREAD" ? `THREAD “${value.pursuit}” (ts ${value.ts})` : "ROUTINE"} · quiet ${value.q} · since MAJOR ${value.sinceMajor}`];
         for (const item of value.deferred) parts.push(`- ${item.id} ${item.desc} · deferred ×${item.times} · age ${item.age}`);
-        for (const item of value.world) parts.push(`- ${item.id} ${item.desc} · ${item.prox} · Reach ${item.reach} · age ${item.age}`);
+        for (const item of value.world) {
+            parts.push(`- ${item.id} ${item.desc} · ${item.prox} · Reach ${item.reach} · age ${item.age}`);
+            for (const update of item.updates || []) parts.push(`  ${item.id} update: ${update}`);
+        }
         for (const item of value.ambitions) parts.push(`- Ambition ${item.desc} · ${item.progress}/5`);
         if (value.residue.length) parts.push(`Residue: ${value.residue.join("; ")}`);
         if (value.owed.length) parts.push(`Owed: ${value.owed.join("; ")}`);
@@ -342,6 +384,7 @@ export default {
         return [
             "Fate & Routine: open a THREAD pursuit for a story-bearing question; close or park it with the consequence when answered or set aside. Defer a pursuit only when its result cannot land yet; `resolve D#` records that it was paid off.",
             "A WILL is a concrete thing someone wants. Track meaningful progress with `ambition +1`; progress never falls from Fate, and 5/5 becomes a LOCAL happening with residue owed.",
+            "World W# entries are displayed inside Fate & Routine. Under either Fate: or World:, use `update W#: new development` for changed facts without a change in scope, or `escalate W#: new development` when the event truly spreads (LOCAL and Reach 3 are the caps). Bare `escalate W#` is also valid. Both annotated commands APPEND a chronological update; they never replace the original description or earlier updates. Report only what is new, one command per line; preserve important previous facts without copying them into the new note. Say explicitly when a new estimate supersedes an old one. A repair status alone is not a reason to escalate.",
             "For world news, keep the reported channel recognizable, allow a plausible in-world distortion, and scale reactions to the event's actual reach. Keep ordinary scenes ordinary when Fate says AMBIENT. The ledger already records the turn's tier and source; omit Fate when no pursuit, deferred item, ambition or residue changed, rather than writing an AMBIENT/MINOR/MAJOR recap. Omit unchanged World entries instead of repeating their proximity or W#. For a realized World Sim event, write `World EVENT landed as aftermath` under Fate using the announced event name; replace EVENT with that name and aftermath with the actual consequence, e.g. `World CONFLICT landed as the tribunal rejected the appeal`. This records its residue without creating a new World entry.",
             `A twice-deferred item cannot be deferred again. Pursuits at ts ${cfg.pursuitLimit ?? 8} must close or park. Record a concise residue line for each owed aftermath; do not erase old residue except by the configured tail.`,
         ].join("\n");
