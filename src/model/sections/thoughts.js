@@ -1,6 +1,11 @@
 // 🧠 INTERNAL THOUGHTS — this reply's raw NPC thoughts. Shown in the reply's block, never carried. Pure.
 
 import { esc } from "../text.js";
+import { commandTemplate } from "../commands.js";
+
+const COMMANDS = [
+    { id: "thoughts.thought", form: "Name: this reply's raw thoughts", example: "Mara: he knows. he has to know. keep smiling.", keywords: [], freeText: true },
+];
 
 export default {
     key: "thoughts",
@@ -24,5 +29,6 @@ export default {
     },
     prompt: () => "",
     rules: () => "Thoughts: up to 3 NPCs, on-screen first (an off-screen one names where they are and what they are doing); 1–3 lines each, fragmented, impulsive and raw but true to the person, their mood and instincts. Let them drive what the NPC does next.",
-    template: () => ["Thoughts:", "- [Name: this reply's raw thoughts]"],
+    commands: COMMANDS,
+    template: ctx => commandTemplate("Thoughts", COMMANDS, ctx),
 };

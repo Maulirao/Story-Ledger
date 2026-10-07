@@ -7,6 +7,28 @@
 import { esc, unesc, ROW, closedForm } from "../text.js";
 import { nextId } from "../state.js";
 import { computeFate, reachFor } from "../fate-engine.js";
+import { commandTemplate } from "../commands.js";
+
+const FATE_COMMANDS = [
+    { id: "fate.pursuit", form: "pursuit: question", example: "pursuit: who set the boathouse fire?", keywords: ["pursuit"] },
+    { id: "fate.close", form: "close: aftermath", example: "close: the arsonist fled town; the guild blames the union", keywords: ["close"] },
+    { id: "fate.park", form: "park: aftermath", example: "park: the fire is old news; nobody talks of it", keywords: ["park"] },
+    { id: "fate.defer-new", form: "defer: desc", example: "defer: the guild's audit of the docks", keywords: ["defer"] },
+    { id: "fate.defer", form: "defer D#", example: "defer D1", keywords: ["defer"] },
+    { id: "fate.resolve", form: "resolve D#", example: "resolve D1", keywords: ["resolve"] },
+    { id: "fate.ambition", form: "ambition: want", example: "ambition: Mara wants her own boat", keywords: ["ambition"] },
+    { id: "fate.ambition-progress", form: "ambition +1 prefix", example: "ambition +1 Mara wants", keywords: ["ambition"] },
+    { id: "fate.residue", form: "residue: owed aftermath", example: "residue: the burnt pier is fenced off", keywords: ["residue"] },
+    { id: "fate.world-landed", form: "World EVENT landed as aftermath", example: "World ARRIVAL landed as a cousin turns up four hours early", keywords: ["World", "landed", "as"] },
+];
+
+const WORLD_COMMANDS = [
+    { id: "world.add-elsewhere", form: "+ ELSEWHERE: …", example: "+ ELSEWHERE: a war breaks out across the sea", keywords: ["ELSEWHERE"] },
+    { id: "world.add-regional", form: "+ REGIONAL: …", example: "+ REGIONAL: the river road is flooded", keywords: ["REGIONAL"] },
+    { id: "world.add-local", form: "+ LOCAL: …", example: "+ LOCAL: the bakery closes for a funeral", keywords: ["LOCAL"] },
+    { id: "world.escalate", form: "escalate W#", example: "escalate W1", keywords: ["escalate"] },
+    { id: "world.land", form: "land W#: how it lands", example: "land W1: refugees reach the harbour", keywords: ["land"] },
+];
 
 const clone = value => JSON.parse(JSON.stringify(value));
 const cfgOf = ctx => ctx?.config?.sectionConfig?.fate || {};
@@ -311,12 +333,10 @@ export default {
             `A twice-deferred item cannot be deferred again. Pursuits at ts ${cfg.pursuitLimit ?? 8} must close or park. Record a concise residue line for each owed aftermath; do not erase old residue except by the configured tail.`,
         ].join("\n");
     },
-    template: () => [
-        "Fate:",
-        "- [pursuit: question · close: residue · park: residue · defer: desc · defer D# · resolve D# · ambition: want · ambition +1 prefix · residue: aftermath]",
-        "World:",
-        "- [+ ELSEWHERE|REGIONAL|LOCAL: happening · escalate W# · land W#: how it lands]",
-    ],
+    // commands covers both headings; worldCommands are the ones written under World:
+    commands: [...FATE_COMMANDS, ...WORLD_COMMANDS],
+    worldCommands: WORLD_COMMANDS,
+    template: ctx => [...commandTemplate("Fate", FATE_COMMANDS, ctx), ...commandTemplate("World", WORLD_COMMANDS, ctx)],
 };
 
 

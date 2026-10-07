@@ -4,6 +4,11 @@
 // ──────────────────────────────────────────────────────────────────────────────
 
 import { esc, unesc } from "../text.js";
+import { commandTemplate } from "../commands.js";
+
+const COMMANDS = [
+    { id: "last.beat", form: "a beat later turns must honour", example: "Mara promised to meet Jan at the mill at dawn", keywords: [], freeText: true },
+];
 
 export default {
     key: "last",
@@ -25,5 +30,6 @@ export default {
     },
     prompt: value => (value.length ? `Last beats: ${value.join(" / ")}` : ""),
     rules: () => "Last: one line per concrete event or line of dialogue from this reply that later turns must honour.",
-    template: () => ["Last:", "- [a beat from this reply that later turns must honour]"],
+    commands: COMMANDS,
+    template: ctx => commandTemplate("Last", COMMANDS, ctx),
 };

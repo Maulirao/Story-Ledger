@@ -242,6 +242,20 @@ export const PATTERN_GLOSS = Object.fromEntries(PATTERNS.map(p => [p.id, p.gloss
 
 // ── Reading the model's lines ───────────────────────────────────────────────
 
+/** The relationship lines the model may write, one command each (RELATIONSHIP_RULES quotes these forms). */
+export const RELATION_COMMANDS = [
+    { id: "rel.tick", form: "A → B: E_acc +1 (reason) | M_acc +2 (reason)", example: "Mara → Jan: E_acc +1 (he remembered her song) | M_acc +2 (he laughed at her boat)", keywords: [] },
+    { id: "rel.phi", form: "A: Φ_acc +1 (reason)", example: "Mara: Φ_acc +1 (she won the race)", keywords: [] },
+    { id: "rel.direct", form: "DIRECT A → B: E +1 (reason)", example: "DIRECT Mara → Jan: E +1 (he pulled her from the river)", keywords: ["DIRECT"] },
+    {
+        id: "rel.new",
+        form: "NEW A → B: E 3, M 4, L 3, Er 3, Ph 4, Ec 5, Pr 3, St 4, Sg 3, Ad 3, Ag 3, Pt 4 | Φ 2 (why)",
+        example: "NEW Mara → Jan: E 3, M 4, L 5, Er 3, Ph 6, Ec 4, Pr 3, St 4, Sg 3, Ad 3, Ag 4, Pt 3 | Φ 2 (old rivals from the boat races)",
+        keywords: ["NEW"],
+    },
+    { id: "rel.note", form: "NOTE A → B: description", example: "NOTE Mara → Jan: rivals who have started to trust each other", keywords: ["NOTE"], freeText: true },
+];
+
 // arrows between two names; the legacy tag reader keeps the original five
 const LEGACY_ARROWS = "→|->|↔|<->|=>";
 const ARROWS = "→|<->|->|↔|=>|⟶|➔|➜|⇔";
@@ -280,6 +294,8 @@ export function parseRelationLines(lines, { legacy = false } = {}) {
             : legacy ? String(raw).replace(/<[^>]+>/g, "").replace(/^\s*[-*•]\s*/, "").trim()
             : normalizeLine(String(raw)).text;
         if (!line) continue;
+        // a line still in its "[…]" template form is an echo, not an event
+        if (!legacy &&/^\[.*\]$/.test(line)) { out.unparsed.push(line); continue; }
         let m;
         // NOTE A → B: a new description of the relationship
         if ((m = line.match(NOTE))) {

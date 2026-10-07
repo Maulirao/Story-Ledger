@@ -5,8 +5,9 @@
 // comments out of the prompt. Pure: no SillyTavern, no DOM.
 // ──────────────────────────────────────────────────────────────────────────────
 
-import { notebookBody, renderNotebookPrompt, LEDGER_BLOCK_RE } from "./notebook.js";
-import { describePair, PATTERN_GLOSS } from "./relations.js";
+import { notebookBody, renderNotebookPrompt, LEDGER_BLOCK_RE, THREAD_COMMANDS, PROPOSAL_COMMANDS } from "./notebook.js";
+import { describePair, PATTERN_GLOSS, RELATION_COMMANDS } from "./relations.js";
+import { commandTemplate } from "./commands.js";
 import { findBlock, BLOCK_MARK } from "./block.js";
 import { enabledSections, needsPresent } from "./sections/registry.js";
 import { sectionContext, preTurnFacts } from "./turn.js";
@@ -72,16 +73,38 @@ export function needsHandover(chat) {
     return false;
 }
 
+const relForm = id => RELATION_COMMANDS.find(c => c.id === id).form;
+
 export const RELATIONSHIP_RULES = `<relationship_rules>
 Every relationship line is how one character feels toward another — directional; {{user}}'s own feelings are the reader's and are never tracked. Twelve axes, 1–20, in opposed pairs: Eros/Misos (romantic), Ludus/Eris (playful), Philia/Echthros (friendship), Pragma/Stasis (practical), Storge/Adiaphora (familial), Agape/Phthonos (selfless / resentful giving). Φ is a character's own self-regard (−20…20): low Φ makes fondness hard to receive.
 Fondness and friction coexist and tick independently; one interaction can tick both. You only report raw material — the ledger converts accumulators into axis changes on its own schedule. Write in the Relationships section:
-- Ticks: \`A → B: E_acc +1 (reason) | M_acc +2 (reason)\` — +1 or +2 per accumulator, only for what happened in this reply. Friction map: romance hurt → M, cruelty → Er, broken trust → Ec, practical frustration → St, neglect → Ad, resentment → Pt.
-- Self-regard: \`A: Φ_acc +1 (reason)\` or a negative value.
-- \`DIRECT A → B: E +1 (reason)\` — only for a genuinely significant moment; it is what breaks a stalemate.
-- \`NEW A → B: E 3, M 4, L 3, Er 3, Ph 4, Ec 5, Pr 3, St 4, Sg 3, Ad 3, Ag 3, Pt 4 | Φ 2 (why)\` — the first time a relationship matters: every axis at least 3, values varied, friction outweighing fondness unless the card says otherwise. Its (why) is the relationship's description on the reader's card, so make it a short, specific line about the two of them.
-- \`NOTE A → B: description\` — rewrite that description, only when the relationship has genuinely changed.
+- Ticks: \`${relForm("rel.tick")}\` — +1 or +2 per accumulator, only for what happened in this reply. Friction map: romance hurt → M, cruelty → Er, broken trust → Ec, practical frustration → St, neglect → Ad, resentment → Pt.
+- Self-regard: \`${relForm("rel.phi")}\` or a negative value.
+- \`${relForm("rel.direct")}\` — only for a genuinely significant moment; it is what breaks a stalemate.
+- \`${relForm("rel.new")}\` — the first time a relationship matters: every axis at least 3, values varied, friction outweighing fondness unless the card says otherwise. Its (why) is the relationship's description on the reader's card, so make it a short, specific line about the two of them.
+- \`${relForm("rel.note")}\` — rewrite that description, only when the relationship has genuinely changed.
 Never state the numbers in prose; show them through behavior. Romantic or sexual initiation happens only where the ledger says romance is allowed; forcing it elsewhere meets discomfort or anger. "Reads as" patterns are interpretation, not rules.
 </relationship_rules>`;
+
+// the hints that used to sit inside the Threads and Proposed rules brackets
+const NOTEBOOK_RULES = [
+    "Threads: open one for an intention, open question, promise, debt, appointment (with day and time) or unresolved arc; resolve it written as it appears in the list.",
+    "Proposed rules: ONLY when the story establishes a fact that must never drift, or the reader gives a lasting out-of-character instruction. Omit the section on every other turn; never restate an existing rule.",
+].join("\n");
+
+/** Now, Present and Public: field-style placeholders, written without list bullets. */
+export const CORE_COMMANDS = [
+    {
+        id: "core.now",
+        form: "Now: [story time after this reply, free text — e.g. Day 12 — Tuesday, March 4, 21:44 | the lawn. Day N counts from the story's first day and never resets.]",
+        example: "Now: Day 12 — Tuesday, March 4, 21:44 | the lawn",
+        keywords: ["Now"],
+        freeText: true,
+    },
+    { id: "core.present", form: "Present: [every named character in the scene, comma separated]", example: "Present: Mara, Jan", keywords: ["Present"] },
+    { id: "core.public", form: "Public: [yes when the scene is in a public or exposed place, else no]", example: "Public: no", keywords: ["Public"] },
+];
+const coreLine = id => CORE_COMMANDS.find(c => c.id === id).form;
 
 const TEMPLATE_HEAD = `At the very end of your reply, after the prose, write exactly one ledger comment as below. Report only what changed in this reply — the ledger keeps everything else and writes the full state block itself; never write a state block, <internal_states> or GFX markers yourself. Omit any section where nothing changed. The reader never sees the comment; never write "-->" inside it.`;
 
@@ -90,21 +113,12 @@ export function buildTemplate(config = {}) {
     const on = k => ((config.sections || {})[k] !== false);
     const ctx = { config, checkStyle: config.checkStyle || "dnd", sections: config.sections || {} };
     const lines = ["<!-- Story_Ledger"];
-    const present = "Present: [every named character in the scene, comma separated]";
-    if (on("scene")) lines.push(
-        "Now: [story time after this reply, free text — e.g. Day 12 — Tuesday, March 4, 21:44 | the lawn. Day N counts from the story's first day and never resets.]",
-        present,
-        "Public: [yes when the scene is in a public or exposed place, else no]");
-    else if (needsPresent(config.sections)) lines.push(present);
-    if (on("notebook")) lines.push(
-        "Threads:",
-        "- + [T] [a thread that opened: an intention, open question, promise, debt, appointment with day and time, unresolved arc]",
-        "- - [T] [a thread that resolved, written as it appears in the list]");
-    if (on("relationships")) lines.push("Relationships:", "- [only this reply's events, as described in the relationship rules]");
+    if (on("scene")) lines.push(coreLine("core.now"), coreLine("core.present"), coreLine("core.public"));
+    else if (needsPresent(config.sections)) lines.push(coreLine("core.present"));
+    if (on("notebook")) lines.push(...commandTemplate("Threads", THREAD_COMMANDS, ctx));
+    if (on("relationships")) lines.push(...commandTemplate("Relationships", RELATION_COMMANDS, ctx));
     for (const sec of enabledSections(config.sections)) lines.push(...sec.template(ctx));
-    if (on("notebook")) lines.push(
-        "Proposed rules:",
-        "- [ONLY when the story establishes a fact that must never drift, or the reader gives a lasting out-of-character instruction: `add: <rule>`, `edit R#: <new text>`, or `remove R#: <why>`]");
+    if (on("notebook")) lines.push(...commandTemplate("Proposed rules", PROPOSAL_COMMANDS, ctx));
     lines.push("-->");
     return `${TEMPLATE_HEAD}\n${lines.join("\n")}`;
 }
@@ -116,6 +130,7 @@ export function renderRules(config = {}) {
     const ctx = { config, checkStyle: config.checkStyle || "dnd", sections: config.sections || {} };
     const parts = [];
     if ((config.sections || {}).relationships !== false) parts.push(RELATIONSHIP_RULES);
+    if ((config.sections || {}).notebook !== false) parts.push(NOTEBOOK_RULES);
     for (const sec of enabledSections(config.sections)) {
         const r = sec.rules(ctx);
         if (r) parts.push(r);

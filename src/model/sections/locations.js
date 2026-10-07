@@ -5,6 +5,11 @@
 
 import { esc, unesc, ROW, fieldsOf, unbullet } from "../text.js";
 import { findName, hasName } from "./people.js";
+import { commandTemplate } from "../commands.js";
+
+const COMMANDS = [
+    { id: "locations.move", form: "Name @ place", example: "Ana @ the harbour", keywords: [] },
+];
 
 /**
  * "Ana @ the café" or "Ana: the café" → [name, place], or null. A normalized comment
@@ -58,6 +63,7 @@ export default {
         const away = Object.entries(value).filter(([n]) => !hasName(state.scene.present, n));
         return away.length ? `Where people are: ${away.map(([n, p]) => `${n} — ${p}`).join("; ")}` : "";
     },
-    rules: () => "",
-    template: () => ["Locations:", "- [Name @ place — only when someone moved]"],
+    rules: () => "Locations: write a line only when someone moved.",
+    commands: COMMANDS,
+    template: ctx => commandTemplate("Locations", COMMANDS, ctx),
 };

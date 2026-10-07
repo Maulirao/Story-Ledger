@@ -5,6 +5,17 @@
 // ──────────────────────────────────────────────────────────────────────────────
 
 import { esc, unesc, ROW, removeByName } from "../text.js";
+import { commandTemplate } from "../commands.js";
+
+const COMMANDS = [
+    { id: "inv.add", form: "+ item", example: "+ brass key", keywords: [] },
+    { id: "inv.remove", form: "- item", example: "- brass key", keywords: [] },
+    { id: "inv.title-add", form: "title: name", example: "title: Harbour Friend", keywords: ["title"] },
+    { id: "inv.title-remove", form: "title - name", example: "title - Harbour Friend", keywords: ["title"] },
+    { id: "inv.status-add", form: "status + condition", example: "status + Tired", keywords: ["status"] },
+    { id: "inv.status-remove", form: "status - condition", example: "status - Tired", keywords: ["status"] },
+    { id: "inv.mods", form: "mods: text", example: "mods: +1 Stealth (soft boots)", keywords: ["mods"] },
+];
 
 const ROWS = [["items", "Inv"], ["titles", "Titles/Skills"], ["status", "Status"]];
 const writeList = list => list.map(v => esc(v).replace(/;/g, "&#59;")).join("; ") || "—";
@@ -106,5 +117,6 @@ export default {
         return parts.length ? `{{user}}: ${parts.join(" · ")}` : "";
     },
     rules: () => "Inventory is {{user}}'s alone: add items when found, remove them when lost or used; award a title for a real accomplishment; track temporary conditions (Injured, Tired, Inspired) and clear them with time or action. Mods are ±1–2 on rolls in the domain they fit only. Never put stats, modifiers or title names in prose.",
-    template: () => ["Inventory:", "- [+ item · - item · title: … · title - … · status + X · status - X · mods: … — {{user}} only]"],
+    commands: COMMANDS,
+    template: ctx => commandTemplate("Inventory", COMMANDS, ctx),
 };

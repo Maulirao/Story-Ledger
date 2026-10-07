@@ -5,11 +5,21 @@
 
 import { esc, unesc, ROW, fieldsOf, closedForm } from "../text.js";
 import { nextId } from "../state.js";
+import { commandTemplate } from "../commands.js";
 
 const STATUS = ["active", "done", "dropped"];
 const show = v => (v ? esc(v) : "—");
 const read = v => { const t = unesc(v ?? ""); return t === "—" ? "" : t; };
 const byId = (state, id) => state.quests.find(q => q.id.toLowerCase() === String(id).toLowerCase());
+
+const COMMANDS = [
+    { id: "quests.add-main", form: "+ Main: objective (reward)", example: "+ Main: find the missing ferryman (the title Harbour Friend)", keywords: ["Main"] },
+    { id: "quests.add-side", form: "+ Side: objective (reward)", example: "+ Side: return the lost dog (a free meal)", keywords: ["Side"] },
+    { id: "quests.progress", form: "Q# progress: text", example: "Q1 progress: the ferryman was seen at the mill", keywords: ["progress"] },
+    { id: "quests.done", form: "done Q#", example: "done Q1", keywords: ["done"] },
+    { id: "quests.drop", form: "drop Q#", example: "drop Q1", keywords: ["drop"] },
+    { id: "quests.reopen", form: "reopen Q#", example: "reopen Q1", keywords: ["reopen"] },
+];
 
 export default {
     key: "quests",
@@ -73,7 +83,8 @@ export default {
         return parts.join("\n");
     },
     rules: () => "Quests: a Main quest is the story's spine, Side quests are optional; rewards are new titles or items. Mark progress when the story moves a quest, done or drop when it ends.",
-    template: () => ["Quests:", "- [+ Main|Side: objective (reward) · Q# progress: … · done Q# · drop Q# · reopen Q#]"],
+    commands: COMMANDS,
+    template: ctx => commandTemplate("Quests", COMMANDS, ctx),
 };
 
 /** Mark finished quests as sent to the model or not: `ids` names them, "all" means every finished quest. Mutates. */

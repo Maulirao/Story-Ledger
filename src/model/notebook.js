@@ -75,6 +75,19 @@ const bullet = line => norm(line).replace(/^[-*•]\s*/, "");
 const NOW_LINE = /^\s*(?:[-*•]\s*)?Now\s*:\s*(.*)$/im;
 const isSkeleton = s => /^\[.*\]$/.test(s);
 
+/** The thread lines the model may write under Threads:, one command each. */
+export const THREAD_COMMANDS = [
+    { id: "threads.add", form: "+ [T] thread that opened", example: "+ [T] Meet Mara at the mill on Day 4 at dawn", keywords: ["T"] },
+    { id: "threads.remove", form: "- [T] thread that resolved", example: "- [T] Ask about the letter", keywords: ["T"] },
+];
+
+/** The rule proposals the model may write under Proposed rules:, one command each. */
+export const PROPOSAL_COMMANDS = [
+    { id: "rules.add", form: "add: rule", example: "add: Mara never lies to Jan", keywords: ["add"] },
+    { id: "rules.edit", form: "edit R#: new text", example: "edit R1: Mara never lies to Jan, except to protect him", keywords: ["edit"] },
+    { id: "rules.remove", form: "remove R#: why", example: "remove R1: the reader dropped it", keywords: ["remove"] },
+];
+
 // a proposal line, bullet already gone → { op, target, text } or null
 function proposalOf(line) {
     let m;
