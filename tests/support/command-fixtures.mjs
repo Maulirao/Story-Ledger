@@ -615,6 +615,30 @@ export const FIXTURES = {
         },
         malformed: ["escalate W99", "escalate", "esclate W1"],
     },
+    "world.update": {
+        heading: "World",
+        seed: worldSeed,
+        expect(r) {
+            clean(r);
+            assert.deepEqual(r.state.fate.world, [
+                { id: "W1", desc: "a war breaks out across the sea", prox: "ELSEWHERE", reach: 1, age: 3,
+                    updates: ["repair part sourced; Thursday earliest"] },
+            ]);
+        },
+        malformed: ["update W99: wrong event", "update W1:", "updat W1: wrong syntax", "update W1 no colon"],
+    },
+    "world.escalate-note": {
+        heading: "World",
+        seed: worldSeed,
+        expect(r) {
+            clean(r);
+            assert.deepEqual(r.state.fate.world, [
+                { id: "W1", desc: "a war breaks out across the sea", prox: "REGIONAL", reach: 2, age: 3,
+                    updates: ["fuel shortage reaches the neighbouring town"] },
+            ]);
+        },
+        malformed: ["escalate W99: wrong event", "escalate W1:", "esclate W1: wrong syntax"],
+    },
     "world.land": {
         heading: "World",
         seed: worldSeed,

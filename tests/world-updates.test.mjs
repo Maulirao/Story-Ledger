@@ -58,15 +58,15 @@ test("escalation at maximum scope still records the annotation; bare commands st
 });
 
 test("multiple updates persist in chronological order through block, prompt, and a later turn", () => {
-    let r = apply(withWorld(), "Fate:\n- update W2: dealer sourced part & hose | brackets <missing>");
+    let r = apply(withWorld(), "Fate:\n- update W2: dealer sourced part & hose | brackets [missing]");
     r = apply(r.state, "World:\n- update W2: Thursday is earliest; might be weekend");
     const original = r.state.fate.world[0].desc;
     assert.deepEqual(r.state.fate.world[0].updates, [
-        "dealer sourced part & hose | brackets <missing>",
+        "dealer sourced part & hose | brackets [missing]",
         "Thursday is earliest; might be weekend",
     ]);
     const block = renderBlock(r.state, { rules: [], config: C, sections: {} });
-    assert.match(block, /<b>W2 update:<\/b> dealer sourced part &amp; hose &#124; brackets &lt;missing&gt;/);
+    assert.match(block, /<b>W2 update:<\/b> dealer sourced part &amp; hose &#124; brackets \[missing\]/);
     const parsed = parseBlock(block, { config: C });
     assert.deepEqual(parsed.errors, []);
     assert.deepEqual(parsed.state.fate, r.state.fate);
@@ -75,7 +75,7 @@ test("multiple updates persist in chronological order through block, prompt, and
     assert.match(injected, /W2 update: Thursday is earliest; might be weekend/);
     r = apply(parsed.state, "Fate:\n- update W2: mechanic booked for Friday");
     assert.deepEqual(r.state.fate.world[0].updates, [
-        "dealer sourced part & hose | brackets <missing>",
+        "dealer sourced part & hose | brackets [missing]",
         "Thursday is earliest; might be weekend",
         "mechanic booked for Friday",
     ]);
@@ -115,8 +115,11 @@ test("landing carries all updates into the owed aftermath", () => {
 
 test("generated Fate instructions and both command templates teach append-only updates", () => {
     const template = buildTemplate({ sections: {} });
-    assert.match(template, /Fate:[\s\S]*update W#: new development[\s\S]*escalate W#: new development/);
+    const fateTemplate = template.split("Fate:\n")[1].split("\nWorld:")[0];
+    assert.doesNotMatch(fateTemplate, /update W#|escalate W#/);
     assert.match(template, /World:[\s\S]*update W#: new development[\s\S]*escalate W#: new development/);
+    assert.equal(template.match(/- update W#: new development/g)?.length, 1);
+    assert.equal(template.match(/- escalate W#: new development/g)?.length, 1);
     const rules = renderRules({ ...C, sections: {} });
     assert.match(rules, /APPEND a chronological update/);
     assert.match(rules, /never replace the original description/);

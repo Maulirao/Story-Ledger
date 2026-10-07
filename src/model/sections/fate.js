@@ -9,12 +9,8 @@ import { nextId } from "../state.js";
 import { computeFate, reachFor } from "../fate-engine.js";
 import { commandTemplate } from "../commands.js";
 
-// W# entries are displayed in Fate; updates and escalations work under either heading.
-const WORLD_ENTRY_COMMANDS = [
-    { id: "world.update", form: "update W#: new development", example: "update W2: replacement part sourced; Thursday is now earliest", keywords: ["update"] },
-    { id: "world.escalate", form: "escalate W#: new development", example: "escalate W1: fuel shortage now reaches the neighbouring town", keywords: ["escalate"] },
-];
-
+// W# entries are displayed in Fate, but World declares their command forms only once.
+// The reader still accepts update/escalate under either Fate: or World:.
 const FATE_COMMANDS = [
     { id: "fate.pursuit", form: "pursuit: question", example: "pursuit: who set the boathouse fire?", keywords: ["pursuit"] },
     { id: "fate.close", form: "close: aftermath", example: "close: the arsonist fled town; the guild blames the union", keywords: ["close"] },
@@ -25,7 +21,6 @@ const FATE_COMMANDS = [
     { id: "fate.ambition", form: "ambition: want", example: "ambition: Mara wants her own boat", keywords: ["ambition"] },
     { id: "fate.ambition-progress", form: "ambition +1 prefix", example: "ambition +1 Mara wants", keywords: ["ambition"] },
     { id: "fate.residue", form: "residue: owed aftermath", example: "residue: the burnt pier is fenced off", keywords: ["residue"] },
-    ...WORLD_ENTRY_COMMANDS,
     { id: "fate.world-landed", form: "World EVENT landed as aftermath", example: "World ARRIVAL landed as a cousin turns up four hours early", keywords: ["World", "landed", "as"] },
 ];
 
@@ -33,7 +28,9 @@ const WORLD_COMMANDS = [
     { id: "world.add-elsewhere", form: "+ ELSEWHERE: …", example: "+ ELSEWHERE: a war breaks out across the sea", keywords: ["ELSEWHERE"] },
     { id: "world.add-regional", form: "+ REGIONAL: …", example: "+ REGIONAL: the river road is flooded", keywords: ["REGIONAL"] },
     { id: "world.add-local", form: "+ LOCAL: …", example: "+ LOCAL: the bakery closes for a funeral", keywords: ["LOCAL"] },
-    ...WORLD_ENTRY_COMMANDS,
+    { id: "world.escalate", form: "escalate W#", example: "escalate W1", keywords: ["escalate"] },
+    { id: "world.update", form: "update W#: new development", example: "update W1: repair part sourced; Thursday earliest", keywords: ["update"] },
+    { id: "world.escalate-note", form: "escalate W#: new development", example: "escalate W1: fuel shortage reaches the neighbouring town", keywords: ["escalate"] },
     { id: "world.land", form: "land W#: how it lands", example: "land W1: refugees reach the harbour", keywords: ["land"] },
 ];
 
