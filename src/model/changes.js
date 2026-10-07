@@ -25,6 +25,32 @@ const NO_HEADING = "(no heading)";
 // a label, a colon, then a value: what a field or command line looks like
 const LABELLED = /^[A-Za-z][\w ]{0,30}\s*:\s*\S/;
 
+// Only annotated W# commands may wrap. A new command, heading or field ends the note.
+function joinWorldContinuations(records) {
+    const joined = [];
+    let current = null, annotation = null;
+    const indent = record => record.raw.match(/^\s*/)[0].length;
+    for (const rec of records) {
+        const heading = headingOf(rec);
+        const boundary = heading || CORE_FIELD.test(rec.text) || rec.bulleted
+            || /^[A-Za-z][\w ]*\s*:/.test(rec.text)
+            || /^(?:(?:World\s*:\s*)?(?:update|escalate|land)\b|(?:defer|resolve)\s+D\d+\b|ambition\s+\+|World\s+|[+-]\s)/i.test(rec.text);
+        if (annotation && !boundary && indent(rec) > indent(annotation)) {
+            annotation.raw += "\n" + rec.raw;
+            annotation.unfolded += " " + rec.unfolded;
+            annotation.text += " " + rec.text;
+            continue;
+        }
+        annotation = null;
+        if (heading) current = heading.known ? heading.name : null;
+        else if (CORE_FIELD.test(rec.text)) current = null;
+        joined.push(rec);
+        if ((current === "Fate" || current === "World")
+            && /^(?:World\s*:\s*)?(?:update|escalate)\s+W\d+\s*:\s*\S/i.test(rec.text)) annotation = rec;
+    }
+    return joined;
+}
+
 const commandsUnder = heading => heading === "Threads" ? THREAD_COMMANDS
     : heading === "Proposed rules" ? PROPOSAL_COMMANDS
     : SECTIONS.filter(s => s.change === heading || (heading === "World" && s.key === "fate")).flatMap(s => s.commands || []);
@@ -54,7 +80,8 @@ export function parseChanges(mes) {
 // The <!-- Story_Ledger --> comment, one normalized record per line. `raw`/`rawThreads`
 // keep each operation's unfolded text at the same index as its parsed value.
 function parseComment(records) {
-    const out = { ...emptyChanges(), raw: {}, rawThreads: { add: [], remove: [] } };
+    records = joinWorldContinuations(records);
+    const out = { ...emptyChanges(), raw: {}, rawThreads: { add: [], remove: [] }, orderedSections: [] };
     const relationships = [];
     let current = null;            // a canonical heading, { unknown: name }, or null
     for (const rec of records) {
@@ -77,7 +104,11 @@ function parseComment(records) {
         // (other Proposed rules lines are the notebook reader's, below)
         else if (isSkeleton(rec.text)) out.unparsed.push({ section: current, line: rec.text });
         else if (current === "Proposed rules") continue;
-        else { out.sections[current].push(rec.text); out.raw[current].push(rec.unfolded); }
+        else {
+            out.sections[current].push(rec.text);
+            out.raw[current].push(rec.unfolded);
+            out.orderedSections.push({ section: current, line: rec.text });
+        }
     }
     out.relations = parseRelationLines(relationships);
     const nb = notebookFromRecords(records);

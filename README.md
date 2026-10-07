@@ -57,6 +57,37 @@ the reply — FF's `<internal_states>` layout, folded under **🎬 INTERNAL STAT
   or **Megumin** (one card with Scene · People · Relationships · Story · Fate · Notes tabs).
   Switching restyles every message at once.
 
+## World event updates
+
+For an existing World entry, report only new facts. Both commands work under `Fate:`
+or `World:` and append to its history without replacing the original description:
+
+```text
+Fate:
+- update W2: Part sourced from Gatineau dealer; Thursday now earliest, possibly weekend.
+- escalate W3: The shortage now affects the neighbouring town.
+```
+
+`update` leaves proximity and Reach unchanged. `escalate` advances proximity one band
+toward LOCAL and raises Reach by 1, capped at 3; an annotation is still saved at the
+caps. Neither command resets age. Updates follow their order in the comment, even
+when headings alternate. An annotation may continue on more deeply indented text
+lines; a new command or heading ends it. Older entries need no migration.
+
+`World CONSEQUENCE landed as aftermath` is also accepted under `Fate:` or `World:`
+for a consequence that actually occurred in the story, such as the race buoy breaking.
+It saves the aftermath as residue on TRUE or WEIGHTED turns, without changing the
+rolled World Sim event or clearing unrelated owed aftermath.
+
+Other `World EVENT landed as aftermath` reports name the rolled World Sim event: use the exact
+announced event name, and only when Fate's source is TRUE and that event was realized.
+For a separate consequence of story actions, use `MINOR consequence landed: aftermath`
+or `MAJOR consequence landed: aftermath`, matching this turn's tier.
+
+After installing an update, reload SillyTavern. To apply newly supported commands in
+an existing reply, edit its hidden comment if needed and click **↻** on that reply's
+block. A rebuild starts from the previous block and reuses the reply's saved dice.
+
 ## Install
 
 Copy this folder to `data/<user>/extensions/st-story-ledger` (or install from the repo URL

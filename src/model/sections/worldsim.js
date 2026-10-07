@@ -78,7 +78,9 @@ export default {
     facts(state, ctx) {
         const event = ctx.turn.worldsim;
         if (!event) return [];
-        return [`World Sim: ${event.name} — ${event.text}. Use it only if Fate's cell is TRUE; discard it on a WEIGHTED turn; skip it in an intimate scene.`];
+        const facts = [`World Sim: ${event.name} — ${event.text}. Use it only if Fate's cell is TRUE; discard it on a WEIGHTED turn; skip it in an intimate scene.`];
+        if (ctx.turn.fate?.source === "TRUE") facts.push(`If this World Sim event is realized, record its aftermath under Fate as \`World ${event.name} landed as actual aftermath\`. Keep this exact event name; replace only the aftermath text. Omit the command if the event is unused.`);
+        return facts;
     },
     prompt: () => "",
     rules: () => "",

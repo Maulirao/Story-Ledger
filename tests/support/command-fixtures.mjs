@@ -589,6 +589,14 @@ export const FIXTURES = {
         },
         malformed: ["residue:", "residu: the burnt pier is fenced off", "residue the burnt pier is fenced off"],
     },
+    "fate.consequence-landed": {
+        heading: "Fate",
+        expect(r) {
+            clean(r);
+            assert.deepEqual(r.state.fate.residue, ["CONSEQUENCE — the buoy broke during the race"]);
+        },
+        malformed: ["World CONSEQUENCE landed as", "World CONSEQUENCE lnaded as the buoy broke", "World CONSEQUENC landed as the buoy broke"],
+    },
     // World Sim d20 15 on the Standard table (three named people off-screen): ARRIVAL
     "fate.world-landed": {
         heading: "Fate",
@@ -614,6 +622,30 @@ export const FIXTURES = {
             assert.deepEqual(r.state.fate.world, [{ id: "W1", desc: "a war breaks out across the sea", prox: "REGIONAL", reach: 2, age: 3 }]);
         },
         malformed: ["escalate W99", "escalate", "esclate W1"],
+    },
+    "world.update": {
+        heading: "World",
+        seed: worldSeed,
+        expect(r) {
+            clean(r);
+            assert.deepEqual(r.state.fate.world, [
+                { id: "W1", desc: "a war breaks out across the sea", prox: "ELSEWHERE", reach: 1, age: 3,
+                    updates: ["repair part sourced; Thursday earliest"] },
+            ]);
+        },
+        malformed: ["update W99: wrong event", "update W1:", "updat W1: wrong syntax", "update W1 no colon"],
+    },
+    "world.escalate-note": {
+        heading: "World",
+        seed: worldSeed,
+        expect(r) {
+            clean(r);
+            assert.deepEqual(r.state.fate.world, [
+                { id: "W1", desc: "a war breaks out across the sea", prox: "REGIONAL", reach: 2, age: 3,
+                    updates: ["fuel shortage reaches the neighbouring town"] },
+            ]);
+        },
+        malformed: ["escalate W99: wrong event", "escalate W1:", "esclate W1: wrong syntax"],
     },
     "world.land": {
         heading: "World",

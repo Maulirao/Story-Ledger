@@ -47,6 +47,10 @@ export function sectionContext(state, prevPresent, config, prevNow = "", changes
     return {
         config, userName: config.userName, present: state.scene.present, prevPresent: prevPresent || [], prevNow,
         touched: new Set(), warnings: [], turn: {}, linesUnder: heading => linesUnder(changes, heading),
+        // Comments preserve source order across headings; legacy/tagged inputs keep their grouped reading.
+        linesAcross: headings => changes?.orderedSections
+            ? changes.orderedSections.filter(record => headings.includes(record.section))
+            : headings.flatMap(section => linesUnder(changes, section).map(line => ({ section, line }))),
         rawLinesUnder: heading => rawLinesUnder(changes, heading), normalizedChanges: Boolean(changes && changes.raw), sections: config.sections || {}, checkStyle: config.checkStyle || "dnd",
         rolls: Array.isArray(config.dice?.checks) ? config.dice.checks : config.rolls, fudgedDice: config.fudgedDice || [],
     };
