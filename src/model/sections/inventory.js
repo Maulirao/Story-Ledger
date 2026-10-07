@@ -31,6 +31,7 @@ export default {
     title: "🎒 INV & SKILLS",
     match: /^INV SKILLS$/,
     change: "Inventory",
+    aliases: ["Inv", "Inv & Skills"],
     carried: true,
     empty: () => ({ items: [], titles: [], status: [], mods: "" }),
     render: value => [

@@ -7,6 +7,7 @@ export default {
     title: "🧠 INTERNAL THOUGHTS",
     match: /^INTERNAL THOUGHTS$/,
     change: "Thoughts",
+    aliases: ["Thought"],
     carried: false,
     empty: () => [],
     isEmpty: v => !v.length,

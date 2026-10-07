@@ -17,6 +17,7 @@ export default {
     title: "👥 SCENE CAST",
     match: /^SCENE CAST$/,
     change: "Cast",
+    aliases: ["Scene cast"],
     carried: true,
     empty: () => ({}),
     render: value => Object.entries(value).map(([n, c]) => `- <b>${esc(n)}</b> | ${FIELDS.map(k => `${LABEL[k]}: ${show(c[k])}`).join(" | ")}`),

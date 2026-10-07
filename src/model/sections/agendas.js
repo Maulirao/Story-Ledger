@@ -38,6 +38,7 @@ export default {
     title: "👤 NPC AGENDAS",
     match: /^NPC AGENDAS$/,
     change: "Agendas",
+    aliases: ["NPC Agendas", "Agenda"],
     carried: true,
     empty: () => ({}),
     render: value => Object.entries(value).map(([n, a]) =>

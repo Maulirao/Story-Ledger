@@ -10,6 +10,7 @@ export default {
     title: "🧾 LAST",
     match: /^LAST$/,
     change: "Last",
+    aliases: ["Last beats"],
     carried: true,
     empty: () => [],
     render: value => value.map(b => `- ${esc(b)}`),

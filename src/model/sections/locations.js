@@ -22,6 +22,7 @@ export default {
     title: "👤 NPC LOCATIONS",
     match: /^NPC LOCATIONS$/,
     change: "Locations",
+    aliases: ["NPC Locations", "Location"],
     carried: true,
     empty: () => ({}),
     render: value => Object.entries(value).map(([n, place]) => `- <b>${esc(n)}</b> | Location: ${esc(place)}`),

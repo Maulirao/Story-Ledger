@@ -103,6 +103,7 @@ export default {
     title: "🎲 FATE & ROUTINE",
     match: /^FATE ROUTINE$/,
     change: "Fate",
+    aliases: ["Fate & Routine", "Fate and Routine"],
     carried: true,
     empty: emptyFate,
     decide(prev, ctx) {

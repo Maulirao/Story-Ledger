@@ -85,6 +85,7 @@ export default {
     title: "🔫 CHEKHOV'S GUN",
     match: /^CHEKHOV S GUN$/,
     change: "Chekhov",
+    aliases: ["Chekhov's Gun", "Chekhovs Gun"],
     carried: true,
     empty: () => ({ bullets: [], fired: [] }),
     render(value, ctx) {

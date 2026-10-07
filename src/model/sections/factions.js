@@ -39,6 +39,7 @@ export default {
     title: "🏳️ FACTIONS",
     match: /^FACTIONS$/,
     change: "Factions",
+    aliases: ["Faction"],
     carried: true,
     empty: () => ({}),
     render: value => Object.entries(value).map(([n, f]) => `- <b>${esc(n)}</b> | ${FIELDS.map(k => `${LABEL[k]}: ${show(f[k])}`).join(" | ")}`),

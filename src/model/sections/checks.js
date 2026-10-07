@@ -13,6 +13,7 @@ export default {
     title: ctx => (arrow(ctx) ? "🏹 WIND'S ARROW" : "🎲 DND TASK SIM"),
     match: /^(DND TASK SIM|WIND S ARROW)$/,
     change: "Check",
+    aliases: ["Checks"],
     carried: false,
     empty: () => ({ rolls: [], lines: [] }),
     isEmpty: v => !v.rolls.length && !v.lines.length,

@@ -41,6 +41,7 @@ export default {
     title: "🌎 WORLD SIM",
     match: /^WORLD SIM$/,
     change: "World Sim",
+    aliases: ["Worldsim"],
     carried: false,
     empty: () => null,
     isEmpty: value => !value,

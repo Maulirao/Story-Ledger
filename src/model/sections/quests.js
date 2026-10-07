@@ -16,6 +16,7 @@ export default {
     title: "📜 QUESTS",
     match: /^QUESTS$/,
     change: "Quests",
+    aliases: ["Quest"],
     carried: true,
     empty: () => [],
     render: value => value.map(q => `- <b>${q.id} ${q.kind}</b> | ${q.status}${q.status !== "active" && q.send ? " · sent" : ""} | Objective: ${show(q.objective)} | Progress: ${show(q.progress)} | Reward: ${show(q.reward)}`),
