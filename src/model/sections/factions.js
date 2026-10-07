@@ -11,11 +11,27 @@ const blank = () => Object.fromEntries(FIELDS.map(f => [f, ""]));
 const show = v => (v ? esc(v) : "—");
 const read = v => { const t = unesc(v ?? ""); return t === "—" ? "" : t; };
 
-/** "intel … | state: …" → [["intel", "…"], ["state", "…"]]; null unless every part names a field. */
+/** Read field updates, grouped labels sharing a value, and continuation notes. */
 function fieldParts(text) {
-    const parts = String(text).split(/\s+[|·]\s+/).map(p => p.match(/^(goal|intel|fibs?|state|conflict|relations)\b\s*:?\s*(.+)$/i));
-    if (!parts.length || parts.some(p => !p)) return null;
-    return parts.map(p => [p[1].toLowerCase() === "fib" ? "fibs" : p[1].toLowerCase(), p[2].trim()]);
+    const parts = String(text).split(/\s*([|·])\s*/);
+    const updates = [], pending = [];
+    const field = label => label.toLowerCase() === "fib" ? "fibs" : label.toLowerCase();
+    let current = [];
+    for (let i = 0; i < parts.length; i += 2) {
+        const part = parts[i].trim();
+        const valued = part.match(/^(goal|intel|fibs?|state|conflict|relations)(?:\s*:\s*|\s+(?!:))(\S.*)$/i);
+        const bare = part.match(/^(goal|intel|fibs?|state|conflict|relations)$/i);
+        if (valued) {
+            current = [...pending.splice(0), field(valued[1])].map(k => [k, valued[2].trim()]);
+            updates.push(...current);
+        } else if (bare) pending.push(field(bare[1]));
+        else {
+            // Unknown labels and incomplete groups must not silently overwrite known fields.
+            if (!part || pending.length || !current.length || /^[^:]+:/.test(part)) return null;
+            for (const update of current) update[1] += ` ${parts[i - 1]} ${part}`;
+        }
+    }
+    return updates.length && !pending.length ? updates : null;
 }
 
 export default {
@@ -63,5 +79,10 @@ export default {
         return rows.length ? ["Factions:", ...rows].join("\n") : "";
     },
     rules: () => "Factions are groups with their own goals, intel, lies, morale and rivalries; update a field only when the story changes it.",
-    template: () => ["Factions:", "- [Name: goal|intel|fibs|state|conflict|relations: text — only what changed; drop: Name]"],
+    template: () => [
+        "Factions:",
+        "- [Name: goal: text | state: text]",
+        "- [Name: intel: text | fibs: text | conflict: text | relations: text]",
+        "- [drop: Name]",
+    ],
 };

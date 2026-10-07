@@ -13,6 +13,18 @@ const blank = () => ({ task: "", step: 0, max: 0, aware: "", fibs: "", circle: "
 const show = v => (v ? esc(v) : "—");
 const read = v => { const t = unesc(v); return t === "—" ? "" : t; };
 
+function progressRecap(line) {
+    const m = line.match(/^([^:]+?)\s*:\s*(\S.*?)\s+\(\s*(\d+)\s*\/\s*(\d+)\s*\)("?)\s*(?:[—–]\s*(.+)|(continues\b.*))?$/i);
+    if (!m || Number(m[4]) <= 0 || Number(m[3]) > Number(m[4])) return null;
+    let task = m[2].trim();
+    // A model may quote the task alone or include its progress inside the quotes.
+    if (m[5] && task.startsWith('"')) task = task.slice(1).trim();
+    else if (task.startsWith('"') && task.endsWith('"')) task = task.slice(1, -1).trim();
+    if (!task) return null;
+    const note = m[6] || m[7];
+    return { name: m[1], task: task + (note ? ` — ${note.trim()}` : ""), step: Number(m[3]), max: Number(m[4]) };
+}
+
 function entry(state, name) {
     const n = findName(Object.keys(state.agendas), name);
     if (!state.agendas[n]) state.agendas[n] = blank();
@@ -69,6 +81,11 @@ export default {
                 const field = { knows: "aware", fib: "fibs", fibs: "fibs", circle: "circle", body: "body" }[m[2].toLowerCase()];
                 const v = m[3].trim();
                 a[field] = (field === "aware" || field === "fibs") && a[field] ? `${a[field]}; ${v}` : v;
+            } else if ((m = progressRecap(line))) {
+                // A task/progress recap is an explicit update; keep its note and do not auto-tick it again.
+                const [n, a] = entry(state, m.name);
+                Object.assign(a, { task: m.task, step: m.step, max: m.max });
+                ctx.touched.add(n.toLowerCase());
             } else if (/@/.test(line) && locationLine(line)) {
                 const [n, place] = locationLine(line);
                 setLocation(state, n, place);

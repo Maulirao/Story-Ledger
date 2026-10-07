@@ -17,6 +17,15 @@ const readList = text => {
 const same = (a, b) => a.trim().toLowerCase() === b.trim().toLowerCase();
 const remove = (list, v) => { const i = list.findIndex(x => same(x, v)); if (i < 0) return false; list.splice(i, 1); return true; };
 
+function removeItem(list, text) {
+    if (remove(list, text)) return true;
+    // Strip a removal explanation, but keep name qualifiers such as "(blue)" significant.
+    const item = text.replace(/\s+\((?:dropped|lost|used|left|given|consumed|discarded|spent|handed)\b[^()]*\)\s*$/i, "").trim();
+    if (item !== text && remove(list, item)) return true;
+    const single = item.match(/^1\s+(.+)$/);
+    return Boolean(single && remove(list, single[1]));
+}
+
 export default {
     key: "inv",
     title: "🎒 INV & SKILLS",
@@ -49,11 +58,22 @@ export default {
             let m;
             if ((m = line.match(/^title\s*:\s*(.+)$/i))) { if (!inv.titles.some(t => same(t, m[1]))) inv.titles.push(m[1].trim()); }
             else if ((m = line.match(/^title\s*-\s*(.+)$/i))) { if (!remove(inv.titles, m[1])) unparsed.push(line); }
-            else if ((m = line.match(/^status\s*\+\s*(.+)$/i))) { if (!inv.status.some(t => same(t, m[1]))) inv.status.push(m[1].trim()); }
-            else if ((m = line.match(/^status\s*-\s*(.+)$/i))) { if (!remove(inv.status, m[1])) unparsed.push(line); }
+            else if ((m = line.match(/^status\s*[:+]\s*(.+)$/i))) {
+                // A model's semicolon-separated status recap adds conditions; only status - removes one.
+                const conditions = readList(m[1]);
+                if (!conditions.length) unparsed.push(line);
+                for (const condition of conditions) if (!inv.status.some(t => same(t, condition))) inv.status.push(condition);
+            }
+            else if ((m = line.match(/^status\s*-\s*(.+)$/i))) {
+                // Keep literal legacy values containing semicolons removable by their exact name.
+                if (remove(inv.status, m[1])) continue;
+                const conditions = readList(m[1]);
+                if (!conditions.length) unparsed.push(line);
+                for (const condition of conditions) if (!remove(inv.status, condition)) unparsed.push(`status - ${condition}`);
+            }
             else if ((m = line.match(/^mods\s*:\s*(.*)$/i))) inv.mods = m[1].trim();
             else if ((m = line.match(/^\+\s*(.+)$/))) inv.items.push(m[1].trim());
-            else if ((m = line.match(/^-\s*(.+)$/))) { if (!remove(inv.items, m[1])) unparsed.push(line); }
+            else if ((m = line.match(/^-\s*(.+)$/))) { if (!removeItem(inv.items, m[1])) unparsed.push(line); }
             else unparsed.push(line);
         }
         return unparsed;

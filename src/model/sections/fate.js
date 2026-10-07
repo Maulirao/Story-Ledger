@@ -181,8 +181,20 @@ export default {
             } else if ((m = line.match(/^residue\s*:\s*(.+)$/i))) {
                 appendResidue(fate, m[1].trim(), ctx);
                 if (fate.owed.length) fate.owed.shift();
+            } else if ((m = line.match(/^World\s+(.+?)\s+landed\s+as\s+(\S.*)$/i)) && outcome.source === "TRUE"
+                && ctx.turn.worldsim && m[1].trim().toLowerCase() === String(ctx.turn.worldsim.name).trim().toLowerCase()) {
+                // A realized World Sim event is aftermath, not a new tracked happening or payment of unrelated debt.
+                appendResidue(fate, `${ctx.turn.worldsim.name} — ${m[2].trim()}`, ctx);
             } else if ((m = line.match(/^World\s*:\s*(.+)$/i))) {
                 worldLines.push(m[1]);   // a World line written inside the Fate list
+            } else if (/^(ELSEWHERE|REGIONAL|LOCAL)\s*:/i.test(line)) {
+                worldLines.push(line);   // proximity recaps sometimes appear under Fate
+            } else if ((m = line.match(/^(MINOR|MAJOR)\s+(?:consequence\s+)?landed\s*:\s*(.+)$/i)) && m[1].toUpperCase() === outcome.tier) {
+                // A landed consequence is aftermath, not a tier override or payment of unrelated owed residue.
+                appendResidue(fate, m[2].trim(), ctx);
+            } else if ((m = line.match(/^(AMBIENT|MINOR|MAJOR)(?:\s*\+\s*(TRUE|WEIGHTED))?\s*:\s*(.+)$/i))
+                && m[1].toUpperCase() === outcome.tier && (!m[2] || m[2].toUpperCase() === outcome.source)) {
+                // A matching recap is informational. The engine still owns the tier and source.
             } else unparsed.push(line);
         }
         for (const raw of worldLines) {
@@ -200,6 +212,9 @@ export default {
             } else if ((m = line.match(/^land\s+(W\d+)\s*:\s*(.+)$/i)) && (item = byId(fate.world, m[1]))) {
                 fate.world = fate.world.filter(w => w !== item);
                 oweResidue(fate, `${item.id} “${item.desc}” landed: ${m[2].trim()}`);
+            } else if ((m = line.match(/^(ELSEWHERE|REGIONAL|LOCAL)\s*:\s*(\S.*?)\s+\((W\d+)\s+unchanged\)$/i))
+                && (item = byId(fate.world, m[3])) && item.prox === m[1].toUpperCase() && outcome.world?.id !== item.id) {
+                // A matching recap is informational; aging and scheduled world effects still belong to the engine.
             } else unparsed.push(line);
         }
         return unparsed;
@@ -289,7 +304,7 @@ export default {
         return [
             "Fate & Routine: open a THREAD pursuit for a story-bearing question; close or park it with the consequence when answered or set aside. Defer a pursuit only when its result cannot land yet; `resolve D#` records that it was paid off.",
             "A WILL is a concrete thing someone wants. Track meaningful progress with `ambition +1`; progress never falls from Fate, and 5/5 becomes a LOCAL happening with residue owed.",
-            "For world news, keep the reported channel recognizable, allow a plausible in-world distortion, and scale reactions to the event's actual reach. Keep ordinary scenes ordinary when Fate says AMBIENT.",
+            "For world news, keep the reported channel recognizable, allow a plausible in-world distortion, and scale reactions to the event's actual reach. Keep ordinary scenes ordinary when Fate says AMBIENT. The ledger already records the turn's tier and source; omit Fate when no pursuit, deferred item, ambition or residue changed, rather than writing an AMBIENT/MINOR/MAJOR recap. Omit unchanged World entries instead of repeating their proximity or W#. For a realized World Sim event, write `World EVENT landed as aftermath` under Fate using the announced event name; this records its residue without creating a new World entry.",
             `A twice-deferred item cannot be deferred again. Pursuits at ts ${cfg.pursuitLimit ?? 8} must close or park. Record a concise residue line for each owed aftermath; do not erase old residue except by the configured tail.`,
         ].join("\n");
     },
