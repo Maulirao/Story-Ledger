@@ -5,3 +5,5 @@ node_modules/
 deploy/
 docs/deploy-runbook.md
 .superpowers/
+docs/superpowers/
+tools/presets/recipes/
