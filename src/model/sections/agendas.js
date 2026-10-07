@@ -87,8 +87,8 @@ export default {
                 const [n, a] = entry(state, m.name);
                 Object.assign(a, { task: m.task, step: m.step, max: m.max });
                 ctx.touched.add(n.toLowerCase());
-            } else if (/@/.test(line) && locationLine(line)) {
-                const [n, place] = locationLine(line);
+            } else if (/@/.test(line) && locationLine(line, { normalized: ctx.normalizedChanges })) {
+                const [n, place] = locationLine(line, { normalized: ctx.normalizedChanges });
                 setLocation(state, n, place);
             } else unparsed.push(line);
         }

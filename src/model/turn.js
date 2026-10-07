@@ -7,7 +7,8 @@
 
 import { emptyState } from "./state.js";
 import { parseBlock, findBlock, BLOCK_MARK, replaceSectionRows } from "./block.js";
-import { enabledSections, CORE_KEYS, sectionByKey, needsPresent } from "./sections/registry.js";
+import { enabledSections, CORE_KEYS, sectionByKey, needsPresent, SECTIONS } from "./sections/registry.js";
+import { HEADINGS, headingKey } from "./headings.js";
 import { applyTurn, replayRelations } from "./relations.js";
 import { importFromLegacyNotebook, notebookBody, parseNotebookBlock } from "./notebook.js";
 import { parseChanges } from "./changes.js";
@@ -16,18 +17,24 @@ import { importForeign } from "./import/index.js";
 const clone = o => JSON.parse(JSON.stringify(o));
 const key = s => String(s).trim().toLowerCase();
 
-/** The change lines a reply wrote under `heading` (case-insensitive). */
-const linesUnder = (changes, heading) => {
-    if (!changes || !changes.sections) return [];
-    const k = Object.keys(changes.sections).find(h => h.toLowerCase() === heading.toLowerCase());
-    return k ? changes.sections[k] : [];
+// lines of `lists` under `heading` (case-insensitive)
+const under = (lists, heading) => {
+    const k = Object.keys(lists || {}).find(h => h.toLowerCase() === heading.toLowerCase());
+    return k ? lists[k] : [];
 };
+
+/** The change lines a reply wrote under `heading` (case-insensitive). */
+const linesUnder = (changes, heading) => under(changes && changes.sections, heading);
+
+/** The same lines before quote folding, index for index; a reply without them falls back to `linesUnder`. */
+const rawLinesUnder = (changes, heading) => changes && changes.raw ? under(changes.raw, heading) : linesUnder(changes, heading);
 
 /** The context every section hook receives. */
 export function sectionContext(state, prevPresent, config, prevNow = "", changes = null) {
     return {
         config, userName: config.userName, present: state.scene.present, prevPresent: prevPresent || [], prevNow,
-        touched: new Set(), warnings: [], turn: {}, linesUnder: heading => linesUnder(changes, heading), sections: config.sections || {}, checkStyle: config.checkStyle || "dnd",
+        touched: new Set(), warnings: [], turn: {}, linesUnder: heading => linesUnder(changes, heading),
+        rawLinesUnder: heading => rawLinesUnder(changes, heading), normalizedChanges: Boolean(changes && changes.raw), sections: config.sections || {}, checkStyle: config.checkStyle || "dnd",
         rolls: Array.isArray(config.dice?.checks) ? config.dice.checks : config.rolls, fudgedDice: config.fudgedDice || [],
     };
 }
@@ -64,6 +71,22 @@ export function postTurn(prev, changes, config) {
     }
     for (const sec of on) if (sec.after) sec.after(s, ctx);
     return { state: s, log: rel.log, unparsed, warnings: ctx.warnings };
+}
+
+// a heading's owning switch; core grammars have no section module of their own
+const CORE_OWNER = { Threads: "notebook", "Proposed rules": "notebook", Relationships: "relationships", World: "fate" };
+const ownerOf = name => {
+    const canonical = HEADINGS.get(headingKey(name));
+    return canonical && (CORE_OWNER[canonical] || SECTIONS.find(sec => sec.change === canonical)?.key);
+};
+
+/**
+ * Parser and engine "could not read" lines for the reply notice. Diagnostics of a known
+ * heading whose section is switched off are dropped; unknown headings stay visible.
+ */
+export function unreadNotices(changes, unparsed, sections = {}) {
+    const off = u => { const k = ownerOf(u.section); return Boolean(k) && (sections || {})[k] === false; };
+    return [...((changes && changes.unparsed) || []).filter(u => !off(u)), ...(unparsed || [])];
 }
 
 /** Lines for <story_ledger_turn>: what the sections announce before the reply is written. */

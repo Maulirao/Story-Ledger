@@ -15,6 +15,7 @@
 
 import { axisByKey } from "./config.js";
 import { sameName } from "./import/util.js";
+import { normalizeLine } from "./normalize.js";
 
 export const pairKey = (from, to) => `${from}→${to}`;
 
@@ -238,7 +239,17 @@ export const PATTERN_GLOSS = Object.fromEntries(PATTERNS.map(p => [p.id, p.gloss
 
 // ── Reading the model's lines ───────────────────────────────────────────────
 
-const ARROW = /\s*(?:→|->|↔|<->|=>)\s*/;
+// arrows between two names; the legacy tag reader keeps the original five
+const LEGACY_ARROWS = "→|->|↔|<->|=>";
+const ARROWS = "→|<->|->|↔|=>|⟶|➔|➜|⇔";
+const grammar = A => ({
+    ARROW: new RegExp(String.raw`\s*(?:${A})\s*`),
+    NOTE: new RegExp(String.raw`^NOTE\s+(.+?)\s*(?:${A})\s*(.+?)\s*:\s*(.+)$`, "i"),
+    NEW: new RegExp(String.raw`^NEW\s+(.+?)\s*(?:${A})\s*(.+?)\s*:\s*(.+)$`, "i"),
+    DIRECT: new RegExp(String.raw`^DIRECT\s+(.+?)\s*(?:${A})\s*(.+?)\s*:\s*([A-Za-z]+)\s*\+?\s*(\d+)\s*(.*)$`, "i"),
+    TICK: new RegExp(String.raw`^(.+?)\s*(?:${A})\s*(.+?)\s*:\s*(.+)$`),
+});
+const GRAMMAR = grammar(ARROWS), LEGACY_GRAMMAR = grammar(LEGACY_ARROWS);
 const AXIS_ALIASES = {
     eros: "E", misos: "M", ludus: "L", eris: "Er", philia: "Ph", echthros: "Ec", pragma: "Pr",
     stasis: "St", storge: "Sg", adiaphora: "Ad", agape: "Ag", phthonos: "Pt",
@@ -253,20 +264,27 @@ const reasonOf = s => { const m = String(s).match(/\(([^)]*)\)\s*$/); return m ?
 const withoutReason = s => String(s).replace(/\([^)]*\)\s*$/, "").trim();
 const isPhi = s => /^(?:Φ|phi|philautia)(?:_acc)?$/i.test(String(s).trim());
 
-/** The model's relationship lines → events. Lines it cannot read come back in `unparsed`. */
-export function parseRelationLines(lines) {
+/**
+ * The model's relationship lines → events. Lines it cannot read come back in `unparsed`.
+ * Raw strings take framing normalization once; normalized records (`{ text }`) are read
+ * as they are. `legacy: true` keeps the tag reader's old cleanup and arrows exactly.
+ */
+export function parseRelationLines(lines, { legacy = false } = {}) {
     const out = { news: [], directs: [], ticks: [], phiTicks: [], notes: [], unparsed: [] };
+    const { ARROW, NOTE, NEW, DIRECT, TICK } = legacy ? LEGACY_GRAMMAR : GRAMMAR;
     for (const raw of lines || []) {
-        const line = String(raw).replace(/<[^>]+>/g, "").replace(/^\s*[-*•]\s*/, "").trim();
+        const line = raw !== null && typeof raw === "object" ? String(raw.text).trim()
+            : legacy ? String(raw).replace(/<[^>]+>/g, "").replace(/^\s*[-*•]\s*/, "").trim()
+            : normalizeLine(String(raw)).text;
         if (!line) continue;
         let m;
         // NOTE A → B: a new description of the relationship
-        if ((m = line.match(/^NOTE\s+(.+?)\s*(?:→|->|↔|<->|=>)\s*(.+?)\s*:\s*(.+)$/i))) {
+        if ((m = line.match(NOTE))) {
             out.notes.push({ from: m[1].trim(), to: m[2].trim(), text: m[3].trim() });
             continue;
         }
         // NEW A → B: E 3, M 4, … | Φ 2 (reason)
-        if ((m = line.match(/^NEW\s+(.+?)\s*(?:→|->|↔|<->|=>)\s*(.+?)\s*:\s*(.+)$/i))) {
+        if ((m = line.match(NEW))) {
             const reason = reasonOf(m[3]);
             const [axPart, phiPart] = withoutReason(m[3]).split("|");
             const axes = {};
@@ -280,7 +298,7 @@ export function parseRelationLines(lines) {
             continue;
         }
         // DIRECT A → B: E +1 (reason)
-        if ((m = line.match(/^DIRECT\s+(.+?)\s*(?:→|->|↔|<->|=>)\s*(.+?)\s*:\s*([A-Za-z]+)\s*\+?\s*(\d+)\s*(.*)$/i))) {
+        if ((m = line.match(DIRECT))) {
             const k = axisKey(m[3]);
             if (k) { out.directs.push({ from: m[1].trim(), to: m[2].trim(), axis: k, amount: Number(m[4]), reason: reasonOf(m[5]) }); continue; }
         }
@@ -290,7 +308,7 @@ export function parseRelationLines(lines) {
             continue;
         }
         // A → B: X_acc +n (reason) | Y_acc +n (reason)
-        if ((m = line.match(/^(.+?)\s*(?:→|->|↔|<->|=>)\s*(.+?)\s*:\s*(.+)$/))) {
+        if ((m = line.match(TICK))) {
             let any = false;
             for (const part of m[3].split("|")) {
                 const mm = part.trim().match(/^([A-Za-z]+)(?:_acc)?\s*([+-]\s*\d+)\s*(.*)$/);

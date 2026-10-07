@@ -14,6 +14,9 @@
 // node (tests/notebook.test.mjs). The glue lives in ./index.js.
 // ──────────────────────────────────────────────────────────────────────────────
 
+import { ledgerLines } from "./normalize.js";
+import { headingOf } from "./headings.js";
+
 export const NOTEBOOK_TAG = "Story_Ledger";
 // <Story_Ledger> is this extension's tag — deliberately not "<ledger>", which Ancient
 // Access's tracker uses for a different block. <Notebook> is what the Megumin fork's
@@ -35,15 +38,20 @@ const key = s => norm(s).toLowerCase();
 export const LEDGER_BLOCK_RE = new RegExp(
     `<!--\\s*Story_Ledger\\b([\\s\\S]*?)(?:-->|$)|<${BLOCK_TAGS}\\b[^>]*>([\\s\\S]*?)(?:<\\/${BLOCK_TAGS}\\s*>|$)`, "gi");
 
-// The body of the last ledger block in a message, or null.
-export function notebookBody(mes) {
+/** The last ledger block in a message: its body and form ("comment" or "tag"), or null. */
+export function lastLedgerBlock(mes) {
     const re = new RegExp(LEDGER_BLOCK_RE.source, "gi");
     let m, last = null;
     while ((m = re.exec(String(mes || "")))) {
-        last = m[1] !== undefined ? m[1] : m[2];
+        last = m[1] !== undefined ? { body: m[1], kind: "comment" } : { body: m[2], kind: "tag" };
         if (m[0] === "") re.lastIndex++;
     }
     return last;
+}
+
+/** The body of the last ledger block in a message, or null. */
+export function notebookBody(mes) {
+    return lastLedgerBlock(mes)?.body ?? null;
 }
 
 // Lines under a "Heading:" up to the next heading or the end.
@@ -67,10 +75,17 @@ const bullet = line => norm(line).replace(/^[-*•]\s*/, "");
 const NOW_LINE = /^\s*(?:[-*•]\s*)?Now\s*:\s*(.*)$/im;
 const isSkeleton = s => /^\[.*\]$/.test(s);
 
-/** { now: string|null, threads: string[], proposals: {op,target,text}[] } or null when the reply has no block. */
-export function parseNotebookBlock(mes) {
-    const body = notebookBody(mes);
-    if (body === null) return null;
+// a proposal line, bullet already gone → { op, target, text } or null
+function proposalOf(line) {
+    let m;
+    if ((m = line.match(/^add\s*:\s*(.+)$/i))) return { op: "add", target: null, text: m[1].trim() };
+    if ((m = line.match(/^edit\s+R?(\d+)\s*:\s*(.+)$/i))) return { op: "edit", target: Number(m[1]), text: m[2].trim() };
+    if ((m = line.match(/^remove\s+R?(\d+)\s*(?::\s*(.*))?$/i))) return { op: "remove", target: Number(m[1]), text: (m[2] || "").trim() };
+    return null;
+}
+
+// the tag forms (<Story_Ledger>, <Notebook>) read exactly as before normalization existed
+function legacyNotebook(body) {
     const nowMatch = body.match(NOW_LINE);
     const nowText = nowMatch ? norm(nowMatch[1]) : "";
     const now = nowText && !isSkeleton(nowText) ? nowText : null;
@@ -79,15 +94,41 @@ export function parseNotebookBlock(mes) {
         .map(bullet)
         .map(t => t.replace(/^\[T\]\s*/i, ""))
         .filter(t => t && !isSkeleton(t));                // drop an unfilled "[...]" skeleton line
-    const proposals = [];
-    for (const raw of section(body, "Proposed rules")) {
-        const line = bullet(raw);
-        let m;
-        if ((m = line.match(/^add\s*:\s*(.+)$/i))) proposals.push({ op: "add", target: null, text: m[1].trim() });
-        else if ((m = line.match(/^edit\s+R?(\d+)\s*:\s*(.+)$/i))) proposals.push({ op: "edit", target: Number(m[1]), text: m[2].trim() });
-        else if ((m = line.match(/^remove\s+R?(\d+)\s*(?::\s*(.*))?$/i))) proposals.push({ op: "remove", target: Number(m[1]), text: (m[2] || "").trim() });
-    }
+    const proposals = section(body, "Proposed rules").map(bullet).map(proposalOf).filter(Boolean);
     return { now, threads, proposals };
+}
+
+const CORE_FIELD = /^(Now|Present|Public)\s*:\s*(.*)$/i;
+
+/** The comment form's notebook from its normalized records (shared with parseChanges, not re-split). */
+export function notebookFromRecords(records) {
+    let nowText = null, current = null;
+    const threads = [], proposals = [];
+    for (const rec of records) {
+        const f = rec.text.match(CORE_FIELD);
+        if (f) {
+            if (nowText === null && f[1].toLowerCase() === "now") nowText = f[2].trim();
+            continue;                                      // stray one-line fields are not threads
+        }
+        const h = headingOf(rec);
+        if (h) { current = h.known ? h.name : null; continue; }
+        if (current === "Threads") {
+            const t = rec.text.replace(/^\[T\]\s*/i, "");
+            if (t && !isSkeleton(t)) threads.push(t);
+        } else if (current === "Proposed rules") {
+            const p = proposalOf(rec.text);
+            if (p) proposals.push(p);
+        }
+    }
+    const now = nowText && !isSkeleton(nowText) ? nowText : null;
+    return { now, threads, proposals };
+}
+
+/** { now: string|null, threads: string[], proposals: {op,target,text}[] } or null when the reply has no block. */
+export function parseNotebookBlock(mes) {
+    const block = lastLedgerBlock(mes);
+    if (block === null) return null;
+    return block.kind === "comment" ? notebookFromRecords(ledgerLines(block.body)) : legacyNotebook(block.body);
 }
 
 // ── Story clock ─────────────────────────────────────────────────────────────

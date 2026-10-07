@@ -6,9 +6,13 @@
 import { esc, unesc, ROW, fieldsOf, unbullet } from "../text.js";
 import { findName, hasName } from "./people.js";
 
-/** "Ana @ the café" or "Ana: the café" → [name, place], or null. */
-export function locationLine(line) {
-    const m = unbullet(line).match(/^([^@:]+?)\s*(?:@|:)\s*(.+)$/);
+/**
+ * "Ana @ the café" or "Ana: the café" → [name, place], or null. A normalized comment
+ * line already lost its one list marker (`normalized: true` only trims); otherwise the
+ * historical helper strips a bullet.
+ */
+export function locationLine(line, { normalized = false } = {}) {
+    const m = (normalized ? String(line).trim() : unbullet(line)).match(/^([^@:]+?)\s*(?:@|:)\s*(.+)$/);
     return m ? [m[1].trim(), m[2].trim()] : null;
 }
 
@@ -40,12 +44,13 @@ export default {
         }
         return { value, errors };
     },
-    apply(state, lines) {
+    apply(state, lines, ctx) {
+        const normalized = Boolean(ctx && ctx.normalizedChanges);
         const unparsed = [];
         for (const l of lines) {
-            const hit = locationLine(l);
+            const hit = locationLine(l, { normalized });
             if (hit) setLocation(state, hit[0], hit[1]);
-            else unparsed.push(unbullet(l));
+            else unparsed.push(normalized ? String(l).trim() : unbullet(l));
         }
         return unparsed;
     },
