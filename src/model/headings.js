@@ -38,13 +38,15 @@ export function buildHeadings(sections) {
 /** Heading key -> canonical change name. */
 export const HEADINGS = buildHeadings(SECTIONS);
 
-/** Classify a record: `{ name, known }` for a heading line, else null. */
+/**
+ * Classify a normalized record: `{ name, known }` for a heading line, else null. Its one
+ * list marker is already gone; a bulleted record is a heading only with its colon
+ * (`- Quests:`), so a one-word value such as `- Physics` stays a line.
+ */
 export function headingOf(rec) {
-    const raw = String(rec.text).trim();
-    // a bulleted record may still carry its marker
-    const text = rec.bulleted ? raw.replace(/^[-*•·]\s+/, "") : raw;
+    const text = String(rec.text).trim();
     const bare = text.replace(/^#{1,6}\s+/, "").replace(/\s*:$/, "").trim();
-    if (WORDS.test(bare)) {
+    if (WORDS.test(bare) && (!rec.bulleted || /:$/.test(text))) {
         const name = HEADINGS.get(headingKey(bare));
         if (name) return { name, known: true };
     }

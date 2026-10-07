@@ -152,3 +152,10 @@ test("tagged locations retain historical helper behavior", () => {
     const now = postTurn(prev, c, CFG({}));
     assert.equal(now.state.locations.Mara, "hall");
 });
+
+test("a bulleted value named like a heading stays in its section", () => {
+    const c = comment("Inventory:\n- - World\n- + rope");
+    assert.deepEqual(c.sections.Inventory, ["- World", "+ rope"]);
+    assert.equal("World" in c.sections, false);
+    assert.deepEqual(comment("Inventory:\n- + Last\n- Physics\n- + rope").sections, { Inventory: ["+ Last", "Physics", "+ rope"] });
+});
