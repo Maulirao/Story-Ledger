@@ -18,7 +18,7 @@ import { describePair, PATTERN_GLOSS, relationsNotice } from "./src/model/relati
 import { parseChanges } from "./src/model/changes.js";
 import { renderBlock, BLOCK_MARK } from "./src/model/block.js";
 import { setSend } from "./src/model/sections/quests.js";
-import { postTurn, latestState, initialState, writeBlockInto, stripBlocks, generationBase, rewriteNewestSection, withClockOverride } from "./src/model/turn.js";
+import { postTurn, latestState, initialState, writeBlockInto, stripBlocks, generationBase, rewriteNewestSection, withClockOverride, unreadNotices } from "./src/model/turn.js";
 import { renderStatePrompt, needsHandover, stripForPrompt, stripPromptText, buildTemplate, renderRules, renderTurnFacts, buildHandover } from "./src/model/prompt.js";
 import { importForeign, proposeImportedRules } from "./src/model/import/index.js";
 import { SECTIONS } from "./src/model/sections/registry.js";
@@ -238,17 +238,19 @@ async function rebuildMessage(i, { announce = true } = {}) {
     }
     const refused = relationsNotice(log, changes.relations.unparsed);
     if (s.sections.relationships && refused) notice("info", refused, "💞 Story Ledger");
-    const unread = [...changes.unparsed, ...unparsed];
+    const unread = unreadNotices(changes, unparsed, s.sections);
     if (unread.length) notice("info", `Could not read: ${unread.map(u => `${u.section}: "${u.line}"`).join("; ")}`, "📒 Story Ledger");
     for (const w of warnings || []) notice("warning", w.text, w.section === "Chekhov" ? "🔫 Story Ledger" : "📒 Story Ledger");
     if (s.sections.notebook && changes.proposals.length) {
         const before = chatData().notebook;
-        const after = collectProposals(before, changes.proposals, `m${i}s${msg.swipe_id ?? 0}`);
+        const cannot = [];
+        const after = collectProposals(before, changes.proposals, `m${i}s${msg.swipe_id ?? 0}`, cannot);
         const added = after.inbox.length - before.inbox.length;
         if (added > 0) {
             await saveChatData(d => { d.notebook = after; });
             notice("info", `${added} rule proposal${added > 1 ? "s" : ""} waiting.`, "📜 Story Ledger");
         }
+        if (cannot.length) notice("info", `Could not apply: ${cannot.map(x => `${x.section}: "${x.line}" (${x.reason})`).join("; ")}`, "📜 Story Ledger");
     }
 }
 

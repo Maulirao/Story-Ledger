@@ -5,10 +5,19 @@
 
 import { esc, unesc, ROW, fieldsOf, unbullet } from "../text.js";
 import { findName, hasName } from "./people.js";
+import { commandTemplate } from "../commands.js";
 
-/** "Ana @ the café" or "Ana: the café" → [name, place], or null. */
-export function locationLine(line) {
-    const m = unbullet(line).match(/^([^@:]+?)\s*(?:@|:)\s*(.+)$/);
+const COMMANDS = [
+    { id: "locations.move", form: "Name @ place", example: "Ana @ the harbour", keywords: [] },
+];
+
+/**
+ * "Ana @ the café" or "Ana: the café" → [name, place], or null. A normalized comment
+ * line already lost its one list marker (`normalized: true` only trims); otherwise the
+ * historical helper strips a bullet.
+ */
+export function locationLine(line, { normalized = false } = {}) {
+    const m = (normalized ? String(line).trim() : unbullet(line)).match(/^([^@:]+?)\s*(?:@|:)\s*(.+)$/);
     return m ? [m[1].trim(), m[2].trim()] : null;
 }
 
@@ -22,6 +31,7 @@ export default {
     title: "👤 NPC LOCATIONS",
     match: /^NPC LOCATIONS$/,
     change: "Locations",
+    aliases: ["NPC Locations", "Location"],
     carried: true,
     empty: () => ({}),
     render: value => Object.entries(value).map(([n, place]) => `- <b>${esc(n)}</b> | Location: ${esc(place)}`),
@@ -39,12 +49,13 @@ export default {
         }
         return { value, errors };
     },
-    apply(state, lines) {
+    apply(state, lines, ctx) {
+        const normalized = Boolean(ctx && ctx.normalizedChanges);
         const unparsed = [];
         for (const l of lines) {
-            const hit = locationLine(l);
+            const hit = locationLine(l, { normalized });
             if (hit) setLocation(state, hit[0], hit[1]);
-            else unparsed.push(unbullet(l));
+            else unparsed.push(normalized ? String(l).trim() : unbullet(l));
         }
         return unparsed;
     },
@@ -52,6 +63,7 @@ export default {
         const away = Object.entries(value).filter(([n]) => !hasName(state.scene.present, n));
         return away.length ? `Where people are: ${away.map(([n, p]) => `${n} — ${p}`).join("; ")}` : "";
     },
-    rules: () => "",
-    template: () => ["Locations:", "- [Name @ place — only when someone moved]"],
+    rules: () => "Locations: write a line only when someone moved.",
+    commands: COMMANDS,
+    template: ctx => commandTemplate("Locations", COMMANDS, ctx),
 };

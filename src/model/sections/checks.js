@@ -5,14 +5,26 @@
 // ──────────────────────────────────────────────────────────────────────────────
 
 import { esc } from "../text.js";
+import { commandTemplate } from "../commands.js";
 
 const arrow = ctx => ctx && ctx.checkStyle === "arrow";
+
+// the "·" inside a check is the command's own field separator
+const COMMANDS = [
+    {
+        id: "checks.check",
+        form: ctx => (arrow(ctx) ? "Actor, gamble · d20 n ±m · Trajectory · the price" : "Actor, action · DC n · d20 n +m · Outcome"),
+        example: ctx => (arrow(ctx) ? "Mara, leaps the gap · d20 11 +1 · Grazing Shot · she drops her lantern" : "Mara, picks the lock · DC 12 · d20 14 +2 · success"),
+        keywords: [],
+    },
+];
 
 export default {
     key: "checks",
     title: ctx => (arrow(ctx) ? "🏹 WIND'S ARROW" : "🎲 DND TASK SIM"),
     match: /^(DND TASK SIM|WIND S ARROW)$/,
     change: "Check",
+    aliases: ["Checks"],
     carried: false,
     empty: () => ({ rolls: [], lines: [] }),
     isEmpty: v => !v.rolls.length && !v.lines.length,
@@ -36,7 +48,8 @@ export default {
     },
     prompt: () => "",
     rules: ctx => (arrow(ctx)
-        ? "Checks (Wind's Arrow): only uncertain, high-stakes kinetic gambles roll; mundane or conversational actions auto-pass. Commit to the outcome before writing: Wind Drift fails or is intercepted with a real setback, Grazing Shot succeeds at an immediate physical or tactical cost, Bullseye is clean. Report each as `Check: Actor, gamble · d20 n ±m · Trajectory · the price`."
-        : "Checks (DnD): only a skilled action that can actually fail rolls; trivial tasks auto-pass. Lock the DC first from proficiency, items and titles (Easy 1–5, Moderate 5–10, Hard 10–15, Impossible 15–20), then Delta = d20 + mods − DC: Nat 20 or +8 crit success · 0 to +7 success · −1 to −3 near miss · −4 to −7 failure · Nat 1 or −8 crit failure. Dice are law; never fudge. Never name DCs, dice or stats in prose. Report each as `Check: Actor, action · DC n · d20 n +m · Outcome`."),
-    template: () => ["Check:", "- [Actor, action · DC n · d20 n +m · Outcome — one per roll used]"],
+        ? "Checks (Wind's Arrow): only uncertain, high-stakes kinetic gambles roll; mundane or conversational actions auto-pass. Commit to the outcome before writing: Wind Drift fails or is intercepted with a real setback, Grazing Shot succeeds at an immediate physical or tactical cost, Bullseye is clean. Under `Check:`, one line per roll used: `Actor, gamble · d20 n ±m · Trajectory · the price`."
+        : "Checks (DnD): only a skilled action that can actually fail rolls; trivial tasks auto-pass. Lock the DC first from proficiency, items and titles (Easy 1–5, Moderate 5–10, Hard 10–15, Impossible 15–20), then Delta = d20 + mods − DC: Nat 20 or +8 crit success · 0 to +7 success · −1 to −3 near miss · −4 to −7 failure · Nat 1 or −8 crit failure. Dice are law; never fudge. Never name DCs, dice or stats in prose. Under `Check:`, one line per roll used: `Actor, action · DC n · d20 n +m · Outcome`."),
+    commands: COMMANDS,
+    template: ctx => commandTemplate("Check", COMMANDS, ctx),
 };

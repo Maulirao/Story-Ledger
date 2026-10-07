@@ -1,6 +1,12 @@
 // 🌌 PHYSICS, ENGINE & WORLD — this reply's environment and spatial positioning. Never carried. Pure.
 
 import { esc } from "../text.js";
+import { commandTemplate } from "../commands.js";
+
+const COMMANDS = [
+    { id: "physics.env", form: "Env: …", example: "Env: steady rain, lamplight, slick cobbles", keywords: ["Env"] },
+    { id: "physics.scene", form: "Scene: …", example: "Scene: Mara at the door, Jan three paces back, the alley out of sight", keywords: ["Scene"] },
+];
 
 export default {
     key: "physics",
@@ -25,6 +31,7 @@ export default {
         return unparsed;
     },
     prompt: () => "",
-    rules: () => "",
-    template: () => ["Physics:", "- [Env: hazards, weather, light · Scene: positions, distances, line of sight]"],
+    rules: () => "Physics: Env is this reply's hazards, weather and light; Scene is positions, distances and line of sight.",
+    commands: COMMANDS,
+    template: ctx => commandTemplate("Physics", COMMANDS, ctx),
 };

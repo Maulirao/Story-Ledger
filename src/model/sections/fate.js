@@ -4,9 +4,31 @@
 // their bookkeeping after the model's change lines. Pure: no SillyTavern, no DOM.
 // ──────────────────────────────────────────────────────────────────────────────
 
-import { esc, unesc, ROW } from "../text.js";
+import { esc, unesc, ROW, closedForm } from "../text.js";
 import { nextId } from "../state.js";
 import { computeFate, reachFor } from "../fate-engine.js";
+import { commandTemplate } from "../commands.js";
+
+const FATE_COMMANDS = [
+    { id: "fate.pursuit", form: "pursuit: question", example: "pursuit: who set the boathouse fire?", keywords: ["pursuit"] },
+    { id: "fate.close", form: "close: aftermath", example: "close: the arsonist fled town; the guild blames the union", keywords: ["close"] },
+    { id: "fate.park", form: "park: aftermath", example: "park: the fire is old news; nobody talks of it", keywords: ["park"] },
+    { id: "fate.defer-new", form: "defer: desc", example: "defer: the guild's audit of the docks", keywords: ["defer"] },
+    { id: "fate.defer", form: "defer D#", example: "defer D1", keywords: ["defer"] },
+    { id: "fate.resolve", form: "resolve D#", example: "resolve D1", keywords: ["resolve"] },
+    { id: "fate.ambition", form: "ambition: want", example: "ambition: Mara wants her own boat", keywords: ["ambition"] },
+    { id: "fate.ambition-progress", form: "ambition +1 prefix", example: "ambition +1 Mara wants", keywords: ["ambition"] },
+    { id: "fate.residue", form: "residue: owed aftermath", example: "residue: the burnt pier is fenced off", keywords: ["residue"] },
+    { id: "fate.world-landed", form: "World EVENT landed as aftermath", example: "World ARRIVAL landed as a cousin turns up four hours early", keywords: ["World", "landed", "as"] },
+];
+
+const WORLD_COMMANDS = [
+    { id: "world.add-elsewhere", form: "+ ELSEWHERE: …", example: "+ ELSEWHERE: a war breaks out across the sea", keywords: ["ELSEWHERE"] },
+    { id: "world.add-regional", form: "+ REGIONAL: …", example: "+ REGIONAL: the river road is flooded", keywords: ["REGIONAL"] },
+    { id: "world.add-local", form: "+ LOCAL: …", example: "+ LOCAL: the bakery closes for a funeral", keywords: ["LOCAL"] },
+    { id: "world.escalate", form: "escalate W#", example: "escalate W1", keywords: ["escalate"] },
+    { id: "world.land", form: "land W#: how it lands", example: "land W1: refugees reach the harbour", keywords: ["land"] },
+];
 
 const clone = value => JSON.parse(JSON.stringify(value));
 const cfgOf = ctx => ctx?.config?.sectionConfig?.fate || {};
@@ -103,6 +125,7 @@ export default {
     title: "🎲 FATE & ROUTINE",
     match: /^FATE ROUTINE$/,
     change: "Fate",
+    aliases: ["Fate & Routine", "Fate and Routine"],
     carried: true,
     empty: emptyFate,
     decide(prev, ctx) {
@@ -152,6 +175,8 @@ export default {
         if (!outcome) return unparsed;
         const byDeferred = id => byId(fate.deferred, id);
         const worldLines = [...ctx.linesUnder("World")];
+        // the comment path accepts one terminal punctuation mark on a closed form
+        const closed = ctx.normalizedChanges ? closedForm : s => s;
         for (const raw of lines) {
             const line = String(raw).trim();
             let m, item;
@@ -166,10 +191,10 @@ export default {
                 const id = nextId(state, "D", fate.deferred.map(d => d.id));
                 fate.deferred.push({ id, desc: m[1].trim(), times: 1, age: 0 });
                 ctx.touched.add(`fate:${id}`);
-            } else if ((m = line.match(/^defer\s+(D\d+)$/i)) && (item = byDeferred(m[1]))) {
+            } else if ((m = closed(line).match(/^defer\s+(D\d+)$/i)) && (item = byDeferred(m[1]))) {
                 item.times = Math.min(2, item.times + 1);
                 ctx.touched.add(`fate:${item.id}`);
-            } else if ((m = line.match(/^resolve\s+(D\d+)$/i)) && (item = byDeferred(m[1]))) {
+            } else if ((m = closed(line).match(/^resolve\s+(D\d+)$/i)) && (item = byDeferred(m[1]))) {
                 fate.deferred = fate.deferred.filter(d => d !== item);
             } else if ((m = line.match(/^ambition\s*:\s*(.+)$/i))) {
                 fate.ambitions.push({ desc: m[1].trim(), progress: 0 });
@@ -206,7 +231,7 @@ export default {
                 const what = m[3].trim().replace(/\s*\(Reach\s+\d+\)\s*$/i, "");
                 const desc = m[1] ? `${m[1].trim()} — ${what}` : what;
                 addWorld(fate, state, m[2].toUpperCase(), desc, c, ctx);
-            } else if ((m = line.match(/^escalate\s+(W\d+)$/i)) && (item = byId(fate.world, m[1]))) {
+            } else if ((m = closed(line).match(/^escalate\s+(W\d+)$/i)) && (item = byId(fate.world, m[1]))) {
                 item.prox = { ELSEWHERE: "REGIONAL", REGIONAL: "LOCAL", LOCAL: "LOCAL" }[item.prox];
                 item.reach = Math.min(3, item.reach + 1);
             } else if ((m = line.match(/^land\s+(W\d+)\s*:\s*(.+)$/i)) && (item = byId(fate.world, m[1]))) {
@@ -308,12 +333,10 @@ export default {
             `A twice-deferred item cannot be deferred again. Pursuits at ts ${cfg.pursuitLimit ?? 8} must close or park. Record a concise residue line for each owed aftermath; do not erase old residue except by the configured tail.`,
         ].join("\n");
     },
-    template: () => [
-        "Fate:",
-        "- [pursuit: question · close: residue · park: residue · defer: desc · defer D# · resolve D# · ambition: want · ambition +1 prefix · residue: aftermath]",
-        "World:",
-        "- [+ ELSEWHERE|REGIONAL|LOCAL: happening · escalate W# · land W#: how it lands]",
-    ],
+    // commands covers both headings; worldCommands are the ones written under World:
+    commands: [...FATE_COMMANDS, ...WORLD_COMMANDS],
+    worldCommands: WORLD_COMMANDS,
+    template: ctx => [...commandTemplate("Fate", FATE_COMMANDS, ctx), ...commandTemplate("World", WORLD_COMMANDS, ctx)],
 };
 
 

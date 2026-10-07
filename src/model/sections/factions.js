@@ -4,12 +4,24 @@
 
 import { esc, unesc, ROW, fieldsOf } from "../text.js";
 import { findName } from "./people.js";
+import { commandTemplate } from "../commands.js";
 
 const FIELDS = ["goal", "intel", "fibs", "state", "conflict", "relations"];
 const LABEL = { goal: "Goal", intel: "Intel", fibs: "Fibs", state: "State", conflict: "Conflict", relations: "Relations" };
 const blank = () => Object.fromEntries(FIELDS.map(f => [f, ""]));
 const show = v => (v ? esc(v) : "—");
 const read = v => { const t = unesc(v ?? ""); return t === "—" ? "" : t; };
+
+// one field per line; the "|"-grouped form stays readable but is not taught
+const COMMANDS = [
+    { id: "factions.goal", form: "Name: goal: text", example: "Harbour Guild: goal: control the docks", keywords: ["goal"] },
+    { id: "factions.intel", form: "Name: intel: text", example: "Harbour Guild: intel: knows about the smuggling", keywords: ["intel"] },
+    { id: "factions.fibs", form: "Name: fibs: text", example: "Harbour Guild: fibs: claims the tolls fund repairs", keywords: ["fibs"] },
+    { id: "factions.state", form: "Name: state: text", example: "Harbour Guild: state: shaken after the fire", keywords: ["state"] },
+    { id: "factions.conflict", form: "Name: conflict: text", example: "Harbour Guild: conflict: the fishermen's union", keywords: ["conflict"] },
+    { id: "factions.relations", form: "Name: relations: text", example: "Harbour Guild: relations: courts the mayor", keywords: ["relations"] },
+    { id: "factions.drop", form: "drop: Name", example: "drop: Harbour Guild", keywords: ["drop"] },
+];
 
 /** Read field updates, grouped labels sharing a value, and continuation notes. */
 function fieldParts(text) {
@@ -39,6 +51,7 @@ export default {
     title: "🏳️ FACTIONS",
     match: /^FACTIONS$/,
     change: "Factions",
+    aliases: ["Faction"],
     carried: true,
     empty: () => ({}),
     render: value => Object.entries(value).map(([n, f]) => `- <b>${esc(n)}</b> | ${FIELDS.map(k => `${LABEL[k]}: ${show(f[k])}`).join(" | ")}`),
@@ -79,10 +92,6 @@ export default {
         return rows.length ? ["Factions:", ...rows].join("\n") : "";
     },
     rules: () => "Factions are groups with their own goals, intel, lies, morale and rivalries; update a field only when the story changes it.",
-    template: () => [
-        "Factions:",
-        "- [Name: goal: text | state: text]",
-        "- [Name: intel: text | fibs: text | conflict: text | relations: text]",
-        "- [drop: Name]",
-    ],
+    commands: COMMANDS,
+    template: ctx => commandTemplate("Factions", COMMANDS, ctx),
 };

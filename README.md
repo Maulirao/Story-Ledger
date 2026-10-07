@@ -22,6 +22,10 @@ the reply — FF's `<internal_states>` layout, folded under **🎬 INTERNAL STAT
   newest reply's block; the next turn starts from your edit.
 - **↻** in the block's header rebuilds that block from the one before it and the reply's
   comment (for when you edited the comment instead). Nothing rebuilds on its own.
+- Harmless formatting in the comment (bullets, bold labels, curly quotes, heading case) is
+  accepted; lines under unknown headings are reported. ↻ rebuilding an old reply may now
+  apply a formerly unread line, and may refuse a formerly accepted incomplete `NEW` or
+  impossible agenda progress.
 - Swipes, deletes and branches work like FF's block: each reply carries its own state.
 - Blocks and old comments are stripped from the prompt; the current state is injected once.
 - The block's sections: 🕰️ Scene · 👥 Scene cast · 💞 Relationships · 📓 Notebook ·

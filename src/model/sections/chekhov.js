@@ -5,9 +5,18 @@
 // setting: the model, or (phase 4) Fate. Pure.
 // ──────────────────────────────────────────────────────────────────────────────
 
-import { esc, unesc, ROW } from "../text.js";
+import { esc, unesc, ROW, closedForm } from "../text.js";
 import { nextId } from "../state.js";
 import { parseStoryTime, lockTime, isAtOrPast } from "../storytime.js";
+import { commandTemplate } from "../commands.js";
+
+const COMMANDS = [
+    { id: "chekhov.load", form: "load: setup (w2, hot, at 18:00)", example: "load: the locked cellar door (w2, hot, at 18:00)", keywords: ["load", "hot", "at"] },
+    { id: "chekhov.fire", form: "fire B#: how it paid off", example: "fire B1: the cellar held the missing ledgers", keywords: ["fire"] },
+    { id: "chekhov.lock", form: "lock B#: why", example: "lock B1: Mara has the only key", keywords: ["lock"] },
+    { id: "chekhov.unlock", form: "unlock B#", example: "unlock B1", keywords: ["unlock"] },
+    { id: "chekhov.prune", form: "prune B#", example: "prune B1", keywords: ["prune"] },
+];
 
 const cfgOf = ctx => (ctx && ctx.config && ctx.config.sectionConfig && ctx.config.sectionConfig.chekhov) || {
     eligibleAge: 6, pruneAge: 12, cap: 20, maxLoadsPerTurn: 1, firedKeep: 10, firing: "model",
@@ -85,6 +94,7 @@ export default {
     title: "🔫 CHEKHOV'S GUN",
     match: /^CHEKHOV S GUN$/,
     change: "Chekhov",
+    aliases: ["Chekhov's Gun", "Chekhovs Gun"],
     carried: true,
     empty: () => ({ bullets: [], fired: [] }),
     render(value, ctx) {
@@ -146,6 +156,8 @@ export default {
         const cfg = cfgOf(ctx);
         const unparsed = [];
         let loads = 0;
+        // the comment path accepts one terminal punctuation mark on a closed form
+        const closed = ctx && ctx.normalizedChanges ? closedForm : s => s;
         for (const raw of lines) {
             const line = String(raw).trim();   // parseChanges already removed the list bullet
             let m, b;
@@ -164,8 +176,8 @@ export default {
                 if (!eligible(b, state, cfg) && !isDue(b, state)) ctx.warnings.push({ section: "Chekhov", text: `${b.id} "${b.desc}" fired before it was eligible (${holdReasons(b, state, cfg).join("; ")}).` });
                 toFired(state, b, m[2].trim());
             } else if ((m = line.match(/^lock\s+(B\d+)\s*:\s*(.+)$/i)) && (b = byId(state.chekhov.bullets, m[1]))) b.lock = m[2].trim();
-            else if ((m = line.match(/^unlock\s+(B\d+)$/i)) && (b = byId(state.chekhov.bullets, m[1]))) { b.lock = ""; b.at = null; b.after = ""; }
-            else if ((m = line.match(/^prune\s+(B\d+)$/i)) && (b = byId(state.chekhov.bullets, m[1]))) toFired(state, b, "pruned");
+            else if ((m = closed(line).match(/^unlock\s+(B\d+)$/i)) && (b = byId(state.chekhov.bullets, m[1]))) { b.lock = ""; b.at = null; b.after = ""; }
+            else if ((m = closed(line).match(/^prune\s+(B\d+)$/i)) && (b = byId(state.chekhov.bullets, m[1]))) toFired(state, b, "pruned");
             else unparsed.push(line);
         }
         return unparsed;
@@ -234,11 +246,13 @@ export default {
         const cfg = cfgOf(ctx);
         return [
             "Chekhov's Gun: load a setup only when the prose leaves narrative debt a reader would notice going unpaid — an unresolved setup, a promise, foreshadowing, a planted object, emotional tension. Ambient scenery, small talk and passing business load nothing.",
+            "A load's options go in its parentheses, comma separated: a weight w1–3 (required), then any of hot, secret, at HH:MM, after B#.",
             `At most ${cfg.maxLoadsPerTurn} load per reply. Weight 1–3 by how much it matters. Mark it hot only when it exists because of something {{user}} said or did. A future time becomes an \`at\` lock written as a clock time — \`at 18:30\`, \`at noon\`, \`at midnight\` or \`at Day 4 09:00\` — worked out from the story time ("in an hour" at 17:30 is \`at 18:30\`). \`after B#\` makes it wait for another setup. A secret stays held while more than 2 people are present.`,
             fateFiring(ctx)
                 ? "Firing: a bullet fires only when the turn says so (Fate's pick), or when it is due; pay it off naturally and never narrate the mechanics."
                 : "Firing: you judge the moment — fire an eligible bullet when the story offers a natural opening, never forced; a due bullet fires when its hour comes. Pay it off naturally and never narrate the mechanics.",
         ].join("\n");
     },
-    template: () => ["Chekhov:", "- [load: setup (w1–3[, hot][, secret][, at HH:MM][, after B#]) · fire B#: how it paid off · lock B#: why · unlock B# · prune B#]"],
+    commands: COMMANDS,
+    template: ctx => commandTemplate("Chekhov", COMMANDS, ctx),
 };

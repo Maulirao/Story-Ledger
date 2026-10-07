@@ -5,6 +5,7 @@
 
 import { esc, unesc, ROW, fieldsOf } from "../text.js";
 import { findName, hasName } from "./people.js";
+import { commandTemplate } from "../commands.js";
 
 const FIELDS = ["position", "wearing", "holding", "condition"];
 const LABEL = { position: "Position", wearing: "Wearing", holding: "Holding", condition: "Condition" };
@@ -12,11 +13,19 @@ const blank = () => Object.fromEntries(FIELDS.map(f => [f, ""]));
 const show = v => (v ? esc(v) : "—");
 const read = v => { const t = unesc(v ?? ""); return t === "—" ? "" : t; };
 
+const COMMANDS = [
+    { id: "cast.position", form: "Name: position: text", example: "Mara: position: by the door", keywords: ["position"] },
+    { id: "cast.wearing", form: "Name: wearing: text", example: "Mara: wearing: a wet coat", keywords: ["wearing"] },
+    { id: "cast.holding", form: "Name: holding: text", example: "Mara: holding: a brass key", keywords: ["holding"] },
+    { id: "cast.condition", form: "Name: condition: text", example: "Mara: condition: shivering", keywords: ["condition"] },
+];
+
 export default {
     key: "cast",
     title: "👥 SCENE CAST",
     match: /^SCENE CAST$/,
     change: "Cast",
+    aliases: ["Scene cast"],
     carried: true,
     empty: () => ({}),
     render: value => Object.entries(value).map(([n, c]) => `- <b>${esc(n)}</b> | ${FIELDS.map(k => `${LABEL[k]}: ${show(c[k])}`).join(" | ")}`),
@@ -54,5 +63,6 @@ export default {
         return rows.length ? ["In the scene:", ...rows].join("\n") : "";
     },
     rules: () => "Cast: for each person present — where they are relative to the others, what they are wearing now, what is in their hands, notable physical state (injured, wet, tired, drunk, hungry, aroused). Report only what changed; clothes and objects do not reappear once removed or put down.",
-    template: () => ["Cast:", "- [Name: position|wearing|holding|condition: text — only what changed]"],
+    commands: COMMANDS,
+    template: ctx => commandTemplate("Cast", COMMANDS, ctx),
 };

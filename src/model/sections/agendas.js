@@ -7,11 +7,21 @@
 import { esc, unesc, ROW, fieldsOf } from "../text.js";
 import { findName, hasName } from "./people.js";
 import { locationLine, setLocation } from "./locations.js";
+import { commandTemplate } from "../commands.js";
 
 const FIELDS = ["aware", "fibs", "circle", "body"];
 const blank = () => ({ task: "", step: 0, max: 0, aware: "", fibs: "", circle: "", body: "" });
 const show = v => (v ? esc(v) : "—");
 const read = v => { const t = unesc(v); return t === "—" ? "" : t; };
+
+const COMMANDS = [
+    { id: "agendas.new", form: 'Name: new "task" 0/N @ place', example: 'Ana: new "mend the nets" 0/2 @ the harbour', keywords: ["new"] },
+    { id: "agendas.done", form: 'Name: done "task" → effect', example: 'Ana: done "mend the nets" → the boat can sail', keywords: ["done"] },
+    { id: "agendas.knows", form: "Name knows: …", example: "Ana knows: Mara took the key", keywords: ["knows"] },
+    { id: "agendas.fib", form: "Name fib: …", example: "Ana fib: says she was home all night", keywords: ["fib"] },
+    { id: "agendas.circle", form: "Name circle: …", example: "Ana circle: the harbour crews", keywords: ["circle"] },
+    { id: "agendas.body", form: "Name body: …", example: "Ana body: a bandaged hand", keywords: ["body"] },
+];
 
 function progressRecap(line) {
     const m = line.match(/^([^:]+?)\s*:\s*(\S.*?)\s+\(\s*(\d+)\s*\/\s*(\d+)\s*\)("?)\s*(?:[—–]\s*(.+)|(continues\b.*))?$/i);
@@ -38,6 +48,7 @@ export default {
     title: "👤 NPC AGENDAS",
     match: /^NPC AGENDAS$/,
     change: "Agendas",
+    aliases: ["NPC Agendas", "Agenda"],
     carried: true,
     empty: () => ({}),
     render: value => Object.entries(value).map(([n, a]) =>
@@ -66,8 +77,10 @@ export default {
             const line = String(raw).trim();   // parseChanges already removed the list bullet
             let m;
             if ((m = line.match(/^(.+?)\s*:\s*new\s+"([^"]+)"\s+(\d+)\s*\/\s*(\d+)\s*(?:@\s*(.+))?$/i))) {
+                const step = Number(m[3]), max = Number(m[4]);
+                if (max <= 0 || step > max) { unparsed.push(line); continue; }   // impossible progress: change nothing
                 const [n, a] = entry(state, m[1]);
-                Object.assign(a, { task: m[2].trim(), step: Number(m[3]), max: Number(m[4]) });
+                Object.assign(a, { task: m[2].trim(), step, max });
                 if (m[5]) setLocation(state, n, m[5].trim());
                 ctx.touched.add(n.toLowerCase());
             } else if ((m = line.match(/^(.+?)\s*:\s*done\b/i))) {
@@ -86,8 +99,8 @@ export default {
                 const [n, a] = entry(state, m.name);
                 Object.assign(a, { task: m.task, step: m.step, max: m.max });
                 ctx.touched.add(n.toLowerCase());
-            } else if (/@/.test(line) && locationLine(line)) {
-                const [n, place] = locationLine(line);
+            } else if (/@/.test(line) && locationLine(line, { normalized: ctx.normalizedChanges })) {
+                const [n, place] = locationLine(line, { normalized: ctx.normalizedChanges });
                 setLocation(state, n, place);
             } else unparsed.push(line);
         }
@@ -122,12 +135,9 @@ export default {
         "When an NPC leaves the scene, replace their agenda from personality, recent events or whim. Off-screen agendas advance on their own; the ledger tells you when one finishes.",
         "When one finishes, apply its effect through the ledger's other lines — travel: a new location; research: load a Chekhov setup and tick fondness with whoever was involved; repair/build: an item on their Body; trade/errand: move an item between people; train: a skill noted on Body; social visit: relationship ticks between the two; rest: Body improves, a little self-regard; reconcile: a DIRECT fondness shift and a subdued repair talk; confront: friction ticks. A completion never walks into {{user}}'s scene on its own.",
         "On entering the scene: unfinished — distracted, mentions what is pending; finished and mundane — neutral; finished and significant — energised, wants to share if fond of the person.",
+        "Write `new` for a new or replaced agenda and `done` for one that finished; knows, fib, circle and body lines only for what changed.",
         "Never name the mechanics in prose.",
     ].join("\n"),
-    template: () => [
-        "Agendas:",
-        '- [Name: new "task" 0/N @ place — a new or replaced agenda]',
-        '- [Name: done "task" → effect — one that finished]',
-        "- [Name knows: … / Name fib: … / Name circle: … / Name body: … — only what changed]",
-    ],
+    commands: COMMANDS,
+    template: ctx => commandTemplate("Agendas", COMMANDS, ctx),
 };

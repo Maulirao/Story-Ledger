@@ -3,19 +3,30 @@
 // the block for good (the reader's choice); ids are counted, never reused. Pure.
 // ──────────────────────────────────────────────────────────────────────────────
 
-import { esc, unesc, ROW, fieldsOf } from "../text.js";
+import { esc, unesc, ROW, fieldsOf, closedForm } from "../text.js";
 import { nextId } from "../state.js";
+import { commandTemplate } from "../commands.js";
 
 const STATUS = ["active", "done", "dropped"];
 const show = v => (v ? esc(v) : "—");
 const read = v => { const t = unesc(v ?? ""); return t === "—" ? "" : t; };
 const byId = (state, id) => state.quests.find(q => q.id.toLowerCase() === String(id).toLowerCase());
 
+const COMMANDS = [
+    { id: "quests.add-main", form: "+ Main: objective (reward)", example: "+ Main: find the missing ferryman (the title Harbour Friend)", keywords: ["Main"] },
+    { id: "quests.add-side", form: "+ Side: objective (reward)", example: "+ Side: return the lost dog (a free meal)", keywords: ["Side"] },
+    { id: "quests.progress", form: "Q# progress: text", example: "Q1 progress: the ferryman was seen at the mill", keywords: ["progress"] },
+    { id: "quests.done", form: "done Q#", example: "done Q1", keywords: ["done"] },
+    { id: "quests.drop", form: "drop Q#", example: "drop Q1", keywords: ["drop"] },
+    { id: "quests.reopen", form: "reopen Q#", example: "reopen Q1", keywords: ["reopen"] },
+];
+
 export default {
     key: "quests",
     title: "📜 QUESTS",
     match: /^QUESTS$/,
     change: "Quests",
+    aliases: ["Quest"],
     carried: true,
     empty: () => [],
     render: value => value.map(q => `- <b>${q.id} ${q.kind}</b> | ${q.status}${q.status !== "active" && q.send ? " · sent" : ""} | Objective: ${show(q.objective)} | Progress: ${show(q.progress)} | Reward: ${show(q.reward)}`),
@@ -39,8 +50,12 @@ export default {
         }
         return { value, errors };
     },
-    apply(state, lines) {
+    apply(state, lines, ctx) {
         const unparsed = [];
+        // the comment path accepts one terminal punctuation mark on a closed form
+        const closed = ctx && ctx.normalizedChanges ? closedForm : s => s;
+        // there a free-form "Q# …: text" update needs text after its colon ("Q1 progress:" is empty)
+        const update = ctx && ctx.normalizedChanges ? /^(Q\d+)\b\s*(.*:\s*\S.*)$/i : /^(Q\d+)\b\s*(.*:.*)$/i;
         for (const raw of lines) {
             const line = String(raw).trim();   // parseChanges already removed the list bullet
             let m, q;
@@ -48,9 +63,9 @@ export default {
                 state.quests.push({ id: nextId(state, "Q", state.quests.map(x => x.id)), kind: m[1][0].toUpperCase() + m[1].slice(1).toLowerCase(), status: "active",
                     objective: m[2].trim(), progress: "", reward: (m[3] || "").trim(), send: false });
             } else if ((m = line.match(/^(Q\d+)\s*:?\s+(?:(?:Main|Side)\s+)?progress\s*:\s*(.+)$/i)) && (q = byId(state, m[1]))) q.progress = m[2].trim();   // "Q1 Main progress:" and "Q1: progress:" too
-            else if ((m = line.match(/^(done|drop|reopen)\s+(Q\d+)$/i)) && (q = byId(state, m[2]))) {
+            else if ((m = closed(line).match(/^(done|drop|reopen)\s+(Q\d+)$/i)) && (q = byId(state, m[2]))) {
                 q.status = { done: "done", drop: "dropped", reopen: "active" }[m[1].toLowerCase()];
-            } else if ((m = line.match(/^(Q\d+)\b\s*(.*:.*)$/i)) && (q = byId(state, m[1]))) {
+            } else if ((m = line.match(update)) && (q = byId(state, m[1]))) {
                 // any other "Q# …: text" is a progress update ("Q1 Main — <title> · Day 3: …"):
                 // the kind and the quest's own title are dropped, the rest (a time, say) is kept
                 let rest = m[2].replace(/^[\s:·—–-]*(?:(?:Main|Side)\b)?[\s:·—–-]*/i, "");
@@ -70,7 +85,8 @@ export default {
         return parts.join("\n");
     },
     rules: () => "Quests: a Main quest is the story's spine, Side quests are optional; rewards are new titles or items. Mark progress when the story moves a quest, done or drop when it ends.",
-    template: () => ["Quests:", "- [+ Main|Side: objective (reward) · Q# progress: … · done Q# · drop Q# · reopen Q#]"],
+    commands: COMMANDS,
+    template: ctx => commandTemplate("Quests", COMMANDS, ctx),
 };
 
 /** Mark finished quests as sent to the model or not: `ids` names them, "all" means every finished quest. Mutates. */

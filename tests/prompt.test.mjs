@@ -95,7 +95,7 @@ test("text completion continue: the continued reply's block is removed from the 
 });
 
 // ── phase 2: template, rules and turn facts built from the sections ─────────
-import { buildTemplate, renderRules, renderTurnFacts } from "../src/model/prompt.js";
+import { buildTemplate, renderRules, renderTurnFacts, buildHandover } from "../src/model/prompt.js";
 
 test("the template lists only enabled sections", () => {
     assert.match(buildTemplate({ sections: {} }), /Agendas:[\s\S]*Quests:[\s\S]*Check:/);
@@ -119,4 +119,80 @@ test("rules include only enabled sections' rules", () => {
     assert.match(renderRules({ ...C, sections: {} }), /Agendas: every named NPC/);
     assert.doesNotMatch(renderRules({ ...C, sections: { agendas: false } }), /Agendas: every named NPC/);
     assert.match(renderRules({ ...C, sections: {} }), /^<ledger_rules>[\s\S]*<\/ledger_rules>$/);
+});
+
+// ── templates built from each grammar's commands ────────────────────────────
+import * as promptModule from "../src/model/prompt.js";
+import * as relationsModule from "../src/model/relations.js";
+import * as notebookModule from "../src/model/notebook.js";
+import { SECTIONS } from "../src/model/sections/registry.js";
+
+const STYLES = ["dnd", "arrow"];
+const ctxFor = checkStyle => ({ config: { sections: {}, checkStyle }, checkStyle, sections: {} });
+const resolve = (v, ctx) => (typeof v === "function" ? v(ctx) : v);
+const commandLines = (heading, commands) => [`${heading}:`, ...commands.map(c => `- [${resolve(c.form, ctxFor("dnd"))}]`)].join("\n");
+const allCommands = () => [
+    ...(promptModule.CORE_COMMANDS || []),
+    ...(notebookModule.THREAD_COMMANDS || []),
+    ...(relationsModule.RELATION_COMMANDS || []),
+    ...SECTIONS.flatMap(s => s.commands || []),
+    ...(notebookModule.PROPOSAL_COMMANDS || []),
+];
+
+test("every template line is one declared command", () => {
+    for (const checkStyle of STYLES) {
+        const ctx = ctxFor(checkStyle);
+        const all = allCommands();
+        const forms = all.map(c => resolve(c.form, ctx));
+        const lines = buildTemplate({ sections: {}, checkStyle }).split("\n").filter(l => l.startsWith("- ["));
+        assert.ok(lines.length > 0);
+        for (const line of lines) assert.equal(forms.filter(f => `- [${f}]` === line).length, 1, `${checkStyle}: ${line}`);
+        // and every bulleted command is taught, once
+        const core = new Set((promptModule.CORE_COMMANDS || []).map(c => c.id));
+        for (const c of all.filter(x => !core.has(x.id))) {
+            assert.equal(lines.filter(l => l === `- [${resolve(c.form, ctx)}]`).length, 1, `${checkStyle}: ${c.id}`);
+        }
+    }
+});
+
+test("every command has a unique id and a non-empty example", () => {
+    const all = allCommands();
+    for (const id of ["core.now", "core.present", "core.public", "rel.tick", "threads.add", "rules.add", "cast.position", "quests.add-main", "fate.world-landed", "world.add-local"]) {
+        assert.ok(all.some(c => c.id === id), `missing ${id}`);
+    }
+    const ids = all.map(c => c.id);
+    assert.deepEqual(ids.filter((id, i) => ids.indexOf(id) !== i), [], "duplicate ids");
+    for (const c of all) {
+        assert.match(c.id, /^[a-z]+\.[a-z0-9-]+$/, c.id);
+        assert.ok(Array.isArray(c.keywords), `${c.id} keywords`);
+        for (const checkStyle of STYLES) {
+            const ctx = ctxFor(checkStyle);
+            assert.ok(String(resolve(c.form, ctx) || "").trim(), `${c.id} form`);
+            assert.ok(String(resolve(c.example, ctx) || "").trim(), `${c.id} example`);
+        }
+    }
+});
+
+test("echoed relationship skeletons are unparsed, never ticked or awaited", () => {
+    const ch = parseChanges(comment(commandLines("Relationships", relationsModule.RELATION_COMMANDS)));
+    assert.equal(ch.relations.unparsed.length, relationsModule.RELATION_COMMANDS.length);
+    const { state } = postTurn(emptyState(), ch, C);
+    assert.deepEqual(state.rel, { ...state.rel, pairs: {}, selves: {}, awaiting: {} });
+});
+
+test("template size is reported", t => {
+    const before = 2489;   // buildTemplate({ sections: {} }).length on 3f47607
+    t.diagnostic(`template size: before ${before} chars, after ${buildTemplate({ sections: {} }).length} chars`);
+});
+
+test("rules teach Check as a heading with one line per roll, not an inline form", () => {
+    for (const checkStyle of ["dnd", "arrow"]) {
+        const r = renderRules({ ...C, checkStyle });
+        assert.doesNotMatch(r, /Check: Actor,/);
+        assert.match(r, /Under `Check:`, one line per roll used: `Actor, /);
+    }
+});
+
+test("quests handover names the one-command forms", () => {
+    assert.doesNotMatch(buildHandover([], {}), /Main\|Side/);
 });
