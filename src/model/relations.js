@@ -56,6 +56,9 @@ export function applyTurn(prev, events, present, config) {
     for (const n of ev.news) {
         const k = pairKey(n.from, n.to);
         if (s.pairs[k]) { say("refused", k, `NEW ${k} ignored: the pair already exists.`); continue; }
+        // a partial calibration would invent the missing axes: refuse and ask again next turn
+        const missing = config.axes.filter(a => !(a.key in (n.axes || {}))).map(a => a.key);
+        if (missing.length) { say("refused", k, `NEW ${k} refused: missing ${missing.join(", ")}.`); await_(k); continue; }
         const axes = {};
         for (const a of config.axes) axes[a.key] = clamp(Math.round(Number((n.axes || {})[a.key] ?? 3)), config.axisMin, config.axisMax);
         // the NEW line's reason is the relationship's own description (the card shows it)

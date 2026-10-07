@@ -67,8 +67,10 @@ export default {
             const line = String(raw).trim();   // parseChanges already removed the list bullet
             let m;
             if ((m = line.match(/^(.+?)\s*:\s*new\s+"([^"]+)"\s+(\d+)\s*\/\s*(\d+)\s*(?:@\s*(.+))?$/i))) {
+                const step = Number(m[3]), max = Number(m[4]);
+                if (max <= 0 || step > max) { unparsed.push(line); continue; }   // impossible progress: change nothing
                 const [n, a] = entry(state, m[1]);
-                Object.assign(a, { task: m[2].trim(), step: Number(m[3]), max: Number(m[4]) });
+                Object.assign(a, { task: m[2].trim(), step, max });
                 if (m[5]) setLocation(state, n, m[5].trim());
                 ctx.touched.add(n.toLowerCase());
             } else if ((m = line.match(/^(.+?)\s*:\s*done\b/i))) {

@@ -59,3 +59,13 @@ test("a junk agenda line is unparsed", () => {
     const { unparsed } = postTurn(emptyState(), ch("Agendas:\n- Ana does stuff"), C);
     assert.deepEqual(unparsed, [{ section: "Agendas", line: "Ana does stuff" }]);
 });
+
+test("impossible agenda progress is unread and changes nothing", () => {
+    const { state, unparsed } = postTurn(emptyState(), ch('Agendas:\n- Nora: new "repair" 3/2 @ shed\n- Nora: new "repair" 0/0'), C);
+    assert.deepEqual(state.agendas, {});
+    assert.deepEqual(state.locations, {});
+    assert.deepEqual(unparsed, [
+        { section: "Agendas", line: 'Nora: new "repair" 3/2 @ shed' },
+        { section: "Agendas", line: 'Nora: new "repair" 0/0' },
+    ]);
+});

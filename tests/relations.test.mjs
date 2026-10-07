@@ -182,3 +182,19 @@ test("parses the model's relationship lines: ticks, Φ, DIRECT and NEW, with arr
     assert.equal(got.news[0].reason, "guarded, competitive");
     assert.deepEqual(got.unparsed, ["garbage line"]);
 });
+
+test("an incomplete NEW is refused and awaited", () => {
+    const r = applyTurn(emptyRelations(), ev({ news: [{ from: "Nora", to: "Emilia", axes: { Ph: 4 } }] }), ALL, C);
+    assert.deepEqual(r.state.pairs, {});
+    assert.ok("Nora→Emilia" in r.state.awaiting);
+    const refused = r.log.filter(l => l.kind === "refused");
+    assert.equal(refused.length, 1);
+    assert.match(refused[0].text, /NEW Nora → Emilia refused: missing E, M, L, Er, Ec/);
+});
+
+test("an incomplete NEW does not clear an existing awaiting note", () => {
+    const prev = { ...emptyRelations(), awaiting: { "Nora→Emilia": "BOND 70" } };
+    const r = applyTurn(prev, ev({ news: [{ from: "Nora", to: "Emilia", axes: { Ph: 4 } }] }), ALL, C);
+    assert.deepEqual(r.state.pairs, {});
+    assert.equal(r.state.awaiting["Nora→Emilia"], "BOND 70");
+});
