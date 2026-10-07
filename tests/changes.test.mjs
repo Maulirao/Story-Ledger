@@ -62,6 +62,16 @@ test("lines under an unknown heading are reported", () => {
     assert.deepEqual(comment("Mood:").unparsed, [], "a heading alone is not an error");
 });
 
+test("a field-like line under no heading is reported; framing remnants are not", () => {
+    for (const body of [":\nNow: Day 2", " (changes only)\nNow: Day 2", "---\nNow: Day 2\n---", "```\nNow: Day 2\n```", "No changes.", "Story_Ledger:\nNow: Day 2"]) {
+        assert.deepEqual(comment(body).unparsed, [], JSON.stringify(body));
+    }
+    assert.deepEqual(parseChanges("<!-- Story_Ledger:\nNow: Day 2\n-->").unparsed, []);
+    for (const line of ["Nwo: Day 2", "Presnt: Mara", "Publik: yes"]) {
+        assert.deepEqual(comment(line).unparsed, [{ section: "(no heading)", line, raw: line }]);
+    }
+});
+
 test("a bare Name: line does not swallow later commands silently", () => {
     const c = comment("Cast:\n- Mara: position: door\nMara:\n- Mara: holding: cup");
     assert.deepEqual(c.sections.Cast, ["Mara: position: door"]);

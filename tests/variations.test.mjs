@@ -82,13 +82,27 @@ for (const command of INVENTORY) {
 
 // ── mixed: malformed lines beside valid ones cannot corrupt state ───────────
 
-// one fixture standing for a group: seeds composed in order, configs merged, the fullest notebook
-function composite(fixtures, heading) {
-    const notebooks = fixtures.map(f => f.notebook).filter(Boolean).sort((a, b) => b.rules.length - a.rules.length);
+// Mixed runs give every command its own identity: the n-th command whose example names
+// X1 (Q1, B1, D1, W1) works on Xn, seeded under that id, and a fixture's `isolate`
+// renames anything else it would share. So no valid example acts on another's target.
+function isolated(commands, counts = {}) {
+    return commands.map(c => {
+        const f = FIXTURES[c.id];
+        const letter = (exampleOf(c, ctxOf(null)).match(/\b([QBDW])1\b/) || [])[1];
+        const n = letter ? (counts[letter] = (counts[letter] || 0) + 1) : 1;
+        const id = x => (letter && x === `${letter}1` ? `${letter}${n}` : x);
+        const rename = text => (f.isolate || (t => t))(letter ? text.replace(new RegExp(`\\b${letter}1\\b`, "g"), `${letter}${n}`) : text);
+        return { c, f, id, rename };
+    });
+}
+
+// one fixture standing for a group: seeds composed in order under their ids, configs merged, the fullest notebook
+function composite(members, heading) {
+    const notebooks = members.map(m => m.f.notebook).filter(Boolean).sort((a, b) => b.rules.length - a.rules.length);
     return {
         heading,
-        seed: s => { for (const f of fixtures) if (f.seed) f.seed(s); },
-        config: Object.assign({}, ...fixtures.map(f => f.config || {})),
+        seed: s => { for (const m of members) if (m.f.seed) m.f.seed(s, m.id); },
+        config: Object.assign({}, ...members.map(m => m.f.config || {})),
         notebook: notebooks[0] || null,
     };
 }
@@ -106,31 +120,33 @@ for (const command of INVENTORY) {
 const FREE_LINES = new Set(["Last", "Check"]);
 
 // a group's lines: each valid example, then its malformed lines beside it
-function groupLines(g) {
+function groupLines(heading, members) {
     const ctx = ctxOf(null);
     const valid = [], mixed = [], rejected = [], awaiting = [];
-    for (const c of g.commands) {
-        const f = FIXTURES[c.id];
-        const line = canonicalLine(exampleOf(c, ctx), g.heading);
+    for (const { c, f, rename } of members) {
+        const line = canonicalLine(rename(exampleOf(c, ctx)), heading);
         valid.push(line);
         mixed.push(line);
         for (const m of malformedOf(c, f, null)) {
-            const text = typeof m === "string" ? m : m.line;
-            mixed.push(canonicalLine(text, g.heading));
+            const text = rename(typeof m === "string" ? m : m.line);
+            mixed.push(canonicalLine(text, heading));
             if (typeof m === "string") rejected.push(text);
             awaiting.push(...(m.awaiting || []));
         }
     }
     // a heading-looking empty field must not open a section and swallow later lines
     // (Last and Check keep any line, so there it would be a line like any other)
-    if (g.heading !== null && !FREE_LINES.has(g.heading)) { mixed.push("- Mara:"); rejected.push("Mara:"); }
+    if (heading !== null && !FREE_LINES.has(heading)) { mixed.push("- Mara:"); rejected.push("Mara:"); }
     mixed.push(...valid.slice(0, 1));
     valid.push(...valid.slice(0, 1));
     return { valid, mixed, rejected, awaiting };
 }
 
-// target state and notebook equal the valid-only run, except the semantic awaiting bookkeeping
+// the valid-only run applies every line cleanly; then the mixed run's target state and notebook
+// equal it, except the semantic awaiting bookkeeping its refusals declare
 function assertMixed(validRun, mixedRun, awaiting) {
+    assert.deepEqual([validRun.unparsed, validRun.relationUnparsed, validRun.diagnostics], [[], [], []], "valid-only run is not clean");
+    assert.deepEqual(validRun.log.filter(l => l.kind === "refused"), [], "valid-only run has refusals");
     const target = r => ({ ...r.state, rel: { ...r.state.rel, awaiting: null } });
     assert.deepEqual(target(mixedRun), target(validRun));
     assert.deepEqual(mixedRun.state.rel.awaiting, { ...validRun.state.rel.awaiting, ...Object.fromEntries(awaiting.map(k => [k, ""])) });
@@ -140,8 +156,9 @@ function assertMixed(validRun, mixedRun, awaiting) {
 for (const g of groups) {
     const name = g.heading === null ? "core fields" : g.heading;
     test(`mixed: ${name}`, () => {
-        const fx = composite(g.commands.map(c => FIXTURES[c.id]), g.heading);
-        const { valid, mixed, rejected, awaiting } = groupLines(g);
+        const members = isolated(g.commands);
+        const fx = composite(members, g.heading);
+        const { valid, mixed, rejected, awaiting } = groupLines(g.heading, members);
         const a = runFixture(fx, valid);
         const b = runFixture(fx, mixed);
         assertMixed(a, b, awaiting);
@@ -150,10 +167,13 @@ for (const g of groups) {
 }
 
 test("mixed: every section in one reply", () => {
-    const all = groups.flatMap(g => g.commands.map(c => FIXTURES[c.id]));
-    const fx = composite(all, null);
-    const parts = groups.map(g => ({ g, ...groupLines(g) }));
-    const body = pick => parts.map(({ g, ...p }) => commentBody(g.heading === null ? null : `${g.heading}:`, p[pick])).join("\n");
+    const counts = {};
+    const parts = groups.map(g => {
+        const members = isolated(g.commands, counts);
+        return { g, members, ...groupLines(g.heading, members) };
+    });
+    const fx = composite(parts.flatMap(p => p.members), null);
+    const body = pick => parts.map(p => commentBody(p.g.heading === null ? null : `${p.g.heading}:`, p[pick])).join("\n");
     const a = runComment(fx, body("valid"));
     const b = runComment(fx, body("mixed"));
     assertMixed(a, b, parts.flatMap(p => p.awaiting));

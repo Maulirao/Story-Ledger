@@ -7,6 +7,8 @@
 // A malformed entry is a line (a syntactic failure: reported, state untouched) or
 // { line, expect, awaiting? } for a semantic refusal with its own bookkeeping.
 // Skeletons are generated from the public template in variants.mjs, not listed here.
+// `isolate(text)` (optional) rewrites a command's lines in a mixed run so it does not
+// collide with another fixture's seed.
 // Mutations that are not applicable to a command are noted beside its fixture.
 // ──────────────────────────────────────────────────────────────────────────────
 
@@ -47,24 +49,27 @@ const awaits = (line, key) => ({
     },
 });
 
-// ── seeds (additive, so a group's seeds compose without overwriting) ─────────
+// ── seeds (additive, so a group's seeds compose without overwriting). A seed that creates an
+// id takes `id`, which the mixed runs use to give each command its own (B1 → B3).
+
+const same = x => x;
 
 const present = (...names) => s => { for (const n of names) if (!s.scene.present.includes(n)) s.scene.present.push(n); };
 const pairSeed = s => {
     s.rel.pairs["Mara→Jan"] = s.rel.pairs["Mara→Jan"] || { from: "Mara", to: "Jan", axes: Object.fromEntries(AXES.map(k => [k, 4])), acc: zeros() };
 };
-const questSeed = (more = {}) => s => {
-    if (!s.quests.some(q => q.id === "Q1")) s.quests.push({ id: "Q1", kind: "Main", status: "active", objective: "find the missing ferryman", progress: "", reward: "", send: false, ...more });
+const questSeed = (more = {}) => (s, id = same) => {
+    if (!s.quests.some(q => q.id === id("Q1"))) s.quests.push({ id: id("Q1"), kind: "Main", status: "active", objective: "find the missing ferryman", progress: "", reward: "", send: false, ...more });
 };
-const bulletSeed = (more = {}) => s => {
+const bulletSeed = (more = {}) => (s, id = same) => {
     s.scene.now = s.scene.now || "Day 3 — 12:00";
-    if (!s.chekhov.bullets.some(b => b.id === "B1")) s.chekhov.bullets.push({ id: "B1", desc: "the cellar door", weight: 2, age: 2, hot: false, secret: false, lock: "", at: null, after: "", ...more });
+    if (!s.chekhov.bullets.some(b => b.id === id("B1"))) s.chekhov.bullets.push({ id: id("B1"), desc: "the cellar door", weight: 2, age: 2, hot: false, secret: false, lock: "", at: null, after: "", ...more });
 };
-const deferredSeed = s => {
-    if (!s.fate.deferred.some(d => d.id === "D1")) s.fate.deferred.push({ id: "D1", desc: "the guild's audit", times: 1, age: 2 });
+const deferredSeed = (s, id = same) => {
+    if (!s.fate.deferred.some(d => d.id === id("D1"))) s.fate.deferred.push({ id: id("D1"), desc: "the guild's audit", times: 1, age: 2 });
 };
-const worldSeed = s => {
-    if (!s.fate.world.some(w => w.id === "W1")) s.fate.world.push({ id: "W1", desc: "a war breaks out across the sea", prox: "ELSEWHERE", reach: 1, age: 2 });
+const worldSeed = (s, id = same) => {
+    if (!s.fate.world.some(w => w.id === id("W1"))) s.fate.world.push({ id: id("W1"), desc: "a war breaks out across the sea", prox: "ELSEWHERE", reach: 1, age: 2 });
 };
 const items = (key, ...values) => s => { for (const v of values) if (!s.inv[key].includes(v)) s.inv[key].push(v); };
 
@@ -136,17 +141,20 @@ const fireConfig = () => {
 };
 
 const RULE = "Mara never lies to Jan";
+// the rule R1 that edit and remove point at (distinct from RULE, so a group can also add RULE)
+const R1 = "Mara keeps her word";
 
 /** Fixtures by command id. */
 export const FIXTURES = {
-    // ── core fields (no heading). Empty fields and echoed placeholders are skipped silently today.
+    // ── core fields (no heading). Empty fields and echoed placeholders are skipped silently today;
+    // a truncation without its colon reads as prose under no heading and is ignored too.
     "core.now": {
         heading: null,
         expect(r) {
             clean(r);
             assert.equal(r.state.scene.now, "Day 12 — Tuesday, March 4, 21:44 | the lawn");
         },
-        malformed: ["Nwo: Day 12 — Tuesday, March 4, 21:44 | the lawn", "Now Day 12 — Tuesday, March 4, 21:44", silent("Now:")],
+        malformed: ["Nwo: Day 12 — Tuesday, March 4, 21:44 | the lawn", silent("Now Day 12 — Tuesday, March 4, 21:44"), silent("Now:")],
     },
     "core.present": {
         heading: null,
@@ -154,7 +162,7 @@ export const FIXTURES = {
             clean(r);
             assert.deepEqual(r.state.scene.present, ["Mara", "Jan"]);
         },
-        malformed: ["Presnt: Mara, Jan", "Present Mara, Jan", silent("Present:")],
+        malformed: ["Presnt: Mara, Jan", silent("Present Mara, Jan"), silent("Present:")],
     },
     "core.public": {
         heading: null,
@@ -163,7 +171,7 @@ export const FIXTURES = {
             clean(r);
             assert.equal(r.state.scene.public, false);
         },
-        malformed: ["Publik: no", "Public no", silent("Public:")],
+        malformed: ["Publik: no", silent("Public no"), silent("Public:")],
     },
 
     // ── Threads. Misspelling is inapplicable: a bulleted thread line's [T] tag is optional,
@@ -228,6 +236,8 @@ export const FIXTURES = {
     },
     "rel.new": {
         heading: "Relationships",
+        // in a mixed run the other fixtures seed Mara → Jan, so this NEW names its own pair
+        isolate: text => text.replace("Mara → Jan", "Mara → Nell"),
         expect(r) {
             clean(r);
             assert.deepEqual(r.state.rel.pairs, {
@@ -268,22 +278,22 @@ export const FIXTURES = {
     },
     "rules.edit": {
         heading: "Proposed rules",
-        notebook: { ...emptyNotebook(), rules: [RULE] },
+        notebook: { ...emptyNotebook(), rules: [R1] },
         expect(r) {
             clean(r);
             assert.deepEqual(r.notebook.inbox, [{
-                id: "p1", op: "edit", targetText: RULE, text: "Mara never lies to Jan, except to protect him", source: "t",
-                signature: "edit|mara never lies to jan|mara never lies to jan, except to protect him",
+                id: "p1", op: "edit", targetText: R1, text: "Mara never lies to Jan, except to protect him", source: "t",
+                signature: "edit|mara keeps her word|mara never lies to jan, except to protect him",
             }]);
         },
         malformed: ["edit R99: Mara never lies", "edit R1:", `eidt R1: ${RULE}`, `edit R1 ${RULE}`],
     },
     "rules.remove": {
         heading: "Proposed rules",
-        notebook: { ...emptyNotebook(), rules: [RULE] },
+        notebook: { ...emptyNotebook(), rules: [R1] },
         expect(r) {
             clean(r);
-            assert.deepEqual(r.notebook.inbox, [{ id: "p1", op: "remove", targetText: RULE, text: "the reader dropped it", source: "t", signature: "remove|mara never lies to jan|the reader dropped it" }]);
+            assert.deepEqual(r.notebook.inbox, [{ id: "p1", op: "remove", targetText: R1, text: "the reader dropped it", source: "t", signature: "remove|mara keeps her word|the reader dropped it" }]);
         },
         malformed: ["remove R99: the reader dropped it", "remove", "remvoe R1: the reader dropped it"],
         valid: ["remove R1"],

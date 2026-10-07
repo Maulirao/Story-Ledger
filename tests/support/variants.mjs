@@ -43,7 +43,7 @@ export function headingAliases(heading) {
 }
 
 // colons that are command syntax: the form's, outside a core placeholder and not in a clock time
-const COLON = /(?<!\d):(?!\d)/g;
+const COLON = /(?<!\d):|(?<=\d):(?!\d)/g;
 const syntaxColonCount = form => (form.replace(/\[[^\]]*\]/g, "").match(COLON) || []).length;
 const colonIndexes = (text, n) => [...text.matchAll(COLON)].slice(0, n).map(m => m.index);
 
@@ -92,7 +92,9 @@ export function variants(command, fixture, ctx) {
     }
 
     add("doubled spaces", line.replace(/ /g, "  "));
-    const colons = colonIndexes(example, syntaxColonCount(formOf(command, ctx)));
+    const want = syntaxColonCount(formOf(command, ctx));
+    const colons = colonIndexes(example, want);
+    if (colons.length !== want) throw new Error(`${command.id}: ${want} syntax colon(s) in its form, ${colons.length} found in its example`);
     colons.forEach((at, i) => add(`space before colon ${i + 1}`, canonicalLine(`${example.slice(0, at)} ${example.slice(at)}`, heading)));
     add("tab", line.replace(/ /g, "\t"));
     add("nbsp", line.replace(/ /g, " "));

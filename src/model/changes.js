@@ -20,6 +20,8 @@ const HEADING = /^([A-Za-z][A-Za-z ]{0,30}):\s*$/;
 const OWN = new Set(["Threads", "Relationships", "Proposed rules"]);
 // the diagnostic section of a line written under no heading
 const NO_HEADING = "(no heading)";
+// a label, a colon, then a value: what a field or command line looks like
+const LABELLED = /^[A-Za-z][\w ]{0,30}\s*:\s*\S/;
 
 const emptyChanges = () => ({
     now: null, present: null, public: null,
@@ -58,8 +60,9 @@ function parseComment(records) {
             if (h.known && !OWN.has(h.name)) { out.sections[h.name] = out.sections[h.name] || []; out.raw[h.name] = out.raw[h.name] || []; }
             continue;
         }
-        // a line under no heading (before the first, or after a core field) is no command
-        if (!current) { out.unparsed.push({ section: NO_HEADING, line: rec.text, raw: rec.raw }); continue; }
+        // under no heading (before the first, or after a core field): a field- or command-like line
+        // is reported; framing remnants (`---`, a fence, `No changes.`, `(changes only)`) are not
+        if (!current) { if (rec.bulleted || LABELLED.test(rec.text)) out.unparsed.push({ section: NO_HEADING, line: rec.text, raw: rec.raw }); continue; }
         if (typeof current === "object") { out.unparsed.push({ section: current.unknown, line: rec.text, raw: rec.raw }); continue; }
         if (current === "Threads") readThread(out, rec);
         else if (current === "Relationships") relationships.push(rec);
