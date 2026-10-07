@@ -1,1 +1,7 @@
 node_modules/
+
+# personal: how this install runs on the pi, and agent tooling
+.claude/
+deploy/
+docs/deploy-runbook.md
+.superpowers/
