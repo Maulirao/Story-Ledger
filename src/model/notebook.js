@@ -121,6 +121,7 @@ export function notebookFromRecords(records) {
         const f = rec.text.match(CORE_FIELD);
         if (f) {
             if (nowText === null && f[1].toLowerCase() === "now") nowText = f[2].trim();
+            current = null;                                // a core field ends the section, as in parseChanges
             continue;                                      // stray one-line fields are not threads
         }
         const h = headingOf(rec);

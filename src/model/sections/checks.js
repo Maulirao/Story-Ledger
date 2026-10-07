@@ -48,8 +48,8 @@ export default {
     },
     prompt: () => "",
     rules: ctx => (arrow(ctx)
-        ? "Checks (Wind's Arrow): only uncertain, high-stakes kinetic gambles roll; mundane or conversational actions auto-pass. Commit to the outcome before writing: Wind Drift fails or is intercepted with a real setback, Grazing Shot succeeds at an immediate physical or tactical cost, Bullseye is clean. Report each as `Check: Actor, gamble · d20 n ±m · Trajectory · the price`, one line per roll used."
-        : "Checks (DnD): only a skilled action that can actually fail rolls; trivial tasks auto-pass. Lock the DC first from proficiency, items and titles (Easy 1–5, Moderate 5–10, Hard 10–15, Impossible 15–20), then Delta = d20 + mods − DC: Nat 20 or +8 crit success · 0 to +7 success · −1 to −3 near miss · −4 to −7 failure · Nat 1 or −8 crit failure. Dice are law; never fudge. Never name DCs, dice or stats in prose. Report each as `Check: Actor, action · DC n · d20 n +m · Outcome`, one line per roll used."),
+        ? "Checks (Wind's Arrow): only uncertain, high-stakes kinetic gambles roll; mundane or conversational actions auto-pass. Commit to the outcome before writing: Wind Drift fails or is intercepted with a real setback, Grazing Shot succeeds at an immediate physical or tactical cost, Bullseye is clean. Under `Check:`, one line per roll used: `Actor, gamble · d20 n ±m · Trajectory · the price`."
+        : "Checks (DnD): only a skilled action that can actually fail rolls; trivial tasks auto-pass. Lock the DC first from proficiency, items and titles (Easy 1–5, Moderate 5–10, Hard 10–15, Impossible 15–20), then Delta = d20 + mods − DC: Nat 20 or +8 crit success · 0 to +7 success · −1 to −3 near miss · −4 to −7 failure · Nat 1 or −8 crit failure. Dice are law; never fudge. Never name DCs, dice or stats in prose. Under `Check:`, one line per roll used: `Actor, action · DC n · d20 n +m · Outcome`."),
     commands: COMMANDS,
     template: ctx => commandTemplate("Check", COMMANDS, ctx),
 };

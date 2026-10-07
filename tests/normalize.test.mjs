@@ -57,3 +57,16 @@ test("stripTags and foldQuotes", () => {
     assert.equal(stripTags("a <i>b</i> <-> c < d > e"), "a b <-> c < d > e");
     assert.equal(foldQuotes("“a” ‘b’ «c» ′"), "\"a\" 'b' \"c\" '");
 });
+
+test("a code span wrapped inside a list marker is unwrapped once", () => {
+    check("- `done Q1`", "done Q1", true);
+    check("`done Q1`", "done Q1", false);
+    check("`- done Q1`", "done Q1", true);
+    check("- ``x``", "``x``", true);   // nested backticks are not unwrapped twice
+});
+
+test("odd spaces become spaces; a zero-width space is left in the word", () => {
+    check("Mara\u00A0\u00A0says", "Mara says", false);
+    check("Mara\u3000says", "Mara says", false);
+    check("Ma\u200Bra", "Ma\u200Bra", false);   // framing only: a word's internals are not rewritten
+});

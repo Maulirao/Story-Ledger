@@ -102,6 +102,7 @@ export function variants(command, fixture, ctx) {
 
     if (colons.length) add("bold label", canonicalLine(`**${example.slice(0, colons[0] + 1)}**${example.slice(colons[0] + 1)}`, heading));
     add("backticks", `\`${line}\``);
+    add("bullet + backticks", `- \`${example}\``);
 
     if (example.includes("\"")) {
         let open = true;

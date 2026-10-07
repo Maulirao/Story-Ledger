@@ -169,3 +169,14 @@ test("a bulleted value named like a heading stays in its section", () => {
     assert.equal("World" in c.sections, false);
     assert.deepEqual(comment("Inventory:\n- + Last\n- Physics\n- + rope").sections, { Inventory: ["+ Last", "Physics", "+ rope"] });
 });
+
+import { parseNotebookBlock } from "../src/model/notebook.js";
+
+test("a core field closes the proposal section for both readers", () => {
+    const mes = "<!-- Story_Ledger\nProposed rules:\n- add: x\nNow: Day 3\n- add: y\n-->";
+    const nb = parseNotebookBlock({ mes }.mes);
+    assert.deepEqual(nb.proposals.map(p => p.text), ["x"]);
+    const c = parseChanges(mes);
+    assert.deepEqual(c.proposals.map(p => p.text), ["x"]);
+    assert.ok(c.unparsed.some(u => u.line === "add: y"));
+});

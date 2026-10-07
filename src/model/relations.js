@@ -295,7 +295,7 @@ export function parseRelationLines(lines, { legacy = false } = {}) {
             : normalizeLine(String(raw)).text;
         if (!line) continue;
         // a line still in its "[…]" template form is an echo, not an event
-        if (!legacy &&/^\[.*\]$/.test(line)) { out.unparsed.push(line); continue; }
+        if (!legacy && /^\[.*\]$/.test(line)) { out.unparsed.push(line); continue; }
         let m;
         // NOTE A → B: a new description of the relationship
         if ((m = line.match(NOTE))) {

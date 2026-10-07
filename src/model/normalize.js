@@ -6,7 +6,7 @@
 // ──────────────────────────────────────────────────────────────────────────────
 
 const TAG = /<\/?[A-Za-z][^<>]*>/g;
-const ODD_SPACE = /[  -​  　\t]/g;
+const ODD_SPACE = /[\u00A0\u2000-\u200A\u202F\u205F\u3000\t]/g;
 const MARKER = /^(?:[-*•·]|\d{1,3}[.)]|[a-z]\))\s+/;
 const EMPHASIS = /^(\*\*|__)(.+?)\1/;
 
@@ -43,6 +43,8 @@ export function normalizeLine(raw) {
     if (mark) {
         bulleted = true;
         s = s.slice(mark[0].length);
+        const inner = /^`([^`]+)`$/.exec(s);          // a bulleted code span: "- `done Q1`"
+        if (inner) s = inner[1].trim();
     }
     const unfolded = unwrapEmphasis(s).trim();
     return { raw, unfolded, text: foldQuotes(unfolded).trim(), bulleted };

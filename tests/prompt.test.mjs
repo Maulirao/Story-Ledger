@@ -95,7 +95,7 @@ test("text completion continue: the continued reply's block is removed from the 
 });
 
 // ── phase 2: template, rules and turn facts built from the sections ─────────
-import { buildTemplate, renderRules, renderTurnFacts } from "../src/model/prompt.js";
+import { buildTemplate, renderRules, renderTurnFacts, buildHandover } from "../src/model/prompt.js";
 
 test("the template lists only enabled sections", () => {
     assert.match(buildTemplate({ sections: {} }), /Agendas:[\s\S]*Quests:[\s\S]*Check:/);
@@ -183,4 +183,16 @@ test("echoed relationship skeletons are unparsed, never ticked or awaited", () =
 test("template size is reported", t => {
     const before = 2489;   // buildTemplate({ sections: {} }).length on 3f47607
     t.diagnostic(`template size: before ${before} chars, after ${buildTemplate({ sections: {} }).length} chars`);
+});
+
+test("rules teach Check as a heading with one line per roll, not an inline form", () => {
+    for (const checkStyle of ["dnd", "arrow"]) {
+        const r = renderRules({ ...C, checkStyle });
+        assert.doesNotMatch(r, /Check: Actor,/);
+        assert.match(r, /Under `Check:`, one line per roll used: `Actor, /);
+    }
+});
+
+test("quests handover names the one-command forms", () => {
+    assert.doesNotMatch(buildHandover([], {}), /Main\|Side/);
 });
