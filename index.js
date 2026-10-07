@@ -243,12 +243,14 @@ async function rebuildMessage(i, { announce = true } = {}) {
     for (const w of warnings || []) notice("warning", w.text, w.section === "Chekhov" ? "🔫 Story Ledger" : "📒 Story Ledger");
     if (s.sections.notebook && changes.proposals.length) {
         const before = chatData().notebook;
-        const after = collectProposals(before, changes.proposals, `m${i}s${msg.swipe_id ?? 0}`);
+        const cannot = [];
+        const after = collectProposals(before, changes.proposals, `m${i}s${msg.swipe_id ?? 0}`, cannot);
         const added = after.inbox.length - before.inbox.length;
         if (added > 0) {
             await saveChatData(d => { d.notebook = after; });
             notice("info", `${added} rule proposal${added > 1 ? "s" : ""} waiting.`, "📜 Story Ledger");
         }
+        if (cannot.length) notice("info", `Could not apply: ${cannot.map(x => `${x.section}: "${x.line}" (${x.reason})`).join("; ")}`, "📜 Story Ledger");
     }
 }
 

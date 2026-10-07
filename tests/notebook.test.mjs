@@ -171,3 +171,38 @@ test("the prompt carries the current time and recent timeline even with no rules
     assert.match(renderNotebookPrompt(emptyNotebook(), [], { now: { text: "Day 3, 18:00", source: "reader" }, timeline: [] }),
         /set by the reader/);
 });
+
+// ── proposal diagnostics ────────────────────────────────────────────────────
+
+test("a malformed proposal is reported", () => {
+    const nb = parseNotebookBlock("<!-- Story_Ledger\nProposed rules:\n- please remember Jan is tall\n-->");
+    assert.deepEqual(nb.unparsed, ["please remember Jan is tall"]);
+    assert.deepEqual(nb.proposals, []);
+});
+
+test("a skeleton proposal line is left to parseChanges", () => {
+    const nb = parseNotebookBlock("<!-- Story_Ledger\nProposed rules:\n- [ONLY when the story sets a fact]\n-->");
+    assert.deepEqual(nb.unparsed, []);
+});
+
+test("a bolded proposal reads", () => {
+    const nb = parseNotebookBlock("<!-- Story_Ledger\nProposed rules:\n- **add:** Jan is tall.\n-->");
+    assert.deepEqual(nb.proposals, [{ op: "add", target: null, text: "Jan is tall." }]);
+});
+
+test("an unknown rule target is diagnosed", () => {
+    const nb = { ...emptyNotebook(), rules: ["Speak English."] };
+    const diagnostics = [];
+    const after = collectProposals(nb, [{ op: "edit", target: 9, text: "x" }], "m1s0", diagnostics);
+    assert.deepEqual(diagnostics, [{ section: "Proposed rules", line: "edit R9", reason: "no rule R9" }]);
+    assert.deepEqual(after.inbox, []);
+});
+
+test("<Notebook> proposals read as before", () => {
+    const got = parseNotebookBlock("<Notebook>\nNow: Day 2\nThreads:\n- [T] fix the gate.\n- **bold thread**\nProposed rules:\n- add: Jan is left-handed.\n</Notebook>");
+    assert.deepEqual(got, {
+        now: "Day 2",
+        threads: ["fix the gate.", "**bold thread**"],
+        proposals: [{ op: "add", target: null, text: "Jan is left-handed." }],
+    });
+});

@@ -87,7 +87,7 @@ test("disabled grammar diagnostics do not leak into reply notices", () => {
     // switched on, the same diagnostics still show
     const changes = comment(off);
     const on = postTurn(emptyState(), changes, CFG({}));
-    assert.deepEqual(unreadNotices(changes, on.unparsed, {}).map(u => u.section), ["Factions", "Threads"]);
+    assert.deepEqual(unreadNotices(changes, on.unparsed, {}).map(u => u.section), ["Factions", "Threads", "Proposed rules"]);
 });
 
 test("an unbulleted removal still needs its [T] tag", () => {

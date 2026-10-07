@@ -66,7 +66,9 @@ function parseComment(records) {
         else { out.sections[current].push(rec.text); out.raw[current].push(rec.unfolded); }
     }
     out.relations = parseRelationLines(relationships);
-    out.proposals = notebookFromRecords(records).proposals;
+    const nb = notebookFromRecords(records);
+    out.proposals = nb.proposals;
+    for (const line of nb.unparsed) out.unparsed.push({ section: "Proposed rules", line });
     return out;
 }
 

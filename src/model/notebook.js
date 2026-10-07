@@ -103,7 +103,7 @@ const CORE_FIELD = /^(Now|Present|Public)\s*:\s*(.*)$/i;
 /** The comment form's notebook from its normalized records (shared with parseChanges, not re-split). */
 export function notebookFromRecords(records) {
     let nowText = null, current = null;
-    const threads = [], proposals = [];
+    const threads = [], proposals = [], unparsed = [];
     for (const rec of records) {
         const f = rec.text.match(CORE_FIELD);
         if (f) {
@@ -118,13 +118,17 @@ export function notebookFromRecords(records) {
         } else if (current === "Proposed rules") {
             const p = proposalOf(rec.text);
             if (p) proposals.push(p);
+            else if (rec.text && !isSkeleton(rec.text)) unparsed.push(rec.text);   // skeletons are parseChanges' to report
         }
     }
     const now = nowText && !isSkeleton(nowText) ? nowText : null;
-    return { now, threads, proposals };
+    return { now, threads, proposals, unparsed };
 }
 
-/** { now: string|null, threads: string[], proposals: {op,target,text}[] } or null when the reply has no block. */
+/**
+ * { now: string|null, threads: string[], proposals: {op,target,text}[] } or null when the reply has no block.
+ * The comment form adds `unparsed: string[]` (proposal lines it could not read); the tag forms do not.
+ */
 export function parseNotebookBlock(mes) {
     const block = lastLedgerBlock(mes);
     if (block === null) return null;
@@ -205,9 +209,9 @@ const signature = (op, targetText, text) => `${op}|${key(targetText)}|${key(text
  * Turn a reply's proposals into inbox items. An edit/remove records the TEXT of the
  * rule it pointed at, so a later reorder by the reader cannot make it hit the wrong
  * rule. Duplicates, proposals already rejected, and adds of a rule that already
- * exists are dropped.
+ * exists are dropped. An edit/remove of a missing rule is pushed onto `diagnostics` when given.
  */
-export function collectProposals(notebook, proposals, sourceId) {
+export function collectProposals(notebook, proposals, sourceId, diagnostics = null) {
     const nb = { ...notebook, inbox: [...(notebook.inbox || [])], rejected: [...(notebook.rejected || [])] };
     let nextId = nb.nextId || 1;
     const existingRules = new Set((nb.rules || []).map(key));
@@ -216,7 +220,10 @@ export function collectProposals(notebook, proposals, sourceId) {
         if (!p || !p.op) continue;
         if (p.op === "add" && (!p.text || existingRules.has(key(p.text)))) continue;
         const targetText = p.op === "add" ? "" : (nb.rules || [])[p.target - 1];
-        if (p.op !== "add" && targetText === undefined) continue;          // points at no rule
+        if (p.op !== "add" && targetText === undefined) {                   // points at no rule
+            if (Array.isArray(diagnostics)) diagnostics.push({ section: "Proposed rules", line: `${p.op} R${p.target}`, reason: `no rule R${p.target}` });
+            continue;
+        }
         if (p.op === "edit" && key(targetText) === key(p.text)) continue;   // no-op edit
         const sig = signature(p.op, targetText, p.text);
         if (seen.has(sig)) continue;
