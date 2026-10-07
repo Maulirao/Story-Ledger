@@ -1,7 +1,9 @@
 // ──────────────────────────────────────────────────────────────────────────────
 // Text helpers shared by the block and its sections: escaping values for a row,
-// and reading a row back. Pure.
+// reading a row back, and matching change-line commands and removals. Pure.
 // ──────────────────────────────────────────────────────────────────────────────
+
+import { foldQuotes } from "./normalize.js";
 
 /** A value as it is written into a block row: one line, no markup, no bare pipes. */
 export const esc = v => String(v ?? "").replace(/\r?\n/g, " ")
@@ -26,3 +28,30 @@ export function fieldsOf(rest) {
 
 /** A line under a change-line heading, without its list bullet. */
 export const unbullet = s => String(s || "").replace(/^\s*[-*•]\s+/, "").trim();
+
+/** A closed-form command (`done Q1.`) without one terminal `.`, `,` or `;`; an ellipsis stays. */
+export const closedForm = s => String(s).replace(/(?<!\.)[.,;]$/, "").trim();
+
+const nameKey = s => String(s).trim().toLowerCase();
+
+/**
+ * Indexes in `list` a removal of `value` names, one tier only: every exact match of
+ * `rawValue`, else every exact match of `value`, else the unique quote-equivalent entry.
+ */
+export function nameMatches(list, value, rawValue) {
+    const exact = v => list.flatMap((x, i) => (nameKey(x) === nameKey(v) ? [i] : []));
+    let hits = rawValue === undefined ? [] : exact(rawValue);
+    if (!hits.length) hits = exact(value);
+    if (hits.length) return hits;
+    const folded = nameKey(foldQuotes(value));
+    hits = list.flatMap((x, i) => (nameKey(foldQuotes(x)) === folded ? [i] : []));
+    return hits.length === 1 ? hits : [];
+}
+
+/** Remove one entry named by `rawValue`, then `value`, then a unique quote-equivalent. Mutates. */
+export function removeByName(list, value, rawValue) {
+    const hits = nameMatches(list, value, rawValue);
+    if (!hits.length) return false;
+    list.splice(hits[0], 1);
+    return true;
+}

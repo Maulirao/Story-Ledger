@@ -83,3 +83,86 @@ test("setSend flips one finished quest or all of them; active quests are untouch
     setSend(s, "all", false);
     assert.deepEqual(s.quests.map(x => x.send), [false, false, false]);
 });
+
+const tagged = body => parseChanges(`<Story_Ledger>\n${body}\n</Story_Ledger>`);
+const bullet = (id, more = {}) => ({ id, desc: "a setup", weight: 1, age: 0, hot: false, secret: false, lock: "", at: null, after: "", ...more });
+const withQuest = () => postTurn(emptyState(), ch("Quests:\n- + Main: a"), C).state;
+const withItems = items => { const s = emptyState(); s.inv.items = [...items]; return s; };
+
+test("closed-form commands accept one terminal punctuation mark", () => {
+    assert.equal(postTurn(withQuest(), ch("Quests:\n- done Q1."), C).state.quests[0].status, "done");
+    assert.equal(postTurn(withQuest(), ch("Quests:\n- drop Q1,"), C).state.quests[0].status, "dropped");
+    const s = emptyState();
+    s.chekhov = { bullets: [bullet("B1"), bullet("B2", { lock: "held" })], fired: [] };
+    const r = postTurn(s, ch("Chekhov:\n- prune B1;\n- unlock B2."), C);
+    assert.deepEqual(r.state.chekhov.fired, [{ id: "B1", desc: "a setup", how: "pruned" }]);
+    assert.equal(r.state.chekhov.bullets[0].lock, "");
+    assert.deepEqual(r.unparsed, []);
+    const dots = postTurn(withQuest(), ch("Quests:\n- done Q1..."), C);
+    assert.equal(dots.state.quests[0].status, "active");
+    assert.deepEqual(dots.unparsed, [{ section: "Quests", line: "done Q1..." }]);
+});
+
+test("tagged replies keep closed forms and removals exact", () => {
+    const q = postTurn(withQuest(), tagged("Quests:\n- done Q1."), C);
+    assert.equal(q.state.quests[0].status, "active");
+    assert.deepEqual(q.unparsed, [{ section: "Quests", line: "done Q1." }]);
+    const r = postTurn(withItems(["“x” key"]), tagged('Inventory:\n- - "x" key'), C);
+    assert.deepEqual(r.state.inv.items, ["“x” key"]);
+    assert.deepEqual(r.unparsed, [{ section: "Inventory", line: '- "x" key' }]);
+});
+
+test("curly and straight duplicates are removed by their raw form", () => {
+    const both = ['"x" key', "“x” key"];
+    assert.deepEqual(postTurn(withItems(both), ch("Inventory:\n- - “x” key"), C).state.inv.items, ['"x" key']);
+    assert.deepEqual(postTurn(withItems(both), ch('Inventory:\n- - "x" key'), C).state.inv.items, ["“x” key"]);
+});
+
+test("raw precedence survives code, bold and a filtered skeleton", () => {
+    const both = ['"x" key', "“x” key"];
+    for (const body of ["`- - “x” key`", "- **- “x” key**", "- [+ item]\n- - “x” key", "- - “x” key (dropped)"]) {
+        const r = postTurn(withItems(both), ch(`Inventory:\n${body}`), C);
+        assert.deepEqual(r.state.inv.items, ['"x" key'], body);
+    }
+    const s = emptyState();
+    s.inv.titles = ['"Ace"', "“Ace”"];
+    assert.deepEqual(postTurn(s, ch("Inventory:\n- [title - X]\n- title - “Ace”"), C).state.inv.titles, ['"Ace"']);
+});
+
+test("a unique quote-equivalent item is removed", () => {
+    const r = postTurn(withItems(["“x” key"]), ch('Inventory:\n- - "x" key'), C);
+    assert.deepEqual(r.state.inv.items, []);
+    assert.deepEqual(r.unparsed, []);
+});
+
+test("an ambiguous quote-equivalent removal is reported", () => {
+    const r = postTurn(withItems(["“x” key", "«x» key"]), ch('Inventory:\n- - "x" key'), C);
+    assert.deepEqual(r.state.inv.items, ["“x” key", "«x» key"]);
+    assert.equal(r.unparsed.length, 1);
+});
+
+test("status members retain raw-precedence and partial success", () => {
+    const s = emptyState();
+    s.inv.status = ['"rope; burn"', "“rope; burn”", '"x"', "“x”"];
+    const r = postTurn(s, ch("Inventory:\n- status - “x”; “rope&#59; burn”; Unknown"), C);
+    assert.deepEqual(r.state.inv.status, ['"rope; burn"', '"x"']);
+    assert.deepEqual(r.unparsed, [{ section: "Inventory", line: "status - Unknown" }]);
+    const t = emptyState();
+    t.inv.status = ["“Tired; Inspired”", "Tired", "Inspired"];
+    assert.deepEqual(postTurn(t, ch("Inventory:\n- status - “Tired; Inspired”"), C).state.inv.status, ["Tired", "Inspired"]);
+});
+
+test("item names keep terminal punctuation", () => {
+    assert.deepEqual(postTurn(emptyState(), ch("Inventory:\n- + Dr. Who mask."), C).state.inv.items, ["Dr. Who mask."]);
+});
+
+test("Fate and World closed forms accept one terminal punctuation mark", () => {
+    const F = { ...C, dice: { fate: { a: 10, b: 1, c: 5 } } };
+    const s = emptyState();
+    s.fate = { ...s.fate, deferred: [{ id: "D1", desc: "a", times: 1, age: 0 }, { id: "D2", desc: "b", times: 1, age: 0 }],
+        world: [{ id: "W1", desc: "c", prox: "ELSEWHERE", reach: 1, age: 0 }] };
+    const r = postTurn(s, ch("Fate:\n- resolve D1.\n- defer D2,\nWorld:\n- escalate W1;"), F);
+    assert.deepEqual(r.state.fate.deferred.map(d => [d.id, d.times]), [["D2", 2]]);
+    assert.equal(r.state.fate.world[0].prox, "REGIONAL");
+    assert.deepEqual(r.unparsed, []);
+});

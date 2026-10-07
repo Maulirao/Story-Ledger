@@ -3,7 +3,7 @@
 // the block for good (the reader's choice); ids are counted, never reused. Pure.
 // ──────────────────────────────────────────────────────────────────────────────
 
-import { esc, unesc, ROW, fieldsOf } from "../text.js";
+import { esc, unesc, ROW, fieldsOf, closedForm } from "../text.js";
 import { nextId } from "../state.js";
 
 const STATUS = ["active", "done", "dropped"];
@@ -40,8 +40,10 @@ export default {
         }
         return { value, errors };
     },
-    apply(state, lines) {
+    apply(state, lines, ctx) {
         const unparsed = [];
+        // the comment path accepts one terminal punctuation mark on a closed form
+        const closed = ctx && ctx.normalizedChanges ? closedForm : s => s;
         for (const raw of lines) {
             const line = String(raw).trim();   // parseChanges already removed the list bullet
             let m, q;
@@ -49,7 +51,7 @@ export default {
                 state.quests.push({ id: nextId(state, "Q", state.quests.map(x => x.id)), kind: m[1][0].toUpperCase() + m[1].slice(1).toLowerCase(), status: "active",
                     objective: m[2].trim(), progress: "", reward: (m[3] || "").trim(), send: false });
             } else if ((m = line.match(/^(Q\d+)\s*:?\s+(?:(?:Main|Side)\s+)?progress\s*:\s*(.+)$/i)) && (q = byId(state, m[1]))) q.progress = m[2].trim();   // "Q1 Main progress:" and "Q1: progress:" too
-            else if ((m = line.match(/^(done|drop|reopen)\s+(Q\d+)$/i)) && (q = byId(state, m[2]))) {
+            else if ((m = closed(line).match(/^(done|drop|reopen)\s+(Q\d+)$/i)) && (q = byId(state, m[2]))) {
                 q.status = { done: "done", drop: "dropped", reopen: "active" }[m[1].toLowerCase()];
             } else if ((m = line.match(/^(Q\d+)\b\s*(.*:.*)$/i)) && (q = byId(state, m[1]))) {
                 // any other "Q# …: text" is a progress update ("Q1 Main — <title> · Day 3: …"):

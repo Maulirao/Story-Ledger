@@ -4,7 +4,7 @@
 // their bookkeeping after the model's change lines. Pure: no SillyTavern, no DOM.
 // ──────────────────────────────────────────────────────────────────────────────
 
-import { esc, unesc, ROW } from "../text.js";
+import { esc, unesc, ROW, closedForm } from "../text.js";
 import { nextId } from "../state.js";
 import { computeFate, reachFor } from "../fate-engine.js";
 
@@ -153,6 +153,8 @@ export default {
         if (!outcome) return unparsed;
         const byDeferred = id => byId(fate.deferred, id);
         const worldLines = [...ctx.linesUnder("World")];
+        // the comment path accepts one terminal punctuation mark on a closed form
+        const closed = ctx.normalizedChanges ? closedForm : s => s;
         for (const raw of lines) {
             const line = String(raw).trim();
             let m, item;
@@ -167,10 +169,10 @@ export default {
                 const id = nextId(state, "D", fate.deferred.map(d => d.id));
                 fate.deferred.push({ id, desc: m[1].trim(), times: 1, age: 0 });
                 ctx.touched.add(`fate:${id}`);
-            } else if ((m = line.match(/^defer\s+(D\d+)$/i)) && (item = byDeferred(m[1]))) {
+            } else if ((m = closed(line).match(/^defer\s+(D\d+)$/i)) && (item = byDeferred(m[1]))) {
                 item.times = Math.min(2, item.times + 1);
                 ctx.touched.add(`fate:${item.id}`);
-            } else if ((m = line.match(/^resolve\s+(D\d+)$/i)) && (item = byDeferred(m[1]))) {
+            } else if ((m = closed(line).match(/^resolve\s+(D\d+)$/i)) && (item = byDeferred(m[1]))) {
                 fate.deferred = fate.deferred.filter(d => d !== item);
             } else if ((m = line.match(/^ambition\s*:\s*(.+)$/i))) {
                 fate.ambitions.push({ desc: m[1].trim(), progress: 0 });
@@ -207,7 +209,7 @@ export default {
                 const what = m[3].trim().replace(/\s*\(Reach\s+\d+\)\s*$/i, "");
                 const desc = m[1] ? `${m[1].trim()} — ${what}` : what;
                 addWorld(fate, state, m[2].toUpperCase(), desc, c, ctx);
-            } else if ((m = line.match(/^escalate\s+(W\d+)$/i)) && (item = byId(fate.world, m[1]))) {
+            } else if ((m = closed(line).match(/^escalate\s+(W\d+)$/i)) && (item = byId(fate.world, m[1]))) {
                 item.prox = { ELSEWHERE: "REGIONAL", REGIONAL: "LOCAL", LOCAL: "LOCAL" }[item.prox];
                 item.reach = Math.min(3, item.reach + 1);
             } else if ((m = line.match(/^land\s+(W\d+)\s*:\s*(.+)$/i)) && (item = byId(fate.world, m[1]))) {

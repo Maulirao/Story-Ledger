@@ -13,6 +13,7 @@ import { applyTurn, replayRelations } from "./relations.js";
 import { importFromLegacyNotebook, notebookBody, parseNotebookBlock } from "./notebook.js";
 import { parseChanges } from "./changes.js";
 import { importForeign } from "./import/index.js";
+import { nameMatches } from "./text.js";
 
 const clone = o => JSON.parse(JSON.stringify(o));
 const key = s => String(s).trim().toLowerCase();
@@ -28,6 +29,18 @@ const linesUnder = (changes, heading) => under(changes && changes.sections, head
 
 /** The same lines before quote folding, index for index; a reply without them falls back to `linesUnder`. */
 const rawLinesUnder = (changes, heading) => changes && changes.raw ? under(changes.raw, heading) : linesUnder(changes, heading);
+
+// Threads without the removed ones. Each removal picks its tier against the threads as they
+// stood, so an exact removal never lets a later fallback take a quote-distinct counterpart.
+// Without raw values (tagged replies) only exact matches go.
+function removeThreads(threads, remove, rawRemove) {
+    if (!rawRemove) {
+        const gone = new Set(remove.map(key));
+        return threads.filter(t => !gone.has(key(t)));
+    }
+    const gone = new Set(remove.flatMap((v, i) => nameMatches(threads, v, rawRemove[i])));
+    return threads.filter((t, i) => !gone.has(i));
+}
 
 /** The context every section hook receives. */
 export function sectionContext(state, prevPresent, config, prevNow = "", changes = null) {
@@ -49,8 +62,7 @@ export function postTurn(prev, changes, config) {
         if (needsPresent(config.sections) && changes.present !== null) s.scene.present = changes.present;
         if (coreOn("scene") && changes.public !== null) s.scene.public = changes.public;
         if (coreOn("notebook")) {
-            const gone = new Set(changes.threads.remove.map(key));
-            s.threads = s.threads.filter(t => !gone.has(key(t)));
+            s.threads = removeThreads(s.threads, changes.threads.remove, changes.rawThreads && changes.rawThreads.remove);
             for (const t of changes.threads.add) if (!s.threads.some(x => key(x) === key(t))) s.threads.push(t);
         }
     }

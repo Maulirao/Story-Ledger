@@ -5,7 +5,7 @@
 // setting: the model, or (phase 4) Fate. Pure.
 // ──────────────────────────────────────────────────────────────────────────────
 
-import { esc, unesc, ROW } from "../text.js";
+import { esc, unesc, ROW, closedForm } from "../text.js";
 import { nextId } from "../state.js";
 import { parseStoryTime, lockTime, isAtOrPast } from "../storytime.js";
 
@@ -147,6 +147,8 @@ export default {
         const cfg = cfgOf(ctx);
         const unparsed = [];
         let loads = 0;
+        // the comment path accepts one terminal punctuation mark on a closed form
+        const closed = ctx && ctx.normalizedChanges ? closedForm : s => s;
         for (const raw of lines) {
             const line = String(raw).trim();   // parseChanges already removed the list bullet
             let m, b;
@@ -165,8 +167,8 @@ export default {
                 if (!eligible(b, state, cfg) && !isDue(b, state)) ctx.warnings.push({ section: "Chekhov", text: `${b.id} "${b.desc}" fired before it was eligible (${holdReasons(b, state, cfg).join("; ")}).` });
                 toFired(state, b, m[2].trim());
             } else if ((m = line.match(/^lock\s+(B\d+)\s*:\s*(.+)$/i)) && (b = byId(state.chekhov.bullets, m[1]))) b.lock = m[2].trim();
-            else if ((m = line.match(/^unlock\s+(B\d+)$/i)) && (b = byId(state.chekhov.bullets, m[1]))) { b.lock = ""; b.at = null; b.after = ""; }
-            else if ((m = line.match(/^prune\s+(B\d+)$/i)) && (b = byId(state.chekhov.bullets, m[1]))) toFired(state, b, "pruned");
+            else if ((m = closed(line).match(/^unlock\s+(B\d+)$/i)) && (b = byId(state.chekhov.bullets, m[1]))) { b.lock = ""; b.at = null; b.after = ""; }
+            else if ((m = closed(line).match(/^prune\s+(B\d+)$/i)) && (b = byId(state.chekhov.bullets, m[1]))) toFired(state, b, "pruned");
             else unparsed.push(line);
         }
         return unparsed;

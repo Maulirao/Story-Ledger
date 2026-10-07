@@ -118,3 +118,28 @@ test("the state a generation starts from excludes the reply being swiped or cont
     assert.equal(generationBase(10, "continue"), 9);
     assert.equal(generationBase(10, "regenerate"), 10);
 });
+
+const turnWith = (threads, body) => {
+    const prev = emptyState();
+    prev.threads = [...threads];
+    return postTurn(prev, parseChanges(`<!-- Story_Ledger\n${body}\n-->`), C).state.threads;
+};
+
+test("thread removal uses the raw form too", () => {
+    assert.deepEqual(turnWith(["fix the “gate”"], 'Threads:\n- - [T] fix the "gate"'), []);
+    assert.deepEqual(turnWith(['fix the "gate"', "fix the “gate”"], "Threads:\n- - [T] fix the “gate”"), ['fix the "gate"']);
+});
+
+test("raw thread removal is aligned after additions", () => {
+    const got = turnWith(['fix "gate"', "fix “gate”"], "Threads:\n- + [T] call Ana\n- - [T] fix “gate”");
+    assert.deepEqual(got, ['fix "gate"', "call Ana"]);
+});
+
+test("thread removal preserves exact-match multiplicity", () => {
+    const got = turnWith(["fix “gate”", 'fix "gate"', "fix “gate”"], "Threads:\n- - [T] fix “gate”\n- - [T] fix “gate”");
+    assert.deepEqual(got, ['fix "gate"']);
+});
+
+test("an ambiguous quote-equivalent thread removal removes nothing", () => {
+    assert.deepEqual(turnWith(["fix “gate”", "fix «gate»"], 'Threads:\n- - [T] fix "gate"'), ["fix “gate”", "fix «gate»"]);
+});
