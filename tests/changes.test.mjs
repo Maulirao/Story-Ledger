@@ -107,6 +107,15 @@ test("an unbulleted removal still needs its [T] tag", () => {
     assert.deepEqual(comment("Threads:\n- gate\n-gate").threads.remove, []);
 });
 
+test("'none' under Proposed rules is the empty answer, not an unreadable line", () => {
+    for (const none of ["none", "None", "- none", "None.", "n/a", "—"]) {
+        const c = comment(`Proposed rules:\n${none}`);
+        assert.deepEqual(c.unparsed, [], none);
+        assert.deepEqual(c.proposals, [], none);
+    }
+    assert.equal(comment("Proposed rules:\n- frobnicate R1").unparsed.length, 1);
+});
+
 test("<-> survives tag stripping", () => {
     const c = comment("Relationships:\n- <b>Mara</b> <-> Jan: E_acc +1 (x)");
     assert.equal(c.relations.ticks[0].from, "Mara");

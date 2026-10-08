@@ -88,8 +88,8 @@ Never state the numbers in prose; show them through behavior. Romantic or sexual
 
 // the hints that used to sit inside the Threads and Proposed rules brackets
 const NOTEBOOK_RULES = [
-    "Threads: open one for an intention, open question, promise, debt, appointment (with day and time) or unresolved arc; resolve it written as it appears in the list.",
-    "Proposed rules: ONLY when the story establishes a fact that must never drift, or the reader gives a lasting out-of-character instruction. Omit the section on every other turn; never restate an existing rule.",
+    "Threads: open one for an intention, open question, promise, debt, appointment (with day and time) or unresolved arc; resolve it written as it appears in the list. Every Threads line starts with `+` (opened) or `-` (resolved) before its [T] tag — never a bare [T] line, even to restate a thread that is still open; omit Threads when none opened or resolved.",
+    "Proposed rules: ONLY when the story establishes a fact that must never drift, or the reader gives a lasting out-of-character instruction. Omit the section on every other turn — never write \"none\" under it; never restate an existing rule.",
 ].join("\n");
 
 /** Now, Present and Public: field-style placeholders, written without list bullets. */

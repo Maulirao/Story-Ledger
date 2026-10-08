@@ -75,6 +75,8 @@ const bullet = line => norm(line).replace(/^[-*•]\s*/, "");
 
 const NOW_LINE = /^\s*(?:[-*•]\s*)?Now\s*:\s*(.*)$/im;
 const isSkeleton = s => /^\[.*\]$/.test(s);
+// an explicit "nothing to propose" under Proposed rules
+const NO_PROPOSALS = /^(?:none|n\/a|nothing|no proposals?|[—–-])\.?$/i;
 
 /** The thread lines the model may write under Threads:, one command each. */
 export const THREAD_COMMANDS = [
@@ -134,7 +136,7 @@ export function notebookFromRecords(records) {
         } else if (current === "Proposed rules") {
             const p = proposalOf(rec.text);
             if (p) proposals.push(p);
-            else if (rec.text && !isSkeleton(rec.text)) unparsed.push(rec.text);   // skeletons are parseChanges' to report
+            else if (rec.text && !isSkeleton(rec.text) && !NO_PROPOSALS.test(rec.text)) unparsed.push(rec.text);   // skeletons are parseChanges' to report
         }
     }
     const now = nowText && !isSkeleton(nowText) ? nowText : null;

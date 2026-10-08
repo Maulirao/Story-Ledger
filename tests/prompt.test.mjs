@@ -213,3 +213,10 @@ test("rules teach Check as a heading with one line per roll, not an inline form"
 test("quests handover names the one-command forms", () => {
     assert.doesNotMatch(buildHandover([], {}), /Main\|Side/);
 });
+
+test("the notebook rules demand a sign on every thread line and forbid 'none' under Proposed rules", () => {
+    const rules = renderRules({});
+    assert.match(rules, /Every Threads line starts with `\+` \(opened\) or `-` \(resolved\)/);
+    assert.match(rules, /never a bare \[T\] line/);
+    assert.match(rules, /never write "none"/);
+});
