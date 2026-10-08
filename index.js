@@ -20,7 +20,7 @@ import { renderBlock, BLOCK_MARK } from "./src/model/block.js";
 import { setSend } from "./src/model/sections/quests.js";
 import { postTurn, latestState, initialState, writeBlockInto, stripBlocks, generationBase, rewriteNewestSection, withClockOverride, unreadNotices } from "./src/model/turn.js";
 import { renderStatePrompt, needsHandover, stripForPrompt, stripPromptText, buildTemplate, renderRules, renderTurnFacts, buildHandover } from "./src/model/prompt.js";
-import { buildGenerationReminder } from "./src/model/generation-reminder.js";
+import { buildGenerationReminder, buildLedgerDuty } from "./src/model/generation-reminder.js";
 import { importForeign, proposeImportedRules } from "./src/model/import/index.js";
 import { SECTIONS } from "./src/model/sections/registry.js";
 import { rollTurnDice, withFudges, fudgesForGeneration, diceFromBlock, parseDiceCommand, parseForceCommand } from "./src/model/dice.js";
@@ -133,6 +133,8 @@ function buildInjection(type = "normal") {
     const time = storyTime(c, nb);
     if (state.scene.now && (!time.now || time.now.source !== "reader")) time.now = { text: state.scene.now, source: "notebook" };
     const parts = [];
+    const duty = buildLedgerDuty(config, type);
+    if (duty) parts.push(duty);
     if (needsHandover(c)) {
         // the importer already read what it could; the model is asked only for the rest
         const imp = importForeign(c, config);

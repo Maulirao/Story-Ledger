@@ -130,3 +130,18 @@ test("continuations complete the original comment without duplicating ledger out
     assert.match(out, /(?:never|do not).*second.*comment/i);
     assert.match(out, /already complete.*do not.*another/i);
 });
+
+test("the ledger comment is asked for three times: top duty line, reminder, and a closing final check", async () => {
+    const { buildGenerationReminder, buildLedgerDuty } = await import("../src/model/generation-reminder.js");
+    assert.match(buildLedgerDuty({}, "normal"), /<ledger_duty>.*ends with.*Story_Ledger comment.*Thoughts/i);
+    assert.doesNotMatch(buildLedgerDuty({ sections: { thoughts: false } }, "normal"), /Thoughts/);
+    for (const type of ["quiet", "impersonate", "first_message"]) assert.equal(buildLedgerDuty({}, type), "");
+    assert.equal(buildLedgerDuty({ enabled: false }, "normal"), "");
+
+    const out = buildGenerationReminder(emptyState(), {}, "normal");
+    const lines = out.split("\n");
+    assert.match(lines.at(-3), /Final check.*last thing.*Story_Ledger comment.*Thoughts.*every NPC/i, "the closing check is the last instruction");
+    const noThoughts = buildGenerationReminder(emptyState(), { sections: { thoughts: false } }, "normal");
+    assert.match(noThoughts, /Final check/);
+    assert.doesNotMatch(noThoughts, /Thoughts/);
+});

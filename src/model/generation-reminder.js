@@ -1,6 +1,13 @@
 // A short final instruction for the generation about to be written. Pure: no ST or DOM.
 const SKIP_TYPES = new Set(["quiet", "impersonate", "first_message"]);
 
+/** One line at the top of the injected block: the first of the ledger's repeated reminders. Pure. */
+export function buildLedgerDuty(config = {}, type = "normal") {
+    if (config.enabled === false || SKIP_TYPES.has(type)) return "";
+    const thoughts = (config.sections || {}).thoughts !== false ? ", with Thoughts for the NPCs involved" : "";
+    return `<ledger_duty>Every reply you write ends with its hidden Story_Ledger comment${thoughts}. A reply without it is unfinished.</ledger_duty>`;
+}
+
 export function buildGenerationReminder(state, config = {}, type = "normal") {
     if (config.enabled === false || SKIP_TYPES.has(type)) return "";
     const sections = config.sections || {};
@@ -19,6 +26,10 @@ export function buildGenerationReminder(state, config = {}, type = "normal") {
         const list = awaiting.map(([pair, note]) => `${pair.replace(/\s*→\s*/, " → ")}${note ? ` (${note})` : ""}`).join("; ");
         lines.push(`Missing NEW baselines: ${list}. In Relationships, write a NEW line for each, calibrated from the record and story before the queued interactions and before the current beat; include all twelve axes and Φ using the template's command syntax. Saved relationship changes, including queued ticks, will apply automatically once the baseline exists; do not repeat saved ticks or events. Report only this reply's new events separately.`);
     }
-    lines.push("</ledger_generation_reminder>", "</story_ledger>");
+    const thoughts = sections.thoughts !== false ? " and Thoughts for every NPC involved" : "";
+    lines.push(
+        `Final check before you stop writing: the last thing in this reply must be the Story_Ledger comment${thoughts}. Do not end on prose alone.`,
+        "</ledger_generation_reminder>", "</story_ledger>",
+    );
     return lines.join("\n");
 }
