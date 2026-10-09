@@ -198,13 +198,14 @@ globalThis.storyLedgerInterceptor = async function (_chat, _contextSize, _abort,
         if (fixupContinues(type)) {
             // The fix-up's own continue: the reply's dice and fudges stay as they were, and the
             // reminder asks for the ledger comment alone.
+            lastReminder = "";
             lastInjection = s.enabled ? buildInjection("continue", { config: fixupRun.config, kase: fixupRun.kase }) : "";
             const auto = s.placement !== "macro" ? lastInjection : "";
             ctx().setExtensionPrompt(PROMPT_KEY, auto, IN_CHAT, Number(s.depth) || 0, false, Number(s.role) || 0);
             ctx().setExtensionPrompt(REMINDER_KEY, s.placement !== "macro" ? lastReminder : "", IN_CHAT, 0, false, 0);
             return;
         }
-        if (fixupRun?.mode === "full" && fixupRun.chatId === chatId()) {
+        if (fixupRun?.mode === "full" && !fixupRun.abandoned && fixupRun.chatId === chatId()) {
             console.warn("[Story Ledger] another generation started during the ledger fix-up; it gets no ledger prompt");
             clearInjection();
             return;
@@ -386,7 +387,7 @@ export async function startFixup(i) {
         ok = await ctx().Popup.show.confirm("Write the missing ledger part?",
             `${kase === "missing" ? "This reply has no ledger comment; one will be written." : "This reply's ledger comment has no Thoughts; they will be added."} The prose is never changed, and nothing is kept unless the answer is usable. ${mode === "lean" ? "Lean: short prompt" : "Full: normal prompt"}`);
     } finally { fixupAsking = false; }
-    if (!ok) return;
+    if (!ok || (ctx().chat || [])[i] !== msg || fixupCaseFor(i) !== kase) return;   // nothing may have changed while the popup was open
     const run = fixupRun = {
         chatId: chatId(), index: i, swipeId: msg.swipe_id, mes: msg.mes, kase, mode,
         config: fixupConfig(i), stopped: false, abandoned: false, error: null,
@@ -422,18 +423,23 @@ async function finalizeFixup(run, output = null) {
             });
             if (!accepted.ok) reason = accepted.reason;
         }
-        if (reason) {
-            if (run.mode === "full") {
+        // the reply as the run found it (only what the run itself wrote is undone: the guard proved it)
+        const putBack = async why => {
+            if (msg.mes !== run.mes) {
                 setReply(msg, run.mes);
                 ctx().updateMessageBlock(run.index, msg);
                 await ctx().saveChat();
             }
-            notice("warning", `Ledger fix-up kept nothing: ${reason}.`, "📒 Story Ledger");
-            return;
-        }
+            notice("warning", `Ledger fix-up kept nothing: ${why}.`, "📒 Story Ledger");
+        };
+        if (reason) { await putBack(reason); return; }
         const text = stripBlocks(run.mes);
         setReply(msg, accepted.comment ? spliceMissing(text, accepted.comment) : spliceThoughts(text, accepted.thoughts));
-        await rebuildMessage(run.index, { config: run.config });
+        try { await rebuildMessage(run.index, { config: run.config }); }
+        catch (e) {
+            console.error("[Story Ledger] could not write the fixed block", e);
+            await putBack(e.message || String(e));
+        }
     } catch (e) {
         console.error("[Story Ledger] the ledger fix-up failed", e);
     } finally {

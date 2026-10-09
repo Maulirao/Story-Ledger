@@ -327,3 +327,36 @@ test("the theme draws ✎ with the case's title and drops it when nothing is nee
     syncFixupButton(outer, null);
     assert.equal(head.spans.length, 0);
 });
+
+// ── Found in the final review ───────────────────────────────────────────────
+
+test("a rebuild that fails after the splice puts the reply back", async () => {
+    full();
+    const msg = seed();
+    const update = context.updateMessageBlock;
+    let calls = 0;
+    context.updateMessageBlock = () => { if (++calls === 1) throw new Error("render failed"); };
+    const logError = console.error;
+    console.error = () => {};
+    script = async () => {
+        await interceptor([], 1000, null, "continue");
+        append(msg, "\n" + COMMENT);
+    };
+    try { await extension.startFixup(1); }
+    finally { context.updateMessageBlock = update; console.error = logError; }
+    assert.equal(msg.mes, original);
+    assert.equal(msg.swipes[0], original);
+    assert.equal(kept("Ledger fix-up kept nothing: render failed.").length, 1);
+});
+
+test("a reply that gets its comment while the confirm popup is open is left alone", async () => {
+    full();
+    const msg = seed();
+    const done = writeBlockInto("p\n" + COMMENT, STATE_BLOCK);
+    const confirm = context.Popup.show.confirm;
+    context.Popup.show.confirm = async () => { msg.mes = done; return true; };
+    try { await extension.startFixup(1); }
+    finally { context.Popup.show.confirm = confirm; }
+    assert.deepEqual(commands, []);
+    assert.equal(msg.mes, done);
+});
