@@ -21,6 +21,7 @@ import { setSend } from "./src/model/sections/quests.js";
 import { postTurn, latestState, initialState, writeBlockInto, stripBlocks, generationBase, rewriteNewestSection, withClockOverride, unreadNotices } from "./src/model/turn.js";
 import { renderStatePrompt, needsHandover, stripForPrompt, stripPromptText, buildTemplate, renderRules, renderTurnFacts, buildHandover } from "./src/model/prompt.js";
 import { buildGenerationReminder, buildLedgerDuty } from "./src/model/generation-reminder.js";
+import { buildLeanPrompt } from "./src/model/lean-prompt.js";
 import { needsFixup, acceptFixup, spliceMissing, spliceThoughts, fixupConfigInputs } from "./src/model/fixup.js";
 import { importForeign, proposeImportedRules } from "./src/model/import/index.js";
 import { SECTIONS } from "./src/model/sections/registry.js";
@@ -41,7 +42,7 @@ const ctx = () => SillyTavern.getContext();
 // ── Settings (global) and chat data (per chat) ──────────────────────────────
 
 const DEFAULT_SECTIONS = { scene: true, relationships: true, notebook: true, ...Object.fromEntries(SECTIONS.map(sec => [sec.key, true])) };
-const DEFAULT_SETTINGS = { enabled: true, stickyNotices: true, depth: 1, role: 0, placement: "auto", theme: "frankenstein", checkStyle: "dnd", config: {} };
+const DEFAULT_SETTINGS = { enabled: true, stickyNotices: true, fixupMode: "full", fixupHistory: 4, depth: 1, role: 0, placement: "auto", theme: "frankenstein", checkStyle: "dnd", config: {} };
 
 function settings() {
     const all = ctx().extensionSettings;
@@ -117,6 +118,18 @@ function blockFor(state) {
 
 // ── What the model reads ────────────────────────────────────────────────────
 
+// What a turn tells the model about the story before message `c.length`: the state, and the four texts built from it.
+function ledgerPromptParts(c, config) {
+    const nb = chatData().notebook;
+    const state = stateBefore(c, c.length, config);
+    const time = storyTime(c, nb);
+    if (state.scene.now && (!time.now || time.now.source !== "reader")) time.now = { text: state.scene.now, source: "notebook" };
+    const statePrompt = renderStatePrompt(state, {
+        notebook: nb.enabled === false ? { ...nb, rules: [], inbox: [] } : nb, config, sections: settings().sections, time,
+    });
+    return { state, statePrompt, rules: renderRules(config), template: buildTemplate(config), facts: renderTurnFacts(state, config) };
+}
+
 // The raw chat, never the interceptor's coreChat: prompt-side regex may already have
 // trimmed the blocks out of that copy. `base` = how many messages this generation builds on.
 // A fix-up passes the `config` its reply was built with and the `kase` it is asking for.
@@ -131,10 +144,7 @@ function buildInjection(type = "normal", { config: given = null, kase = null } =
         dice: active.dice, fudges: active.fudges, fudgedDice: active.fudged, rolls: active.dice.checks,
     } : {});
     const reminderType = kase ? "ledger" : type;
-    const nb = chatData().notebook;
-    const state = stateBefore(c, c.length, config);
-    const time = storyTime(c, nb);
-    if (state.scene.now && (!time.now || time.now.source !== "reader")) time.now = { text: state.scene.now, source: "notebook" };
+    const { state, statePrompt, rules, template, facts } = ledgerPromptParts(c, config);
     const parts = [];
     const duty = buildLedgerDuty(config, reminderType);
     if (duty) parts.push(duty);
@@ -150,13 +160,9 @@ function buildInjection(type = "normal", { config: given = null, kase = null } =
                 .catch(e => console.error("[Story Ledger] could not save imported rules", e));
         }
     }
-    const st = renderStatePrompt(state, {
-        notebook: nb.enabled === false ? { ...nb, rules: [], inbox: [] } : nb, config, sections: s.sections, time,
-    });
-    if (st) parts.push(st);
-    parts.push(renderRules(config));
-    parts.push(buildTemplate(config));
-    const facts = renderTurnFacts(state, config);
+    if (statePrompt) parts.push(statePrompt);
+    parts.push(rules);
+    parts.push(template);
     if (facts) parts.push(facts);
     lastReminder = ctx().substituteParams(buildGenerationReminder(state, config, reminderType, { kase }));
     const reminder = s.placement === "macro" ? `\n\n${lastReminder}` : "";
@@ -320,6 +326,44 @@ const setReply = (msg, mes) => {
     if (Array.isArray(msg.swipes) && msg.swipe_id !== undefined && msg.swipes[msg.swipe_id] !== undefined) msg.swipes[msg.swipe_id] = mes;
 };
 
+// Every ledger comment of a message, finished or cut off, removed (history shows prose only).
+const withoutLedger = mes => stripBlocks(mes).replace(/<!--\s*Story_Ledger\b[\s\S]*?(?:-->|$)/gi, "").trim();
+
+function mainPromptText() {
+    const c = ctx();
+    const chat = c.chatCompletionSettings?.prompts?.find(p => p.identifier === "main")?.content;
+    const text = c.powerUserSettings?.sysprompt?.content;
+    return c.substituteParams(String((c.mainApi === "openai" ? chat : text) ?? chat ?? text ?? ""));
+}
+
+function cardsInChat() {
+    const c = ctx();
+    const members = c.groupId ? ((c.groups || []).find(g => g.id === c.groupId)?.members || []) : null;
+    const cards = members ? members.map(avatar => (c.characters || []).find(ch => ch.avatar === avatar)) : [(c.characters || [])[c.characterId]];
+    return cards.filter(Boolean).map(ch => ({ name: ch.name, description: ch.description || "", personality: ch.personality || "" }));
+}
+
+// The lean prompt's input for the reply `run` started from. State comes from before the reply.
+function leanInputs(i, run) {
+    const c = ctx();
+    const chat = c.chat || [];
+    const { state, statePrompt, rules, template, facts } = ledgerPromptParts(chat.slice(0, i), run.config);
+    const history = chat.slice(0, i).filter(m => !m.is_system)
+        .map(m => ({ role: m.is_user ? "user" : "assistant", name: m.name, text: withoutLedger(m.mes) })).filter(m => m.text);
+    return {
+        mainPrompt: mainPromptText(),
+        characters: cardsInChat(),
+        personaName: c.name1,
+        summary: String(c.extensionPrompts?.["1_memory"]?.value || "").trim(),
+        statePrompt: c.substituteParams(statePrompt), rules: c.substituteParams(rules),
+        template: c.substituteParams(template), turnFacts: c.substituteParams(facts),
+        history,
+        historyCount: settings().fixupHistory,
+        reply: { name: chat[i].name, text: stripBlocks(run.mes) },
+        reminder: c.substituteParams(buildGenerationReminder(state, run.config, "ledger", { kase: run.kase })),
+    };
+}
+
 export async function startFixup(i) {
     const s = settings();
     const chat = ctx().chat || [];
@@ -343,6 +387,10 @@ export async function startFixup(i) {
     if (mode === "full") {
         try { await ctx().executeSlashCommandsWithOptions("/continue await=true"); } catch (e) { run.error = e; }
         await finalizeFixup(run);
+    } else {
+        let output = null;
+        try { output = await ctx().generateRaw({ prompt: buildLeanPrompt(leanInputs(i, run)) }); } catch (e) { run.error = e; }
+        await finalizeFixup(run, output);
     }
 }
 
@@ -600,6 +648,10 @@ function popupHtml(tab, previewBaseDice = null) {
             ...Object.fromEntries(SECTIONS.map(x => [x.key, typeof x.title === "function" ? x.title({ checkStyle: s.checkStyle }) : x.title])) };
         body = `<label class="checkbox_label"><input type="checkbox" data-set="enabled" ${s.enabled ? "checked" : ""}> Story Ledger on</label>
             <label class="checkbox_label" title="Warnings about a reply stay on screen until closed, so they are not missed while you are in another tab"><input type="checkbox" data-set="stickyNotices" ${s.stickyNotices !== false ? "checked" : ""}> Keep reply warnings until dismissed</label>
+            <div class="sl-grid"><label>Ledger fix-up context <select class="text_pole" data-set="fixupMode">
+                    <option value="full" title="Sends the whole normal prompt. If your provider caches prompts, much of it may be a cache hit." ${s.fixupMode !== "lean" ? "selected" : ""}>Full</option>
+                    <option value="lean" title="Sends a short prompt (system, cards, summaries, recent messages). Fewer input tokens on long chats, but it does not reuse the chat's cached prefix." ${s.fixupMode === "lean" ? "selected" : ""}>Lean</option></select></label>
+                <label id="sl-fixup-history" ${s.fixupMode === "lean" ? "" : 'style="display:none"'}>Recent messages <input type="number" class="text_pole sl-num" data-set="fixupHistory" value="${s.fixupHistory}" min="0" max="20"></label></div>
             <h4>Sections</h4>
             ${Object.entries(sec).map(([k, label]) => `<label class="checkbox_label"><input type="checkbox" data-section="${k}" ${s.sections[k] ? "checked" : ""}> ${label}</label>`).join("")}
             <h4>Look</h4>
@@ -722,6 +774,7 @@ export async function openLedgerPopup(startTab = "rules") {
         const el = e.currentTarget, k = el.dataset.set;
         settings()[k] = el.type === "checkbox" ? el.checked : (el.type === "number" ? Number(el.value) : el.value);
         if (k === "placement" || (k === "enabled" && !settings().enabled)) clearInjection();
+        if (k === "fixupMode") $root.find("#sl-fixup-history").toggle(el.value === "lean");
         saveSettings();
         decorateAll();
     });

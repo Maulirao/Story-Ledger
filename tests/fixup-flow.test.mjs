@@ -2,6 +2,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { writeBlockInto, stripBlocks } from "../src/model/turn.js";
+import { renderTurnFacts } from "../src/model/prompt.js";
+import { resolveConfig } from "../src/model/config.js";
+import { emptyState } from "../src/model/state.js";
 
 const REMINDER_KEY = "story_ledger_reminder";
 const ALWAYS = "The reply above is finished. Do not continue the story and do not repeat or change any of its prose.";
@@ -177,4 +180,105 @@ test("a reply that needs nothing, an earlier reply or a running fix-up do not st
     seed();
     await extension.startFixup(0);
     assert.deepEqual(commands, []);
+});
+
+// ── Lean mode ───────────────────────────────────────────────────────────────
+
+const lean = (history = 4) => Object.assign(context.extensionSettings.storyLedger, { fixupMode: "lean", fixupHistory: history });
+const full = () => Object.assign(context.extensionSettings.storyLedger, { fixupMode: "full", fixupHistory: 4 });
+
+function seedLong() {
+    const msg = seed();
+    context.chat.unshift(
+        { is_user: true, name: "Jan", mes: "Opening." },
+        { is_user: false, name: "Mara", mes: "Earlier answer.\n\n<!-- Story_Ledger\nNow: Day 1\n-->\n\n" + STATE_BLOCK },
+        { is_user: true, name: "Jan", mes: "Next." },
+        { is_system: true, name: "System", mes: "hidden note" },
+    );
+    context.chat.splice(5, 0, { is_user: true, name: "Jan", mes: "   " });
+    return msg;
+}
+
+test("lean: prompt holds turn facts from the state before the reply", async () => {
+    const msg = seedLong();
+    Object.assign(context, {
+        extensionPrompts: { "1_memory": { value: "SUMMARY TEXT" } },
+        chatCompletionSettings: { prompts: [{ identifier: "main", content: "MAIN for {{user}}" }] },
+        characters: [{ name: "Mara", description: "A baker.", personality: "Warm." }], characterId: 0,
+    });
+    lean(3);
+    let sent;
+    context.generateRaw = async request => { sent = request; return "Sure!\n" + COMMENT; };
+    await extension.startFixup(context.chat.length - 1);
+    assert.deepEqual(commands, [], "lean never runs a continue");
+    assert.ok(Array.isArray(sent.prompt));
+    assert.deepEqual(sent.prompt.map(m => m.role), ["system", "system", "system", "system", "assistant", "user", "user", "assistant", "user"]);
+    assert.equal(sent.prompt[0].content.startsWith("MAIN for Jan"), true);
+    assert.ok(sent.prompt[1].content.includes("A baker.") && sent.prompt[1].content.includes("User persona: Jan"));
+    assert.ok(sent.prompt[2].content.includes("SUMMARY TEXT"));
+    const ledger = sent.prompt[3].content;
+    assert.ok(ledger.startsWith("<story_ledger>"));
+    const rolled = { ...resolveConfig(), userName: "Jan", sections: { scene: true }, dice: { world: 7 }, fudges: null, fudgedDice: [], rolls: [] };
+    const facts = renderTurnFacts(emptyState(), rolled);
+    assert.ok(facts && ledger.includes("World Sim"), "the reply's saved roll is in the turn facts");
+    const history = sent.prompt.slice(4, -2);
+    assert.equal(history.length, 3, "Recent messages = 3");
+    assert.deepEqual(history.map(m => m.content), ["Mara: Earlier answer.", "Jan: Next.", "Jan: Hello."]);
+    assert.equal(sent.prompt.at(-2).role, "assistant");
+    assert.ok(sent.prompt.at(-2).content.startsWith("Mara: The first prose."));
+    assert.equal(sent.prompt.at(-1).role, "user");
+    assert.ok(sent.prompt.at(-1).content.includes(ALWAYS));
+    assert.equal(stripBlocks(msg.mes).trim(), "The first prose.\n\n" + COMMENT, "the success path wrote the comment");
+});
+
+test("lean: success writes the comment; failure changes nothing", async () => {
+    lean();
+    const msg = seed();
+    context.generateRaw = async () => "no comment here";
+    await extension.startFixup(1);
+    assert.equal(msg.mes, original);
+    assert.equal(kept("Ledger fix-up kept nothing: no ledger comment.").length, 1);
+
+    toasts.length = 0;
+    context.generateRaw = async () => { throw new Error("API down"); };
+    await extension.startFixup(1);
+    assert.equal(msg.mes, original);
+    assert.equal(kept("Ledger fix-up kept nothing: API down.").length, 1);
+
+    toasts.length = 0;
+    context.generateRaw = async () => "Here:\n```html\n" + COMMENT + "\n```";
+    await extension.startFixup(1);
+    assert.equal(stripBlocks(msg.mes).trim(), "The first prose.\n\n" + COMMENT);
+    assert.equal(msg.swipes[msg.swipe_id], msg.mes);
+    assert.equal(toasts.length, 0);
+});
+
+test("lean: the reply changing during generateRaw discards the output", async () => {
+    lean();
+    const msg = seed();
+    context.generateRaw = async () => { msg.mes = "edited meanwhile"; return COMMENT; };
+    await extension.startFixup(1);
+    assert.equal(msg.mes, "edited meanwhile");
+    assert.equal(kept("The reply changed during the ledger fix-up; it was left as it is.").length, 1);
+});
+
+test("settings: the fixup controls round-trip", async () => {
+    const savedPopup = context.Popup, savedDollar = globalThis.$;
+    const shown = [];
+    let change;
+    context.Popup = class { static show = { confirm: async () => true }; dlg = {}; async show() {} };
+    context.POPUP_TYPE = { TEXT: 1 };
+    globalThis.$ = () => ({
+        length: 1, find: () => ({ toggle: visible => shown.push(visible) }),
+        on(_event, selector, callback) { if (selector === "[data-set]") change = callback; },
+    });
+    try {
+        await extension.openLedgerPopup("settings");
+        change({ currentTarget: { dataset: { set: "fixupHistory" }, type: "number", value: "7" } });
+        assert.strictEqual(context.extensionSettings.storyLedger.fixupHistory, 7);
+        change({ currentTarget: { dataset: { set: "fixupMode" }, type: "select-one", value: "lean" } });
+        assert.equal(context.extensionSettings.storyLedger.fixupMode, "lean");
+        change({ currentTarget: { dataset: { set: "fixupMode" }, type: "select-one", value: "full" } });
+        assert.deepEqual(shown, [true, false], "Recent messages is shown only for Lean");
+    } finally { context.Popup = savedPopup; globalThis.$ = savedDollar; full(); }
 });
