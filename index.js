@@ -21,6 +21,7 @@ import { setSend } from "./src/model/sections/quests.js";
 import { postTurn, latestState, initialState, writeBlockInto, stripBlocks, generationBase, rewriteNewestSection, withClockOverride, unreadNotices } from "./src/model/turn.js";
 import { renderStatePrompt, needsHandover, stripForPrompt, stripPromptText, buildTemplate, renderRules, renderTurnFacts, buildHandover } from "./src/model/prompt.js";
 import { buildGenerationReminder, buildLedgerDuty } from "./src/model/generation-reminder.js";
+import { needsFixup, acceptFixup, spliceMissing, spliceThoughts, fixupConfigInputs } from "./src/model/fixup.js";
 import { importForeign, proposeImportedRules } from "./src/model/import/index.js";
 import { SECTIONS } from "./src/model/sections/registry.js";
 import { rollTurnDice, withFudges, fudgesForGeneration, diceFromBlock, parseDiceCommand, parseForceCommand } from "./src/model/dice.js";
@@ -118,22 +119,24 @@ function blockFor(state) {
 
 // The raw chat, never the interceptor's coreChat: prompt-side regex may already have
 // trimmed the blocks out of that copy. `base` = how many messages this generation builds on.
-function buildInjection(type = "normal") {
+// A fix-up passes the `config` its reply was built with and the `kase` it is asking for.
+function buildInjection(type = "normal", { config: given = null, kase = null } = {}) {
     const s = settings();
     if (!s.enabled || SKIP_TYPES.has(type)) { lastReminder = ""; return ""; }
     const raw = ctx().chat || [];
     const c = raw.slice(0, generationBase(raw.length, type));
     const index = generationBase(raw.length, type);
-    const active = pendingFor(index);
-    const config = engineConfig(active ? {
+    const active = given ? null : pendingFor(index);
+    const config = given || engineConfig(active ? {
         dice: active.dice, fudges: active.fudges, fudgedDice: active.fudged, rolls: active.dice.checks,
     } : {});
+    const reminderType = kase ? "ledger" : type;
     const nb = chatData().notebook;
     const state = stateBefore(c, c.length, config);
     const time = storyTime(c, nb);
     if (state.scene.now && (!time.now || time.now.source !== "reader")) time.now = { text: state.scene.now, source: "notebook" };
     const parts = [];
-    const duty = buildLedgerDuty(config, type);
+    const duty = buildLedgerDuty(config, reminderType);
     if (duty) parts.push(duty);
     if (needsHandover(c)) {
         // the importer already read what it could; the model is asked only for the rest
@@ -155,7 +158,7 @@ function buildInjection(type = "normal") {
     parts.push(buildTemplate(config));
     const facts = renderTurnFacts(state, config);
     if (facts) parts.push(facts);
-    lastReminder = ctx().substituteParams(buildGenerationReminder(state, config, type));
+    lastReminder = ctx().substituteParams(buildGenerationReminder(state, config, reminderType, { kase }));
     const reminder = s.placement === "macro" ? `\n\n${lastReminder}` : "";
     return ctx().substituteParams(`<story_ledger>\n${parts.join("\n\n")}\n</story_ledger>${reminder}`);
 }
@@ -186,6 +189,20 @@ globalThis.storyLedgerInterceptor = async function (_chat, _contextSize, _abort,
     try {
         const s = settings();
         lastGenerationType = type || "normal";
+        if (fixupContinues(type)) {
+            // The fix-up's own continue: the reply's dice and fudges stay as they were, and the
+            // reminder asks for the ledger comment alone.
+            lastInjection = s.enabled ? buildInjection("continue", { config: fixupRun.config, kase: fixupRun.kase }) : "";
+            const auto = s.placement !== "macro" ? lastInjection : "";
+            ctx().setExtensionPrompt(PROMPT_KEY, auto, IN_CHAT, Number(s.depth) || 0, false, Number(s.role) || 0);
+            ctx().setExtensionPrompt(REMINDER_KEY, s.placement !== "macro" ? lastReminder : "", IN_CHAT, 0, false, 0);
+            return;
+        }
+        if (fixupRun?.mode === "full" && fixupRun.chatId === chatId()) {
+            console.warn("[Story Ledger] another generation started during the ledger fix-up; it gets no ledger prompt");
+            clearInjection();
+            return;
+        }
         // Background generations (summaries, other extensions' tasks) get nothing.
         if (!SKIP_TYPES.has(type) && s.enabled) {
             const raw = ctx().chat || [];
@@ -221,20 +238,19 @@ globalThis.storyLedgerInterceptor = async function (_chat, _contextSize, _abort,
  * shown every time, so a ↻ rebuild that meets the same problem says so again; rule proposals
  * are only collected when the reply arrives (`collect`), since rule numbers may have moved since.
  */
-async function rebuildMessage(i, { collect = true } = {}) {
+async function rebuildMessage(i, { collect = true, config: given = null } = {}) {
     const c = ctx().chat || [];
     const msg = c[i];
     if (!msg || msg.is_user || msg.is_system) return;
     // A received reply takes the dice rolled for it (same chat, same reply); ↻ rebuild keeps
-    // the dice its block already shows.
-    const active = pendingFor(i);
-    const shown = diceFromBlock(msg.mes);
-    const saved = chatData().fudges;
-    const storedForReply = saved && saved.appliedTo === i ? saved : null;
-    const dice = active ? active.dice : shown;
-    const fudges = active ? active.fudges : storedForReply;
-    const fudgeResult = withFudges(dice, fudges);
-    const config = engineConfig({ dice, fudges, fudgedDice: active ? active.fudged : fudgeResult.fudged, rolls: dice.checks || [] });
+    // the dice its block already shows. A fix-up hands in the config it already settled.
+    const config = given || (() => {
+        const active = pendingFor(i);
+        const dice = active ? active.dice : diceFromBlock(msg.mes);
+        const saved = chatData().fudges;
+        const fudges = active ? active.fudges : (saved && saved.appliedTo === i ? saved : null);
+        return engineConfig({ dice, fudges, fudgedDice: active ? active.fudged : withFudges(dice, fudges).fudged, rolls: dice.checks || [] });
+    })();
     const start = startOf(c, i, config);
     const prev = start.state;
     // Read the comment with every block taken out: after a continue, the rest of a
@@ -250,7 +266,7 @@ async function rebuildMessage(i, { collect = true } = {}) {
     const s = settings();
     if (start.errors.length) notice("warning", `${start.errors.length} row(s) in the previous block could not be read and kept their earlier values: ${start.errors.map(e => `${e.section}: ${e.row}`).join("; ")}`, "📒 Story Ledger");
     if (!changes) {
-        notice("warning", "No ledger comment in this reply — the turn still advanced. Swipe if you want it written.", "📒 Story Ledger");
+        notice("warning", "No ledger comment in this reply — the turn still advanced. Press ✎ on the block to have it written, or swipe.", "📒 Story Ledger");
         return;
     }
     if (s.sections.scene) {
@@ -279,7 +295,95 @@ async function onMessageReceived(id, type) {
     if (!settings().enabled || SKIP_TYPES.has(type)) return;
     const c = ctx().chat || [];
     const i = Number.isInteger(Number(id)) && c[Number(id)] ? Number(id) : c.length - 1;
+    if (fixupRun && fixupRun.chatId === chatId() && fixupRun.index === i) return;   // the fix-up finishes this reply itself
     try { await rebuildMessage(i); } catch (e) { console.error("[Story Ledger] could not write the block", e); }
+}
+
+// ── Ledger fix-up: ask for the missing comment or Thoughts and keep only that ─
+
+// The one run in flight: { chatId, index, swipeId, mes (snapshot), kase, mode, config, stopped, abandoned, error }
+let fixupRun = null;
+let fixupAsking = false;
+
+// Is this generation the fix-up's own Full-mode continue?
+const fixupContinues = type => type === "continue" && fixupRun?.mode === "full" && !fixupRun.abandoned
+    && fixupRun.chatId === chatId() && fixupRun.index === generationBase((ctx().chat || []).length, type);
+
+// The dice and fudges the reply already has: a fix-up never rolls, merges or consumes any.
+function fixupConfig(i) {
+    const { dice, fudges } = fixupConfigInputs((ctx().chat || [])[i].mes, chatData().fudges, i);
+    return engineConfig({ dice, fudges, fudgedDice: withFudges(dice, fudges).fudged, rolls: dice.checks || [] });
+}
+
+const setReply = (msg, mes) => {
+    msg.mes = mes;
+    if (Array.isArray(msg.swipes) && msg.swipe_id !== undefined && msg.swipes[msg.swipe_id] !== undefined) msg.swipes[msg.swipe_id] = mes;
+};
+
+export async function startFixup(i) {
+    const s = settings();
+    const chat = ctx().chat || [];
+    const msg = chat[i];
+    if (fixupRun || fixupAsking || !s.enabled || !msg || i !== chat.length - 1 || msg.is_user || msg.is_system) return;
+    const kase = needsFixup(msg.mes, s.sections);
+    if (!kase) return;
+    const mode = s.fixupMode === "lean" ? "lean" : "full";
+    fixupAsking = true;
+    let ok = false;
+    try {
+        ok = await ctx().Popup.show.confirm("Write the missing ledger part?",
+            `${kase === "missing" ? "This reply has no ledger comment; one will be written." : "This reply's ledger comment has no Thoughts; they will be added."} The prose is never changed, and nothing is kept unless the answer is usable. ${mode === "lean" ? "Lean: short prompt" : "Full: normal prompt"}`);
+    } finally { fixupAsking = false; }
+    if (!ok) return;
+    const run = fixupRun = {
+        chatId: chatId(), index: i, swipeId: msg.swipe_id, mes: msg.mes, kase, mode,
+        config: fixupConfig(i), stopped: false, abandoned: false, error: null,
+    };
+    decorateAll();
+    if (mode === "full") {
+        try { await ctx().executeSlashCommandsWithOptions("/continue await=true"); } catch (e) { run.error = e; }
+        await finalizeFixup(run);
+    }
+}
+
+/** Judge what the run produced, then splice it into the reply it started from or put the reply back. */
+async function finalizeFixup(run, output = null) {
+    try {
+        const chat = ctx().chat || [];
+        const msg = chat[run.index];
+        const unchanged = !run.abandoned && chatId() === run.chatId && msg && run.index === chat.length - 1
+            && msg.swipe_id === run.swipeId
+            && (run.mode === "full" ? String(msg.mes).startsWith(run.mes) : msg.mes === run.mes);
+        if (!unchanged) {
+            if (!run.abandoned) notice("warning", "The reply changed during the ledger fix-up; it was left as it is.", "📒 Story Ledger");
+            return;
+        }
+        let reason = run.stopped ? "stopped" : run.error ? (run.error.message || String(run.error)) : null;
+        let accepted = null;
+        if (!reason) {
+            accepted = acceptFixup(run.mode === "full" ? msg.mes.slice(run.mes.length) : output, run.kase, {
+                sections: settings().sections, prev: stateBefore(chat.slice(0, run.index), run.index, run.config), config: run.config,
+            });
+            if (!accepted.ok) reason = accepted.reason;
+        }
+        if (reason) {
+            if (run.mode === "full") {
+                setReply(msg, run.mes);
+                ctx().updateMessageBlock(run.index, msg);
+                await ctx().saveChat();
+            }
+            notice("warning", `Ledger fix-up kept nothing: ${reason}.`, "📒 Story Ledger");
+            return;
+        }
+        const text = stripBlocks(run.mes);
+        setReply(msg, accepted.comment ? spliceMissing(text, accepted.comment) : spliceThoughts(text, accepted.thoughts));
+        await rebuildMessage(run.index, { config: run.config });
+    } catch (e) {
+        console.error("[Story Ledger] the ledger fix-up failed", e);
+    } finally {
+        if (fixupRun === run) fixupRun = null;
+        decorateAll();
+    }
 }
 
 // ── Display ─────────────────────────────────────────────────────────────────
@@ -741,7 +845,8 @@ function init() {
         if (ev) c.eventSource.on(ev, () => setTimeout(decorateAll, 0));
     }
     for (const ev of [t.CHAT_CHANGED, t.MORE_MESSAGES_LOADED]) if (ev) c.eventSource.on(ev, () => setTimeout(decorateAll, 0));
-    if (t.CHAT_CHANGED) c.eventSource.on(t.CHAT_CHANGED, () => { pendingTurn = null; });
+    if (t.CHAT_CHANGED) c.eventSource.on(t.CHAT_CHANGED, () => { pendingTurn = null; if (fixupRun) fixupRun.abandoned = true; });
+    if (t.GENERATION_STOPPED) c.eventSource.on(t.GENERATION_STOPPED, () => { if (fixupRun?.mode === "full") fixupRun.stopped = true; });
     if (t.STREAM_TOKEN_RECEIVED) c.eventSource.on(t.STREAM_TOKEN_RECEIVED, () => hideStreamingLedger());
 
     c.registerMacro("story_ledger", () => lastInjection || buildInjection(lastGenerationType));
