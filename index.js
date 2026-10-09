@@ -216,8 +216,12 @@ globalThis.storyLedgerInterceptor = async function (_chat, _contextSize, _abort,
 
 // ── Writing the block into a reply ──────────────────────────────────────────
 
-/** Recompute message `i`'s block from the block before it and its own comment. */
-async function rebuildMessage(i, { announce = true } = {}) {
+/**
+ * Recompute message `i`'s block from the block before it and its own comment. Warnings are
+ * shown every time, so a ↻ rebuild that meets the same problem says so again; rule proposals
+ * are only collected when the reply arrives (`collect`), since rule numbers may have moved since.
+ */
+async function rebuildMessage(i, { collect = true } = {}) {
     const c = ctx().chat || [];
     const msg = c[i];
     if (!msg || msg.is_user || msg.is_system) return;
@@ -242,7 +246,6 @@ async function rebuildMessage(i, { announce = true } = {}) {
     ctx().updateMessageBlock(i, msg);
     await ctx().saveChat();
     decorateAll();
-    if (!announce) return;
 
     const s = settings();
     if (start.errors.length) notice("warning", `${start.errors.length} row(s) in the previous block could not be read and kept their earlier values: ${start.errors.map(e => `${e.section}: ${e.row}`).join("; ")}`, "📒 Story Ledger");
@@ -259,7 +262,7 @@ async function rebuildMessage(i, { announce = true } = {}) {
     const unread = unreadNotices(changes, unparsed, s.sections);
     if (unread.length) notice("info", `Could not read: ${unread.map(u => `${u.section}: "${u.line}"`).join("; ")}`, "📒 Story Ledger");
     for (const w of warnings || []) notice("warning", w.text, w.section === "Chekhov" ? "🔫 Story Ledger" : "📒 Story Ledger");
-    if (s.sections.notebook && changes.proposals.length) {
+    if (collect && s.sections.notebook && changes.proposals.length) {
         const before = chatData().notebook;
         const cannot = [];
         const after = collectProposals(before, changes.proposals, `m${i}s${msg.swipe_id ?? 0}`, cannot);
@@ -662,7 +665,7 @@ export async function openLedgerPopup(startTab = "rules") {
 
 async function confirmRebuild(i) {
     const ok = await ctx().Popup.show.confirm("Rebuild this block?", "It is recomputed from the block before it and this reply's ledger comment. Hand edits to this block are replaced.");
-    if (ok) await rebuildMessage(i, { announce: false });
+    if (ok) await rebuildMessage(i, { collect: false });
 }
 
 function registerSlashCommands() {
