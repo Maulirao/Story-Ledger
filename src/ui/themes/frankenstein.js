@@ -58,6 +58,18 @@ function syncNextTurnButton(outer, isNewest) {
     else if (!isNewest && existing) existing.remove();
 }
 
+const FIXUP_TITLES = { missing: "Write the missing ledger comment", thoughts: "Add the missing Thoughts" };
+
+/** ✎ asks the model for the part of the ledger this reply lacks. `fixup` is null, "missing" or "thoughts". */
+export function syncFixupButton(outer, fixup) {
+    const head = outer.querySelector(":scope > summary");
+    if (!head) return;
+    const existing = head.querySelector(".sl-fixup");
+    if (!fixup) { if (existing) existing.remove(); return; }
+    if (!existing) head.insertAdjacentHTML("beforeend", `<span class="sl-ui sl-fixup" title="${FIXUP_TITLES[fixup]}">✎</span>`);
+    else if (existing.title !== FIXUP_TITLES[fixup]) existing.title = FIXUP_TITLES[fixup];
+}
+
 function fateChips(section) {
     const rows = [...section.querySelectorAll("li, p, div")].filter(el => !el.querySelector("li, p, div"));
     for (const row of rows) {
@@ -80,16 +92,17 @@ export const decorate = (root, ctx) => decorateWith(root, ctx, "frankenstein");
  * Chekhov chips, Fate tier chips — under theme `theme`. Other themes build on it.
  * Returns true when it decorated afresh, false when the block already had `theme`.
  */
-export function decorateWith(root, { config, isNewest = false }, theme) {
+export function decorateWith(root, { config, isNewest = false, fixup = null }, theme) {
     const outer = outerDetails(root);
     if (!outer) return false;
-    if (outer.dataset.slTheme === theme) { syncNextTurnButton(outer, isNewest); return false; }
+    if (outer.dataset.slTheme === theme) { syncNextTurnButton(outer, isNewest); syncFixupButton(outer, fixup); return false; }
     undecorate(root);
     outer.dataset.slTheme = theme;
     outer.classList.add(`sl-theme-${theme}`);
     const head = outer.querySelector(":scope > summary");
     head.insertAdjacentHTML("beforeend", `<span class="sl-ui sl-rebuild" title="Rebuild this block from the one before it and this reply's ledger comment">↻</span>`);
     syncNextTurnButton(outer, isNewest);
+    syncFixupButton(outer, fixup);
     for (const d of outer.querySelectorAll("details")) {
         const s = d.querySelector(":scope > summary");
         if (!s) continue;

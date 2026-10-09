@@ -364,12 +364,20 @@ function leanInputs(i, run) {
     };
 }
 
+/** "missing", "thoughts" or null: what ✎ would ask for on message `i`. Only the last reply, and only while idle. */
+export function fixupCaseFor(i) {
+    const s = settings();
+    const chat = ctx().chat || [];
+    const msg = chat[i];
+    if (fixupRun || fixupAsking || !s.enabled || !msg || i !== chat.length - 1 || msg.is_user || msg.is_system) return null;
+    return needsFixup(msg.mes, s.sections);
+}
+
 export async function startFixup(i) {
     const s = settings();
     const chat = ctx().chat || [];
     const msg = chat[i];
-    if (fixupRun || fixupAsking || !s.enabled || !msg || i !== chat.length - 1 || msg.is_user || msg.is_system) return;
-    const kase = needsFixup(msg.mes, s.sections);
+    const kase = fixupCaseFor(i);
     if (!kase) return;
     const mode = s.fixupMode === "lean" ? "lean" : "full";
     fixupAsking = true;
@@ -447,7 +455,7 @@ function decorateMessage(i, newestIndex = newestBlockIndex()) {
     const s = settings();
     if (!s.enabled || !String(((ctx().chat || [])[i] || {}).mes || "").includes(BLOCK_MARK)) { undecorate(el); return; }
     const theme = THEMES[s.theme] || THEMES.frankenstein;   // display only: the message text never changes
-    theme.decorate(el, { config: engineConfig(), mesIndex: i, isNewest: i === newestIndex });
+    theme.decorate(el, { config: engineConfig(), mesIndex: i, isNewest: i === newestIndex, fixup: i === newestIndex ? fixupCaseFor(i) : null });
 }
 const decorateAll = () => {
     const newestIndex = newestBlockIndex();
@@ -908,6 +916,11 @@ function init() {
         e.preventDefault(); e.stopPropagation();
         const i = Number($(e.currentTarget).closest(".mes").attr("mesid"));
         if (Number.isInteger(i)) confirmRebuild(i);
+    });
+    $(document).on("click", ".sl-fixup", e => {
+        e.preventDefault(); e.stopPropagation();
+        const i = Number($(e.currentTarget).closest(".mes").attr("mesid"));
+        if (Number.isInteger(i)) startFixup(i).catch(err => console.error("[Story Ledger] the ledger fix-up failed to start", err));
     });
     $(document).on("click", ".sl-next-turn", e => {
         e.preventDefault(); e.stopPropagation();

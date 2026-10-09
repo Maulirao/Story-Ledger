@@ -22,6 +22,16 @@ the reply — FF's `<internal_states>` layout, folded under **🎬 INTERNAL STAT
   newest reply's block; the next turn starts from your edit.
 - **↻** in the block's header rebuilds that block from the one before it and the reply's
   comment (for when you edited the comment instead). Nothing rebuilds on its own.
+- **✎** appears on the last reply's block when the reply has no ledger comment, or has one
+  without any Thoughts (while Thoughts are on). It asks the model for just that part and keeps
+  nothing else: the prose is never changed, an existing comment's lines are never rewritten
+  (only Thoughts are added to it), and the reply's dice and any armed fudges are left alone.
+  If the answer is not usable, or you stop it or edit the reply meanwhile, the reply stays
+  exactly as it was. Choose the context under **Settings → Ledger fix-up context**: *Full*
+  sends the normal prompt (a provider that caches prompts may reuse most of it), *Lean* sends
+  a short one — the main prompt, character cards, the Summarize memory, the ledger state and
+  the last N messages (**Recent messages**, 0–20, default 4) — which costs far fewer input
+  tokens on long chats but does not reuse the chat's cached prefix.
 - Harmless formatting in the comment (bullets, bold labels, curly quotes, heading case) is
   accepted; lines under unknown headings are reported. ↻ rebuilding an old reply may now
   apply a formerly unread line, and may refuse a formerly accepted incomplete `NEW` or

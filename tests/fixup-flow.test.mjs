@@ -282,3 +282,48 @@ test("settings: the fixup controls round-trip", async () => {
         assert.deepEqual(shown, [true, false], "Recent messages is shown only for Lean");
     } finally { context.Popup = savedPopup; globalThis.$ = savedDollar; full(); }
 });
+
+// ── The ✎ button ────────────────────────────────────────────────────────────
+
+test("decorate passes the fix-up case only for the last reply when idle", async () => {
+    full();
+    const msg = seed();
+    assert.equal(extension.fixupCaseFor(1), "missing");
+    assert.equal(extension.fixupCaseFor(0), null, "not an assistant reply");
+    context.chat.push({ is_user: true, name: "Jan", mes: "Next." });
+    assert.equal(extension.fixupCaseFor(1), null, "not the last message");
+    context.chat.pop();
+    const withComment = writeBlockInto("p\n<!-- Story_Ledger\nNow: Day 1\n-->", STATE_BLOCK);
+    msg.mes = withComment;
+    assert.equal(extension.fixupCaseFor(1), "thoughts");
+    msg.mes = original;
+    let during;
+    script = async () => { during = extension.fixupCaseFor(1); };
+    await extension.startFixup(1);
+    assert.equal(during, null, "hidden while a fix-up is running");
+    assert.equal(extension.fixupCaseFor(1), "missing", "back after it ends");
+    context.extensionSettings.storyLedger.enabled = false;
+    assert.equal(extension.fixupCaseFor(1), null, "off when the extension is off");
+    context.extensionSettings.storyLedger.enabled = true;
+});
+
+test("the theme draws ✎ with the case's title and drops it when nothing is needed", async () => {
+    const { syncFixupButton } = await import("../src/ui/themes/frankenstein.js");
+    const head = {
+        spans: [],
+        querySelector(sel) { return sel === ".sl-fixup" ? this.spans.find(s => s.className.includes("sl-fixup")) || null : null; },
+        insertAdjacentHTML(_where, html) {
+            const span = { className: html.match(/class="([^"]+)"/)[1], title: html.match(/title="([^"]+)"/)[1], text: html.match(/>([^<]+)</)[1], remove: () => head.spans.splice(head.spans.indexOf(span), 1) };
+            this.spans.push(span);
+        },
+    };
+    const outer = { querySelector: () => head };
+    syncFixupButton(outer, "missing");
+    assert.deepEqual(head.spans.map(s => [s.text, s.title]), [["✎", "Write the missing ledger comment"]]);
+    syncFixupButton(outer, "missing");
+    assert.equal(head.spans.length, 1, "not drawn twice");
+    syncFixupButton(outer, "thoughts");
+    assert.equal(head.spans[0].title, "Add the missing Thoughts");
+    syncFixupButton(outer, null);
+    assert.equal(head.spans.length, 0);
+});
