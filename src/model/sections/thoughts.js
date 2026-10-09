@@ -7,6 +7,12 @@ const COMMANDS = [
     { id: "thoughts.thought", form: "Name: this reply's raw thoughts", example: "Mara: he knows. he has to know. keep smiling.", keywords: [], freeText: true },
 ];
 
+/** One Thoughts line, "Name: thought" → { name, text }, or null when it is not one. */
+export function parseThoughtLine(line) {
+    const m = String(line).trim().match(/^([^:]{1,60}?)\s*:\s*(.+)$/);
+    return m ? { name: m[1].trim(), text: m[2].trim() } : null;
+}
+
 export default {
     key: "thoughts",
     title: "🧠 INTERNAL THOUGHTS",
@@ -21,8 +27,8 @@ export default {
     apply(state, lines) {
         const unparsed = [];
         for (const raw of lines) {
-            const m = String(raw).trim().match(/^([^:]{1,60}?)\s*:\s*(.+)$/);
-            if (m) state.perTurn.thoughts.push({ name: m[1].trim(), text: m[2].trim() });
+            const thought = parseThoughtLine(raw);
+            if (thought) state.perTurn.thoughts.push(thought);
             else unparsed.push(String(raw).trim());
         }
         return unparsed;
