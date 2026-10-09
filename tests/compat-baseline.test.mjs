@@ -90,5 +90,5 @@ test("stored blocks round-trip unchanged", () => {
     const back = parseBlock(renderBlock(s, { rules: [], config: C, sections: ALL }), { config: C }).state;
     const { perTurn, ...expected } = s;
     const { perTurn: gotPerTurn, ...got } = back;
-    assert.deepEqual(got, expected);
+    assert.deepEqual(got, { ...expected, inv: { ...expected.inv, itemIds: ["I1", "I2"] }, ids: { Q: 1, I: 2 } });
 });

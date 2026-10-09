@@ -57,7 +57,7 @@ test("the consequence label works under Fate and World with normalized and tagge
 });
 
 test("empty consequence reports and unrelated invented event labels remain unread", () => {
-    const lines = ["World CONSEQUENCE landed as", "World CONSEQUENCE landed as ", "World CONSEQUENCE landed:", "World UNKNOWN landed as a broken buoy", "World BAD NEWS landed as a broken buoy"];
+    const lines = ["World CONSEQUENCE landed as", "World CONSEQUENCE landed as ", "World CONSEQUENCE landed:", "World UNKNOWN landed as a broken buoy"];
     const r = run(emptyState(), `Fate:\n${lines.map(line => `- ${line}`).join("\n")}`);
     assert.deepEqual(r.unparsed, lines.map(line => ({ section: "Fate", line: line.trim() })));
     assert.deepEqual(r.state, postTurn(emptyState(), null, config).state);

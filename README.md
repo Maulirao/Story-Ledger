@@ -137,12 +137,60 @@ already absent. Ambiguous names and malformed commands still produce notices.
 Item and title removals still require a matching entry. Install updates and use ↻
 to rebuild an existing reply with the current parser.
 
+Inventory entries have persistent IDs (`I1`, `I2`, …), assigned by the extension
+and shown in the model's inventory prompt and saved state. Existing inventories
+gain IDs automatically without changing their descriptions. Use `- I7 (left behind)`
+to remove a specific entry, or `I7 update: towel (on Jan)` to change its description
+without changing its ID. Additions stay `+ item`; the model must not invent IDs.
+ID removals also accept multiple parenthetical notes, such as
+`- I7 ($50) (paid for supplies)`; the ID determines which entry is removed.
+One ID identifies one listed entry, including any quantity in its description.
+Removed IDs are not reused along the retained sequence of snapshots.
+
+Name removals prefer the full stored name. Otherwise, they compare base names
+while ignoring trailing parenthetical notes on both sides, regardless of their
+wording. `1 towel` also matches `towel`; other leading quantities stay significant.
+This deliberately permits removing a unique `towel (blue)` as `towel`. Multiple
+matching entries require a full name or ID. Parentheses inside a name remain
+literal. An unknown or malformed ID command never falls back to a name match.
+These expanded command readings apply to ledger comments; tagged replies retain
+their old name-matching behavior.
+
+IDs survive save/read cycles. Swipes and ↻ rebuilds use their preceding snapshot,
+so a discarded alternative cannot remove an item or consume an ID in another.
+
+Money and Supplies are tracked within Inventory. Money has numeric balances per
+currency and no item IDs. For example, `money: 50 USD` establishes a balance,
+`money - 18 USD (purchase)` leaves 32, and `money + 5 USD (refund)` adds five.
+Currency symbols also work (`money: $50`). Currency may be omitted when there is
+only one known balance; an initial amount without a currency remains unspecified.
+Different currencies stay separate; there is no automatic currency conversion.
+Only explicit initialization/correction sets a total. Income and expenses use deltas.
+
+For ammo and other counted or measured supplies, `supply: 12 rounds | 9mm ammunition`
+creates a stack with an item ID. `I7 adjust: -3 (fired)` consumes three from that
+stack; `I7 adjust: +5 (restocked)` replenishes it. `I7 quantity: 12 rounds`
+establishes or corrects the quantity of an existing item. Description updates retain
+the quantity. A whole-entry removal deletes both the item and its quantity.
+
+The extension calculates amounts with exact decimal arithmetic, keeps zero balances
+and stacks for replenishment, and refuses an adjustment that exceeds a known amount.
+Unknown targets and malformed amounts leave the target unchanged. Save/read cycles,
+swipes and rebuilds preserve the same arithmetic from the preceding snapshot.
+Existing items are not automatically interpreted as balances or stacks; noteworthy
+bills can stay ordinary items or counted supplies without automatically changing Money.
+
 Relationship ticks, DIRECT shifts and NOTE changes written before `NEW` are saved
 in the reply's Relationships section. The next prompt requests the missing baseline
 and shows the saved interactions. Once a complete baseline arrives, those changes
 apply once; ticks retain the cap for each original turn. Conversion and decay run
 at the turn of initialization, without rewriting earlier turns. Swipes and rebuilds
 use their own preceding snapshot, so discarded alternatives do not add changes.
+
+Recognized `World EVENT landed as aftermath` reports save what happened in the
+story even when that label differs from the World Sim selection. They record residue
+without changing the dice, tier, source, tracked World entries or unrelated residue debt.
+Unknown labels and empty aftermath still produce notices.
 
 Automatic placement adds a short system reminder at chat depth zero for the ledger
 comment, enabled NPC Thoughts, and missing relationship baselines. Macro placement

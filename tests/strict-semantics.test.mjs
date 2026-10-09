@@ -24,14 +24,14 @@ test("a Fate recap naming another tier or source stays unparsed", () => {
     assert.deepEqual(r.state, run(emptyState(), "").state);
 });
 
-test("a World Sim landed report for an event other than the rolled one stays unparsed", () => {
+test("landed story aftermath cannot replace the selected World Sim event", () => {
     const config = { ...C, dice: { ...DICE, world: 3 } };
     const line = "World BAD NEWS landed as x";
     const r = run(emptyState(), list("Fate", [line]), config);
     assert.equal(r.state.perTurn.worldsim.name, "GOOD NEWS");
-    assert.deepEqual(r.unparsed, unread("Fate", [line]));
-    assert.deepEqual(r.state.fate.residue, []);
-    assert.deepEqual(r.state, run(emptyState(), "", config).state);
+    assert.deepEqual(r.unparsed, []);
+    assert.deepEqual(r.state.fate.residue, ["BAD NEWS — x"]);
+    assert.deepEqual({ ...r.state, fate: { ...r.state.fate, residue: [] } }, run(emptyState(), "", config).state);
 });
 
 test("a tick awaiting NEW is saved without inventing a baseline and keeps the import note", () => {
@@ -86,7 +86,7 @@ test("unknown item and title removals stay unparsed; absent status removals are 
     const lines = ["- lantern", "title - Duke", "status - Unknown"];
     const r = run(s, list("Inventory", lines));
     assert.deepEqual(r.unparsed, unread("Inventory", lines.slice(0, 2)));
-    assert.deepEqual(r.state.inv, s.inv);
+    assert.deepEqual(r.state.inv, { ...s.inv, itemIds: ["I1"] });
     assert.deepEqual(r.state, run(s, "").state);
     const partial = run(s, list("Inventory", ["status - Tired; Unknown"]));
     assert.deepEqual(partial.state.inv.status, ["Injured"]);

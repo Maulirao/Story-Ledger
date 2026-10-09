@@ -15,12 +15,12 @@ import { HEADINGS, headingKey } from "../../src/model/headings.js";
 import { SECTIONS } from "../../src/model/sections/registry.js";
 import { formOf } from "../../src/model/commands.js";
 
-/** The eight closed-form commands that accept one terminal period. */
-export const CLOSED_FORMS = new Set(["quests.done", "quests.drop", "quests.reopen", "chekhov.unlock", "chekhov.prune", "fate.defer", "fate.resolve", "world.escalate"]);
+/** Closed-form commands that accept one terminal period. */
+export const CLOSED_FORMS = new Set(["quests.done", "quests.drop", "quests.reopen", "chekhov.unlock", "chekhov.prune", "fate.defer", "fate.resolve", "world.escalate", "inv.money-set", "inv.money-add", "inv.money-spend", "inv.adjust"]);
 
 // how the core headings' aliases are written (headings.js keeps them private)
 const CORE_ALIASES = { Threads: ["Thread"], Relationships: ["Relationship"], "Proposed rules": ["Proposed rule"], World: [] };
-const ID = /\b[QBDWR]\d+\b/g;
+const ID = /\b[QBDWRI]\d+\b/g;
 
 /** A command's example under `ctx` (Check depends on the check style). */
 export const exampleOf = (command, ctx) => (typeof command.example === "function" ? command.example(ctx) : command.example);

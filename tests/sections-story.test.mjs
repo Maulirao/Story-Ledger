@@ -120,10 +120,13 @@ test("curly and straight duplicates are removed by their raw form", () => {
 
 test("raw precedence survives code, bold and a filtered skeleton", () => {
     const both = ['"x" key', "“x” key"];
-    for (const body of ["`- - “x” key`", "- **- “x” key**", "- [+ item]\n- - “x” key", "- - “x” key (dropped)"]) {
+    for (const body of ["`- - “x” key`", "- **- “x” key**", "- [+ item]\n- - “x” key"]) {
         const r = postTurn(withItems(both), ch(`Inventory:\n${body}`), C);
         assert.deepEqual(r.state.inv.items, ['"x" key'], body);
     }
+    const annotated = postTurn(withItems(both), ch("Inventory:\n- - “x” key (dropped)"), C);
+    assert.deepEqual(annotated.state.inv.items, both);
+    assert.equal(annotated.unparsed.length, 1);
     const s = emptyState();
     s.inv.titles = ['"Ace"', "“Ace”"];
     assert.deepEqual(postTurn(s, ch("Inventory:\n- [title - X]\n- title - “Ace”"), C).state.inv.titles, ['"Ace"']);

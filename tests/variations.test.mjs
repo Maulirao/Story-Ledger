@@ -88,7 +88,7 @@ for (const command of INVENTORY) {
 function isolated(commands, counts = {}) {
     return commands.map(c => {
         const f = FIXTURES[c.id];
-        const letter = (exampleOf(c, ctxOf(null)).match(/\b([QBDW])1\b/) || [])[1];
+        const letter = (exampleOf(c, ctxOf(null)).match(/\b([QBDWI])1\b/) || [])[1];
         const n = letter ? (counts[letter] = (counts[letter] || 0) + 1) : 1;
         const id = x => (letter && x === `${letter}1` ? `${letter}${n}` : x);
         const rename = text => (f.isolate || (t => t))(letter ? text.replace(new RegExp(`\\b${letter}1\\b`, "g"), `${letter}${n}`) : text);

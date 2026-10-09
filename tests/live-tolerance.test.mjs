@@ -264,17 +264,80 @@ test("an exact inventory removal takes precedence over stripping a parenthetical
     const s = emptyState();
     s.inv.items = ["towel", "towel (blue)", "1 towel"];
     const r = run(s, "Inventory:\n- - towel (blue)\n- - 1 towel (dropped)");
-    assert.deepEqual(r.state.inv.items, ["towel"]);
+    assert.deepEqual(r.state.inv.items, ["towel", "1 towel"]);
+    assert.deepEqual(r.unparsed, [{ section: "Inventory", line: "- 1 towel (dropped)" }]);
+});
+
+test("the room-shuffle removal recognizes a towel's previous holder", () => {
+    for (const towel of ["1 towel (on Emilia)", "towel (on Emilia)", "1 towel (carried by Emilia)", "towel (held by Emilia)"]) {
+        const s = emptyState();
+        s.inv.items = ["key", towel];
+        const r = run(s, "Inventory:\n- - 1 towel (left behind in the room shuffle)");
+        assert.deepEqual(r.state.inv.items, ["key"], towel);
+        assert.deepEqual(r.unparsed, [], towel);
+        assert.deepEqual(s.inv.items, ["key", towel]);
+    }
+});
+
+test("base-name matching cannot guess among towels or ignore other quantities", () => {
+    for (const items of [["towel (on Emilia)", "1 towel (on Jan)"], ["2 towel (on Emilia)"], ["2 towels (on Emilia)"]]) {
+        const s = emptyState();
+        s.inv.items = items;
+        const line = "- 1 towel (left behind in the room shuffle)";
+        const r = run(s, `Inventory:\n- ${line}`);
+        assert.deepEqual(r.state.inv.items, items);
+        assert.deepEqual(r.unparsed, [{ section: "Inventory", line }]);
+    }
+});
+
+test("literal inventory names win before matching old holder annotations", () => {
+    const s = emptyState();
+    s.inv.items = ["1 towel (left behind in the room shuffle)", "towel (on Emilia)", "towel"];
+    const r = run(s, "Inventory:\n- - 1 towel (left behind in the room shuffle)");
+    assert.deepEqual(r.state.inv.items, ["towel (on Emilia)", "towel"]);
     assert.deepEqual(r.unparsed, []);
 });
 
-test("unknown annotated removals cannot delete another item or a counted group", () => {
+test("holder matching preserves distinct names and refuses quote-equivalent duplicates", () => {
+    const s = emptyState();
+    s.inv.items = ['Photograph “94” (on Emilia)', 'Photograph "94" (on Jan)', 'Photograph “95” (on Emilia)'];
+    const line = '- Photograph «94» (left behind)';
+    const r = run(s, `Inventory:\n- ${line}`);
+    assert.deepEqual(r.state.inv.items, s.inv.items);
+    assert.deepEqual(r.unparsed, [{ section: "Inventory", line: '- Photograph "94" (left behind)' }]);
+    const unique = run(s, 'Inventory:\n- - Photograph “95” (left behind)');
+    assert.deepEqual(unique.state.inv.items, s.inv.items.slice(0, 2));
+    assert.deepEqual(unique.unparsed, []);
+});
+
+test("a failed ambiguous full-name match cannot fall back to a holder match", () => {
+    const s = emptyState();
+    s.inv.items = ['Photograph “94” (left behind)', 'Photograph «94» (left behind)', 'Photograph "94" (on Emilia)'];
+    const line = '- Photograph «94» (left behind)';
+    const r = run(s, `Inventory:\n- ${line}`);
+    assert.deepEqual(r.state.inv.items, [s.inv.items[0], s.inv.items[2]]);
+    assert.deepEqual(r.unparsed, []);
+    const ambiguous = run(s, 'Inventory:\n- - Photograph „94“ (left behind)');
+    assert.deepEqual(ambiguous.state.inv.items, s.inv.items);
+    assert.equal(ambiguous.unparsed.length, 1);
+});
+
+test("holder matching is confined to ledger comments", () => {
+    const s = emptyState();
+    s.inv.items = ["1 towel (on Emilia)"];
+    const line = "- 1 towel (left behind in the room shuffle)";
+    const tagged = postTurn(s, parseChanges(`<Story_Ledger>\nInventory:\n- ${line}\n</Story_Ledger>`), C);
+    assert.deepEqual(tagged.state.inv.items, s.inv.items);
+    assert.deepEqual(tagged.unparsed, [{ section: "Inventory", line }]);
+});
+
+test("a unique annotated item can be removed without affecting an unknown name or counted group", () => {
     const s = emptyState();
     s.inv.items = ["towel (blue)", "2 towels", "key"];
     const lines = ["- 1 towel (dropped)", "- lantern (left behind)"];
     const r = run(s, `Inventory:\n${lines.map(l => `- ${l}`).join("\n")}`);
-    assert.deepEqual(r.state.inv.items, s.inv.items);
-    assert.deepEqual(r.unparsed, lines.map(line => ({ section: "Inventory", line })));
+    assert.deepEqual(r.state.inv.items, ["2 towels", "key"]);
+    assert.deepEqual(r.unparsed, [{ section: "Inventory", line: lines[1] }]);
 });
 
 test("an unknown item qualifier is not mistaken for a removal explanation", () => {
@@ -445,16 +508,16 @@ test("landed World Sim reports match configured event names case-insensitively",
     assert.deepEqual(r.state.fate.residue, ["LUCKY BREAK — a repaired gate"]);
 });
 
-test("a World Sim report cannot replace the rolled event or record empty aftermath", () => {
+test("a recognized landed report records aftermath without replacing the roll; empty and unknown reports fail", () => {
     const config = { ...C, dice: { fate: { a: 10, b: 1, c: 5 }, world: 3 } };
     const lines = ["World BAD NEWS landed as a broken gate", "World GOOD NEWS landed as", "World GOOD NEWS landed as ", "World UNKNOWN landed as a gate"];
     const r = postTurn(emptyState(), ch(`Fate:\n${lines.map(line => `- ${line}`).join("\n")}`), config);
-    assert.deepEqual(r.unparsed, lines.map(line => ({ section: "Fate", line: line.trim() })));
-    assert.deepEqual(r.state.fate.residue, []);
+    assert.deepEqual(r.unparsed, lines.slice(1).map(line => ({ section: "Fate", line: line.trim() })));
+    assert.deepEqual(r.state.fate.residue, ["BAD NEWS — a broken gate"]);
     assert.equal(r.state.perTurn.worldsim.name, "GOOD NEWS");
 });
 
-test("landed World Sim reports require a rolled enabled event and a TRUE Fate source", () => {
+test("recognized landed reports save narrative aftermath independently of World Sim and Fate source", () => {
     const line = "World GOOD NEWS landed as a repaired gate";
     const configs = [
         { ...C, dice: { fate: { a: 10, b: 1, c: 5 } } },
@@ -463,8 +526,9 @@ test("landed World Sim reports require a rolled enabled event and a TRUE Fate so
     ];
     for (const config of configs) {
         const r = postTurn(emptyState(), ch(`Fate:\n- ${line}`), config);
-        assert.deepEqual(r.unparsed, [{ section: "Fate", line }]);
-        assert.deepEqual(r.state.fate.residue, []);
+        assert.deepEqual(r.unparsed, []);
+        assert.deepEqual(r.state.fate.residue, ["GOOD NEWS — a repaired gate"]);
+        assert.deepEqual(r.state.fate.lastTurn, postTurn(emptyState(), null, config).state.fate.lastTurn);
     }
 });
 
@@ -506,7 +570,7 @@ test("ambiguous full status names never fall back to a shorter conversion prefix
     assert.deepEqual(r.unparsed, [{ section: "Inventory", line }]);
 });
 
-test("the labelled World EVENT aftermath form matches only the rolled event", () => {
+test("the labelled World EVENT aftermath form accepts only recognized names and nonempty text", () => {
     const config = { ...C, dice: { fate: { a: 10, b: 1, c: 5 }, world: 3 }, sectionConfig: { ...C.sectionConfig, worldsim: { ...C.sectionConfig.worldsim, duo: [{ from: 1, to: 20, name: "CONFLICT", text: "a dispute" }] } } };
     const s = emptyState();
     s.fate.owed = ["unrelated debt"];
@@ -521,14 +585,15 @@ test("the labelled World EVENT aftermath form matches only the rolled event", ()
     const tagged = postTurn(s, legacy, config);
     assert.deepEqual(tagged.state.fate.residue, []);
     assert.deepEqual(tagged.unparsed, [{ section: "Fate", line }]);
-    for (const bad of ["World EVENT landed as aftermath: ARRIVAL — a cousin", "World EVENT landed as aftermath: CONFLICT —", "World EVENT landed as aftermath: CONFLICT", "World EVENT landed as aftermath: CONFLICTING — a dispute"]) {
+    for (const bad of ["World EVENT landed as aftermath: UNKNOWN — a cousin", "World EVENT landed as aftermath: CONFLICT —", "World EVENT landed as aftermath: CONFLICT", "World EVENT landed as aftermath: CONFLICTING — a dispute"]) {
         const refused = postTurn(s, ch(`Fate:\n- ${bad}`), config);
         assert.deepEqual(refused.unparsed, [{ section: "Fate", line: bad }]);
         assert.deepEqual(refused.state.fate.residue, []);
     }
     for (const guarded of [{ ...config, sections: { worldsim: false } }, { ...config, fudges: { source: "WEIGHTED" } }]) {
         const refused = postTurn(s, ch(`Fate:\n- ${line}`), guarded);
-        assert.deepEqual(refused.unparsed, [{ section: "Fate", line }]);
-        assert.deepEqual(refused.state.fate.residue, []);
+        assert.deepEqual(refused.unparsed, []);
+        assert.deepEqual(refused.state.fate.residue, [`CONFLICT — ${text}`]);
+        assert.deepEqual(refused.state.fate.lastTurn, postTurn(s, null, guarded).state.fate.lastTurn);
     }
 });

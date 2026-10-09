@@ -8,6 +8,7 @@ import { esc, unesc, ROW, closedForm } from "../text.js";
 import { nextId } from "../state.js";
 import { computeFate, reachFor } from "../fate-engine.js";
 import { commandTemplate } from "../commands.js";
+import { DEFAULT_SECTION_CONFIG } from "../config.js";
 
 // W# entries are displayed in Fate, but World declares their command forms only once.
 // The reader still accepts update/escalate under either Fate: or World:.
@@ -217,6 +218,8 @@ export default {
         const unparsed = [];
         const outcome = ctx.turn.fate;
         if (!outcome) return unparsed;
+        const tables = ctx.config?.sectionConfig?.worldsim || DEFAULT_SECTION_CONFIG.worldsim;
+        const eventNames = [...new Set([ctx.turn.worldsim?.name, ...["duo", "standard"].flatMap(k => (tables[k] || DEFAULT_SECTION_CONFIG.worldsim[k]).map(e => e.name))].filter(Boolean))];
         const byDeferred = id => byId(fate.deferred, id);
         const worldLines = [];
         const records = ctx.linesAcross?.(["World", "Fate"]) || [
@@ -234,8 +237,13 @@ export default {
                 appendResidue(fate, `CONSEQUENCE — ${consequence[1].trim()}`, ctx);
                 continue;
             }
+            const reported = eventNames.map(name => ({ name, aftermath: realizedWorldAftermath(line, name, ctx.normalizedChanges) })).find(event => event.aftermath !== null);
+            if (reported) {
+                // Save a recognizable narrative event; its report never overrides the rolled event or Fate source.
+                appendResidue(fate, `${reported.name} — ${reported.aftermath}`, ctx);
+                continue;
+            }
             if (record.section === "World") { worldLines.push(line); continue; }
-            const worldAftermath = realizedWorldAftermath(line, ctx.turn.worldsim?.name, ctx.normalizedChanges);
             let m, item;
             if ((m = line.match(/^pursuit\s*:\s*(.+)$/i))) {
                 fate.state = "THREAD"; fate.pursuit = m[1].trim(); fate.ts = 0;
@@ -263,9 +271,6 @@ export default {
             } else if ((m = line.match(/^residue\s*:\s*(.+)$/i))) {
                 appendResidue(fate, m[1].trim(), ctx);
                 if (fate.owed.length) fate.owed.shift();
-            } else if (worldAftermath !== null && outcome.source === "TRUE" && ctx.turn.worldsim) {
-                // A realized World Sim event is aftermath, not a new tracked happening or payment of unrelated debt.
-                appendResidue(fate, `${ctx.turn.worldsim.name} — ${worldAftermath}`, ctx);
             } else if ((m = line.match(/^World\s*:\s*(.+)$/i))) {
                 worldLines.push(m[1]);   // a World line written inside the Fate list
             } else if (/^(?:update|escalate)\b/i.test(line)) {
@@ -396,7 +401,7 @@ export default {
             "A WILL is a concrete thing someone wants. Track meaningful progress with `ambition +1`; progress never falls from Fate, and 5/5 becomes a LOCAL happening with residue owed.",
             "World W# entries are displayed inside Fate & Routine. Under either Fate: or World:, use `update W#: new development` for changed facts without a change in scope, or `escalate W#: new development` when the event truly spreads (LOCAL and Reach 3 are the caps). Bare `escalate W#` is also valid. Both annotated commands APPEND a chronological update; they never replace the original description or earlier updates. Report only what is new, one command per line; preserve important previous facts without copying them into the new note. Say explicitly when a new estimate supersedes an old one. A repair status alone is not a reason to escalate.",
             "For a generic consequence that actually occurred in the story, `World CONSEQUENCE landed as aftermath` is valid under Fate: or World:. Replace aftermath with the concrete result. CONSEQUENCE is a generic report label, independent of the rolled World Sim event; it is valid on TRUE or WEIGHTED turns and records residue without changing the rolled event, tier, source, World entries or unrelated owed aftermath. Use it to record an observed result, never to force an event to occur.",
-            "For world news, keep the reported channel recognizable, allow a plausible in-world distortion, and scale reactions to the event's actual reach. Keep ordinary scenes ordinary when Fate says AMBIENT. The ledger already records the turn's tier and source; omit Fate when no pursuit, deferred item, ambition or residue changed, rather than writing an AMBIENT/MINOR/MAJOR recap. Omit unchanged World entries instead of repeating their proximity or W#. Only report a realized World Sim event when this turn's source is TRUE and the announced event was actually used. Write `World EVENT landed as aftermath` under Fate; replace EVENT with the EXACT announced World Sim name and aftermath with the actual consequence. Specific World Sim event names must match the roll and cannot be reported as landed on WEIGHTED turns; use the separate CONSEQUENCE form for generic story aftermath. This records its residue without creating a new World entry. For a separate consequence of story actions at MINOR or MAJOR, use `MINOR consequence landed: aftermath` or `MAJOR consequence landed: aftermath`, matching this turn's tier.",
+            "For world news, keep the reported channel recognizable, allow a plausible in-world distortion, and scale reactions to the event's actual reach. Keep ordinary scenes ordinary when Fate says AMBIENT. The ledger already records the turn's tier and source; omit Fate when no pursuit, deferred item, ambition or residue changed, rather than writing an AMBIENT/MINOR/MAJOR recap. Omit unchanged World entries instead of repeating their proximity or W#. Use the selected World Sim event only when this turn's source is TRUE. For its realized aftermath, write `World EVENT landed as aftermath`, replacing EVENT with the announced name and aftermath with the actual consequence. For an independent story consequence, prefer `World CONSEQUENCE landed as aftermath`. A recognized landed event label also records observed narrative aftermath even when it differs from the selected World Sim event; this bookkeeping never changes the roll, tier, source or World entries and never clears unrelated owed residue. Never use a landed report to force an event to happen. For a separate consequence of story actions at MINOR or MAJOR, use `MINOR consequence landed: aftermath` or `MAJOR consequence landed: aftermath`, matching this turn's tier.",
             `A twice-deferred item cannot be deferred again. Pursuits at ts ${cfg.pursuitLimit ?? 8} must close or park. Record a concise residue line for each owed aftermath; do not erase old residue except by the configured tail.`,
         ].join("\n");
     },

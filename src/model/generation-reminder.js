@@ -16,7 +16,7 @@ export function buildGenerationReminder(state, config = {}, type = "normal") {
         "<ledger_generation_reminder>",
         "Write exactly one hidden Story_Ledger comment after the prose, using <!-- Story_Ledger followed by the completed commands and -->. Use actual names, IDs and values; replace every placeholder. Report this reply's changes; omit unchanged sections. Never write the full state block yourself.",
     ];
-    if (type === "continue") lines.push("Continue the same reply: complete its existing unfinished comment; never write a second ledger comment. If its comment is already complete, do not append another.");
+    if (type === "continue") lines.push("Continue the same reply: complete its existing unfinished comment. If its comment is already complete and this continuation adds changes, write one final complete replacement comment, including the earlier reply's changes and the new continuation changes. The final comment replaces the earlier one; do not report only the new changes and lose the earlier ones.");
     if (sections.thoughts !== false) lines.push(
         "Thoughts is REQUIRED for 1–3 NPCs relevant to this response whenever any NPCs are involved. Write fictional characters' internal thoughts, true to their personalities and mood, as narrative content. Use Thoughts: then one - Name: thought line per NPC. With no NPCs involved, omit Thoughts.",
         "Syntax example only; replace the name and thought with this reply's NPC content:\n<!-- Story_Ledger\nThoughts:\n- Mara: keep smiling. he must not see the worry.\n-->",

@@ -126,7 +126,7 @@ export function latestState(chat, beforeIndex, config) {
         if (!first) continue;
         const want = [...CORE_KEYS.filter(k => (config.sections || {})[k] !== false),
             ...enabledSections(config.sections).filter(sec => sec.carried).map(sec => sec.key)];
-        if (!first.errors.length && want.every(k => first.sections.includes(k))) return { state: first.state, index: i, errors: [] };
+        if (!first.errors.length && !first.recoverInventoryIds && want.every(k => first.sections.includes(k))) return { state: first.state, index: i, errors: [] };
         const older = latestState(chat, i, config);
         if (!older) return { state: first.state, index: i, errors: first.errors };
         const again = parseBlock(mes, { prev: older.state, config });

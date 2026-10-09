@@ -10,6 +10,7 @@ import { emptyState } from "./state.js";
 import { describePair } from "./relations.js";
 import { esc, unesc, ROW } from "./text.js";
 import { SECTIONS, enabledSections, CORE_KEYS, needsPresent } from "./sections/registry.js";
+import { ensureItemIds } from "./sections/inventory.js";
 
 export const BLOCK_MARK = "<!-- story-ledger-state v1 -->";
 
@@ -49,6 +50,8 @@ function relationRows(state, config) {
 
 /** The block for `state`. `rules` are the reader's [R] list (shown, never read back). */
 export function renderBlock(state, { rules = [], config, sections = {} }) {
+    state = clone(state);
+    if ((sections || {}).inv !== false) ensureItemIds(state);
     const on = k => (sections || {})[k] !== false;
     const ids = Object.entries(state.ids || {}).filter(([, n]) => n > 0).map(([k, n]) => `${k}${n}`).join(" ");
     const out = ["<!-- GFX_START -->", BLOCK_MARK, ...(ids ? [`<!-- story-ledger-ids ${ids} -->`] : []), "<internal_states>",
@@ -132,7 +135,7 @@ function parseRelations(rows, base, prev, config, errors) {
         const name = unesc(m[1]);
         const fields = m[2].replace(/^\|\s*/, "");
         const saved = name.match(/^Pending (tick|direct|note):\s*(.+)$/);
-        if (!saved && /^Pending\b/.test(name)) {
+        if (!saved && /^Pending\b/i.test(name)) {
             pendingError = true; errors.push({ section: "RELATIONSHIPS", row }); continue;
         }
         if (saved) {
@@ -209,7 +212,7 @@ export function parseBlock(text, { prev = null, config }) {
     const errors = [];
     const ct = block.match(/INTERNAL STATES\s*\(Turn:\s*(\d+)\)/i);
     if (ct) base.ct = Number(ct[1]);
-    const ids = t.slice(at).match(/<!--\s*story-ledger-ids([^>]*?)-->/);
+    const ids = block.match(/<!--\s*story-ledger-ids([^>]*?)-->/);
     if (ids) {
         base.ids = { ...(base.ids || {}) };
         for (const m of ids[1].matchAll(/([A-Z])(\d+)/g)) base.ids[m[1]] = Math.max(base.ids[m[1]] || 0, Number(m[2]));
@@ -232,7 +235,11 @@ export function parseBlock(text, { prev = null, config }) {
         found.push(sec.key);
     }
     base.perTurn = {};
-    return { state: base, errors, sections: found };
+    // An older Inv row in an ID-bearing snapshot may have retained identities in its predecessor.
+    // A wholly pre-ID inventory can begin migration here without replaying the old chat.
+    const recoverInventoryIds = Boolean((base.ids?.I || base.inv?.itemIds?.some(Boolean)) && base.inv?.items.some((_, i) => !base.inv.itemIds?.[i]));
+    ensureItemIds(base, prev?.inv);
+    return { state: base, errors, sections: found, ...(recoverInventoryIds ? { recoverInventoryIds: true } : {}) };
 }
 
 /**

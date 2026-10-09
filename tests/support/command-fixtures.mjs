@@ -68,6 +68,16 @@ const queued = (line, key, event) => ({
 // id takes `id`, which the mixed runs use to give each command its own (B1 → B3).
 
 const same = x => x;
+const itemSeed = name => (s, id = same) => {
+    s.inv.itemIds = s.inv.itemIds || s.inv.items.map(() => null);
+    s.inv.items.push(name);
+    s.inv.itemIds.push(id("I1"));
+};
+const moneySeed = s => { s.inv.money = { USD: "50", CAD: "50", EUR: "50", ...(s.inv.money || {}) }; };
+const supplySeed = (s, id = same) => {
+    itemSeed("ammunition")(s, id);
+    s.inv.supplies = { ...(s.inv.supplies || {}), [id("I1")]: { amount: "12", unit: "rounds" } };
+};
 
 const present = (...names) => s => { for (const n of names) if (!s.scene.present.includes(n)) s.scene.present.push(n); };
 const pairSeed = s => {
@@ -398,7 +408,7 @@ export const FIXTURES = {
         heading: "Inventory",
         expect(r) {
             clean(r);
-            assert.deepEqual(r.state.inv, { items: ["brass key"], titles: [], status: [], mods: "" });
+            assert.deepEqual(r.state.inv, { items: ["brass key"], itemIds: ["I1"], titles: [], status: [], mods: "" });
         },
         malformed: ["+", "brass key"],
     },
@@ -410,6 +420,55 @@ export const FIXTURES = {
             assert.deepEqual(r.state.inv.items, []);
         },
         malformed: ["- lantern", "-", "brass key"],
+    },
+    "inv.remove-id": {
+        heading: "Inventory",
+        seed: itemSeed("spare key"),
+        expect(r) { clean(r); assert.deepEqual(r.state.inv.items, []); assert.deepEqual(r.state.inv.itemIds, []); },
+        malformed: ["- I99 (left behind)", "- I1 stray command", "- I1 (left behind"],
+        valid: ["- I1", "- i1 (used)", "- I1."],
+    },
+    "inv.update": {
+        heading: "Inventory",
+        seed: itemSeed("old key"),
+        expect(r) { clean(r); assert.deepEqual(r.state.inv.items, ["brass key (on Jan)"]); assert.deepEqual(r.state.inv.itemIds, ["I1"]); },
+        malformed: ["I99 update: key", "I1 update:", "I1 udpate: key", "I1 update key"],
+    },
+    "inv.money-set": {
+        heading: "Inventory",
+        expect(r) { clean(r); assert.deepEqual(r.state.inv.money, { USD: "50" }); assert.equal(r.state.inv.itemIds, undefined); },
+        malformed: ["money: -5 USD", "money: USD fifty", "money: 50 USD extra", "mnoey: 50 USD"],
+        valid: ["money: $50", "money: 50", "money: 0 USD"],
+    },
+    "inv.money-add": {
+        heading: "Inventory", seed: moneySeed,
+        expect(r) { clean(r); assert.deepEqual(r.state.inv.money, { USD: "55", CAD: "50", EUR: "50" }); },
+        isolate: text => text.replace(/\bUSD\b/g, "CAD"),
+        malformed: ["money + 1 XYZ", "money + -5 USD", "money + 5 USD (refund))", "mnoey + 5 USD"],
+        valid: ["money + .25 USD", "money + 5 USD (refund) (shop)"],
+    },
+    "inv.money-spend": {
+        heading: "Inventory", seed: moneySeed,
+        expect(r) { clean(r); assert.deepEqual(r.state.inv.money, { USD: "32", CAD: "50", EUR: "50" }); },
+        isolate: text => text.replace(/\bUSD\b/g, "EUR"),
+        malformed: ["money - 51 USD", "money - 1 XYZ", "money - -18 USD", "money - 18 USD paid", "mnoey - 18 USD"],
+    },
+    "inv.supply": {
+        heading: "Inventory",
+        expect(r) { clean(r); assert.deepEqual(r.state.inv.items, ["9mm ammunition"]); assert.deepEqual(r.state.inv.supplies, { I1: { amount: "12", unit: "rounds" } }); },
+        malformed: ["supply: -1 rounds | ammunition", "supply: 12 | ammunition", "supply: 12 rounds |", "suply: 12 rounds | ammunition"],
+        valid: ["+ supply: 12 rounds | 9mm ammunition", "supply: 0.5 litres | water"],
+    },
+    "inv.quantity": {
+        heading: "Inventory", seed: itemSeed("ammunition box"),
+        expect(r) { clean(r); assert.deepEqual(r.state.inv.items, ["ammunition box"]); assert.deepEqual(r.state.inv.supplies, { I1: { amount: "12", unit: "rounds" } }); },
+        malformed: ["I99 quantity: 12 rounds", "I1 quantity: -1 rounds", "I1 quantity: 12", "I1 quanttiy: 12 rounds"],
+    },
+    "inv.adjust": {
+        heading: "Inventory", seed: supplySeed,
+        expect(r) { clean(r); assert.deepEqual(r.state.inv.supplies, { I1: { amount: "9", unit: "rounds" } }); assert.deepEqual(r.state.inv.itemIds, ["I1"]); },
+        malformed: ["I99 adjust: -3", "I1 adjust: -13", "I1 adjust: 3", "I1 adjust: +3 rounds", "I1 adjsut: -3"],
+        valid: ["I1 adjust: +3", "I1 adjust: -12 (used)", "I1 adjust: +.5"],
     },
     "inv.title-add": {
         heading: "Inventory",
@@ -607,7 +666,8 @@ export const FIXTURES = {
             assert.equal(r.state.perTurn.worldsim.name, "ARRIVAL");
             assert.deepEqual([r.state.fate.residue, r.state.fate.world], [["ARRIVAL — a cousin turns up four hours early"], []]);
         },
-        malformed: ["World BAD NEWS landed as a cousin turns up", "World ARRIVAL landed as", "World ARRIVAL lnaded as a cousin turns up four hours early"],
+        valid: ["World BAD NEWS landed as a cousin turns up"],
+        malformed: ["World UNKNOWN landed as a cousin turns up", "World ARRIVAL landed as", "World ARRIVAL lnaded as a cousin turns up four hours early"],
     },
 
     // ── World (C 5: ELSEWHERE reach 1, REGIONAL 2, LOCAL 3)

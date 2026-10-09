@@ -123,12 +123,15 @@ test("awaiting baselines are calibrated before this beat without repeating saved
     assert.match(out, /twelve axes.*Φ/i);
 });
 
-test("continuations complete the original comment without duplicating ledger output", async () => {
+test("continuations preserve earlier changes in a final replacement comment", async () => {
     const { buildGenerationReminder } = await import("../src/model/generation-reminder.js");
     const out = buildGenerationReminder(emptyState(), {}, "continue");
     assert.match(out, /complete.*existing.*comment/i);
-    assert.match(out, /(?:never|do not).*second.*comment/i);
-    assert.match(out, /already complete.*do not.*another/i);
+    assert.match(out, /already complete.*replacement/i);
+    assert.match(out, /earlier.*changes.*(?:new|continuation)/i);
+    const original = "<!-- Story_Ledger\nInventory:\n- status + Soaked\n-->";
+    const replacement = "<!-- Story_Ledger\nInventory:\n- status + Soaked\n- status + Tired\n-->";
+    assert.deepEqual(parseChanges(`${original}\ncontinued prose\n${replacement}`).sections.Inventory, ["status + Soaked", "status + Tired"]);
 });
 
 test("the ledger comment is asked for three times: top duty line, reminder, and a closing final check", async () => {

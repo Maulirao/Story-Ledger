@@ -132,7 +132,7 @@ test("all queued command types and escaped reasons round-trip through the state 
 test("a malformed pending row is reported and retains the previous saved changes", () => {
     const s = run(emptyState(), "- Bryce → Dean: Er_acc +1 (dispute)").state;
     const block = renderBlock(s, { config: C, sections: {} });
-    for (const broken of [block.replace("Er +1", "Bogus +1"), block.replace("turn 1 | Er", "turn 999 | Er"), block.replace("Pending tick:", "Pending typo:")]) {
+    for (const broken of [block.replace("Er +1", "Bogus +1"), block.replace("turn 1 | Er", "turn 999 | Er"), block.replace("Pending tick:", "Pending typo:"), block.replace("Pending tick:", "Pending tick"), block.replace("Pending tick:", "pending tick:")]) {
         const r = parseBlock(broken, { config: C, prev: s });
         assert.equal(r.errors.length, 1);
         assert.deepEqual(r.state.rel.pending, s.rel.pending);
