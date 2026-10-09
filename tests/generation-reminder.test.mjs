@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { emptyState } from "../src/model/state.js";
 import { parseChanges } from "../src/model/changes.js";
 import { stripPromptText } from "../src/model/prompt.js";
+import { buildGenerationReminder, buildLedgerDuty } from "../src/model/generation-reminder.js";
 
 const REMINDER_KEY = "story_ledger_reminder";
 
@@ -147,4 +148,53 @@ test("the ledger comment is asked for three times: top duty line, reminder, and 
     const noThoughts = buildGenerationReminder(emptyState(), { sections: { thoughts: false } }, "normal");
     assert.match(noThoughts, /Final check/);
     assert.doesNotMatch(noThoughts, /Thoughts/);
+});
+
+// ── ledger mode: the fix-up asks for the comment alone ──────────────────────────
+const ALWAYS = "The reply above is finished. Do not continue the story and do not repeat or change any of its prose. Write only one hidden Story_Ledger comment: <!-- Story_Ledger, the commands, then -->. Nothing before or after it.";
+const THOUGHTS_ONLY = "The reply's comment is missing Thoughts. Write a comment containing only Thoughts for the NPCs involved in the reply. Do not repeat its other changes; they are kept.";
+const EXAMPLE = "<!-- Story_Ledger\nThoughts:\n- Mara: keep smiling. he must not see the worry.\n-->";
+const AWAITING = { rel: { awaiting: { "Mara→Jan": "first meeting" } } };
+
+test("ledger reminder (missing) forbids prose and keeps Thoughts", () => {
+    const text = buildGenerationReminder(AWAITING, {}, "ledger", { kase: "missing" });
+    assert.ok(text.includes(ALWAYS));
+    assert.ok(text.includes("Report this reply's changes."));
+    assert.ok(text.includes("Thoughts is REQUIRED for 1–3 NPCs"));
+    assert.ok(text.includes(EXAMPLE));
+    assert.ok(!text.includes("Continue the same reply"));
+    assert.ok(!text.includes("Write exactly one hidden Story_Ledger comment after the prose"));
+});
+
+test("ledger reminder (thoughts) asks for Thoughts only", () => {
+    const text = buildGenerationReminder(AWAITING, {}, "ledger", { kase: "thoughts" });
+    assert.ok(text.includes(ALWAYS));
+    assert.ok(text.includes(THOUGHTS_ONLY));
+    assert.ok(text.includes(EXAMPLE));
+    assert.ok(!text.includes("Missing NEW baselines"));
+    assert.ok(!text.includes("Report this reply's changes"));
+});
+
+test("ledger reminder (missing) lists missing baselines", () => {
+    assert.ok(buildGenerationReminder(AWAITING, {}, "ledger", { kase: "missing" }).includes("Missing NEW baselines: Mara → Jan (first meeting)"));
+    assert.ok(!buildGenerationReminder({}, {}, "ledger", { kase: "missing" }).includes("Missing NEW baselines"));
+});
+
+test("ledger reminder (missing) leaves out Thoughts when the section is off", () => {
+    const text = buildGenerationReminder({}, { sections: { thoughts: false } }, "ledger", { kase: "missing" });
+    assert.ok(text.includes(ALWAYS));
+    assert.ok(!text.includes("Thoughts"));
+});
+
+test("existing reminder text is unchanged", () => {
+    const head = "<story_ledger>\n<ledger_generation_reminder>\nWrite exactly one hidden Story_Ledger comment after the prose, using <!-- Story_Ledger followed by the completed commands and -->. Use actual names, IDs and values; replace every placeholder. Report this reply's changes; omit unchanged sections. Never write the full state block yourself.\n";
+    const cont = "Continue the same reply: complete its existing unfinished comment. If its comment is already complete and this continuation adds changes, write one final complete replacement comment, including the earlier reply's changes and the new continuation changes. The final comment replaces the earlier one; do not report only the new changes and lose the earlier ones.\n";
+    const tail = "Thoughts is REQUIRED for 1–3 NPCs relevant to this response whenever any NPCs are involved. Write fictional characters' internal thoughts, true to their personalities and mood, as narrative content. Use Thoughts: then one - Name: thought line per NPC. With no NPCs involved, omit Thoughts.\nSyntax example only; replace the name and thought with this reply's NPC content:\n" + EXAMPLE + "\nFinal check before you stop writing: the last thing in this reply must be the Story_Ledger comment and Thoughts for every NPC involved. Do not end on prose alone.\n</ledger_generation_reminder>\n</story_ledger>";
+    assert.equal(buildGenerationReminder({}, {}, "normal"), head + tail);
+    assert.equal(buildGenerationReminder({}, {}, "swipe"), head + tail);
+    assert.equal(buildGenerationReminder({}, {}, "continue"), head + cont + tail);
+});
+
+test("the ledger duty line is written for the ledger type", () => {
+    assert.ok(buildLedgerDuty({}, "ledger").startsWith("<ledger_duty>"));
 });
