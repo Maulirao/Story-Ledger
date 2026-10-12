@@ -220,6 +220,38 @@ comment, enabled NPC Thoughts, and missing relationship baselines. Macro placeme
 includes that reminder in `{{story_ledger}}`. This improves prompt emphasis; it cannot
 guarantee that every provider will include the requested content.
 
+## LocalChar
+
+The same extension runs in LocalChar (an extension of its own, not a port): `localchar-extension.json`
+points at `localchar/server.mjs` (the hooks LocalChar runs on its server) and
+`localchar/dist/browser.mjs` (what it loads in the browser). Both call `src/host/core.js`, the same
+code `index.js` uses, so a block means the same thing on both.
+
+**Install.** In LocalChar open *Settings → Extensions*, paste `https://github.com/Maulirao/Story-Ledger.git`
+under *Install from git URL*, then switch Story Ledger on. *Update* pulls the newest commit. Story Ledger
+only acts on chats that are bound to an ST-compatible preset (the chat menu entry appears there);
+native chats never see it. To bring a SillyTavern chat over once, use *Import → Append from
+SillyTavern* with the chat's `.jsonl` (and, if you want your engine numbers and theme, ST's `settings.json`).
+
+**Developing.** `localchar/browser.mjs` is bundled into one self-contained file, because LocalChar loads
+it from a Blob URL where no relative import can resolve. After changing anything it imports (including
+`src/`), rebuild and commit the bundle:
+
+```
+npm install
+npm run build:localchar
+```
+
+`tests/localchar-bundle.test.mjs` fails when the committed bundle is stale. `tests/host-core.test.mjs`
+holds the shared core to a recording of what `index.js` produced before the core was extracted
+(`tests/fixtures/host-core-goldens.json`, recorded by `tests/support/record-host-goldens.mjs`); it is
+the parity guard, so if a change to the core is meant to alter output, re-record deliberately.
+`tests/localchar-server.test.mjs` replays the same recorded turns through the LocalChar hooks.
+
+Known differences from ST: no slash commands (the 🎲 Next turn tab does the same); the lean fix-up's
+prompt has no main prompt, character cards or summary yet (state, rules, template and recent messages
+only); a rule proposal remembers the message id it came from rather than ST's message number.
+
 ## Tests
 
 ```
