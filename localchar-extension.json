@@ -1,0 +1,9 @@
+{
+  "id": "story_ledger",
+  "name": "Story Ledger",
+  "version": "0.6.0",
+  "host_api": 1,
+  "server": "localchar/server.mjs",
+  "browser": "localchar/dist/browser.mjs",
+  "css": "localchar/dist/style.css"
+}
