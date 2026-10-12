@@ -1,6 +1,8 @@
 // The panel's form reading, kept free of the DOM: panel.mjs lifts plain values out of the controls and
 // these turn them into what the actions take. (index.js reads the same controls through jQuery.)
 
+import { resolveConfig, sanitizeChekhov, sanitizeFate } from "../src/model/config.js";
+
 const validDie = value => Number.isInteger(Number(value)) && String(value).trim() !== "" && Number(value) >= 1 && Number(value) <= 20;
 
 /**
@@ -45,4 +47,24 @@ export function configFormFromControls({ cfg = [], gate = [], phi = [], axes = [
 /** A control's value as the settings store it: checkboxes are booleans, number inputs numbers. */
 export function settingFromControl({ type, checked, value }) {
     return type === "checkbox" ? Boolean(checked) : type === "number" ? Number(value) : value;
+}
+
+/**
+ * The engine-number form -> a sanitized settings.config (a global setting, not chat data). Pure, so the
+ * Settings page computes it in the browser even with no chat open; the save_config action calls it too.
+ */
+export function configFromForm(current, form = {}) {
+    const c = resolveConfig(current);
+    for (const [key, value] of Object.entries(form.cfg || {})) c[key] = Number(value);
+    for (const [key, value] of Object.entries(form.gate || {})) c.romanceGate[key] = Number(value);
+    for (const [key, value] of Object.entries(form.phi || {})) c.phi[key] = Number(value);
+    for (const [key, fields] of Object.entries(form.axes || {})) {
+        const axis = c.axes.find(a => a.key === key);
+        if (axis) for (const [field, value] of Object.entries(fields)) axis[field] = Number(value);
+    }
+    for (const [i, period] of Object.entries(form.decay || {})) if (c.decay[Number(i)]) c.decay[Number(i)].period = Number(period);
+    if (form.skip !== undefined) c.offstageSkip = String(form.skip || "").split(/[,\s]+/).map(Number).filter(Number.isFinite);
+    c.sectionConfig.chekhov = sanitizeChekhov(form.chekhov || {}, c.sectionConfig.chekhov);
+    c.sectionConfig.fate = sanitizeFate(form.fate || {}, c.sectionConfig.fate);
+    return c;
 }

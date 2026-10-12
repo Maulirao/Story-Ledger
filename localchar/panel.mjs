@@ -5,7 +5,7 @@
 import * as core from "../src/host/core.js";
 import { toStChat } from "./st-chat.mjs";
 import { rollTurnDice } from "../src/model/dice.js";
-import { fudgeFromControls, configFormFromControls, settingFromControl } from "./panel-logic.mjs";
+import { fudgeFromControls, configFormFromControls, settingFromControl, configFromForm } from "./panel-logic.mjs";
 
 const TITLE = "📒 Story Ledger";
 const lines = text => String(text || "").split(/\r?\n/).map(s => s.trim()).filter(Boolean);
@@ -153,12 +153,13 @@ export function mountLedger({ host, body, startTab = "rules", fixedTab = null, g
         }
         if (on("#sl-clear-fudges")) { await run("clear_fudges", {}, "Fudges cleared."); return; }
         if (on("#sl-save-config")) {
-            const out = await host.callAction("save_config", { form: readConfigControls(body) });
-            if (out?.config) {
-                const next = { ...getSettings(), config: out.config };
-                await setSettings(next);
+            // Computed here, not by an action: the Settings page can be open with no chat to act on.
+            try {
+                await setSettings({ ...getSettings(), config: configFromForm(getSettings().config, readConfigControls(body)) });
                 render();
                 notify("success", "Engine numbers saved. They apply from the next reply on.");
+            } catch (error) {
+                notify("error", `The engine numbers were not saved: ${error?.message || error}`);
             }
             return;
         }

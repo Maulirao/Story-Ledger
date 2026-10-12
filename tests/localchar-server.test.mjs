@@ -115,11 +115,18 @@ test("macro placement puts nothing in_chat and the text under {{story_ledger}}",
 });
 
 test("the injection is skipped for turns the ledger ignores and when it is switched off", async () => {
+    // index.js strips old blocks at CHAT_COMPLETION_PROMPT_READY for every generation while the ledger
+    // is on, impersonate included; only the injection, dice and fudges are skipped.
     for (const st_type of ["impersonate", "quiet"]) {
         const out = await server.prepare(prepareInput([message("user", "Hi.")], { st_type }));
         assert.deepEqual(out.in_chat, [], st_type);
-        assert.equal(out.transform, false, st_type);
+        assert.deepEqual(out.macros, {}, st_type);
+        assert.equal(out.transform, true, st_type);
+        assert.equal(out.pending, null, st_type);
+        assert.equal(out.chat_data_patch, null, st_type);
     }
+    const offImpersonate = await server.prepare(prepareInput([message("user", "Hi.")], { st_type: "impersonate", settings: { enabled: false } }));
+    assert.equal(offImpersonate.transform, false);
     const off = await server.prepare(prepareInput([message("user", "Hi.")], { settings: { enabled: false } }));
     assert.deepEqual([off.in_chat, off.transform], [[], false]);
 });
@@ -401,6 +408,35 @@ test("onFork drops a clock override and corrections past the fork, fudges and pr
     const early = await server.onFork({ data: { ...data, fudges: { dice: {}, appliedTo: 2 }, notebook: { ...data.notebook, clockOverride: { text: "t", atLength: 3 } } }, fork_boundary: 4, kept_message_ids: [] });
     assert.deepEqual(early.data.fudges, { dice: {}, appliedTo: 2 });
     assert.equal(early.data.notebook.clockOverride.atLength, 3);
+});
+
+test("finalize leaves the reply untouched when Story Ledger is switched off (index.js onMessageReceived returns early)", async () => {
+    const history = [message("user", "Hi.")];
+    const prose = "She smiled.\n<!-- Story_Ledger\nNow: Day 1 — Monday, 09:00 | the kitchen\nPresent: Mara\n-->";
+    for (const extra of [{ settings: { enabled: false } }, { st_type: "impersonate" }]) {
+        const out = await server.finalize({
+            st_type: "normal", operation: "send", message_id: "msg_off", variant_id: null,
+            full_content: prose, generated_part: prose, previous_content: "", pending: null,
+            history, user_name: "Jan", char_name: "Mara", chat_data: {}, chat_data_revision: 0, settings: {}, ...extra,
+        });
+        assert.equal(out.content, prose, JSON.stringify(extra));
+        assert.deepEqual(out.effects, [], JSON.stringify(extra));
+    }
+});
+
+test("onFork for a swipe (the fork at the reply's own index) keeps armed fudges and a correction made after that reply", async () => {
+    // LocalChar makes every swipe a fork with fork_boundary = the reply's index. ST keeps fudges for a
+    // swipe of the reply they were applied to (dice.js: index === appliedTo) and applies a clock
+    // correction to it (withClockOverride: atLength > blockIndex).
+    const data = {
+        notebook: { rules: [], clockOverride: { text: "Day 2, 08:00", atLength: 5 }, inbox: [] },
+        corrections: [{ atLength: 5, ct: 1 }, { atLength: 7, ct: 2 }],
+        fudges: { dice: { world: 4 }, appliedTo: 4 },
+    };
+    const out = await server.onFork({ data, fork_boundary: 4, kept_message_ids: [] });
+    assert.deepEqual(out.data.fudges, { dice: { world: 4 }, appliedTo: 4 });
+    assert.equal(out.data.notebook.clockOverride.atLength, 5);
+    assert.deepEqual(out.data.corrections, [{ atLength: 5, ct: 1 }]);
 });
 
 test("the server entry imports no host and no DOM", () => {

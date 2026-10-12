@@ -3,7 +3,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import register, { startFixupFlow, rebuildFlow, handleBlockClick, hideStreamingComment } from "../localchar/browser.mjs";
-import { fudgeFromControls, configFormFromControls } from "../localchar/panel-logic.mjs";
+import { fudgeFromControls, configFormFromControls, configFromForm } from "../localchar/panel-logic.mjs";
+import { actions as serverActions } from "../localchar/server.mjs";
 import { BLOCK_MARK } from "../src/model/block.js";
 
 function fakeHost({ settings = {}, jobs = [] } = {}) {
@@ -63,6 +64,13 @@ test("hideStreamingComment cuts from the ledger comment, and from a half-written
     assert.equal(hideStreamingComment("The door opened.\n<!-"), "The door opened.");
     assert.equal(hideStreamingComment("She said <b>hello</b> and a <"), "She said <b>hello</b> and a <".replace(/ <$/, ""));
     assert.equal(hideStreamingComment("2 < 3 is true."), "2 < 3 is true.");
+});
+
+test("hideStreamingComment keeps a continuation after a finished ledger comment and hides only the comment", () => {
+    // A continue streams the old reply (its comment already closed) plus the new text.
+    const old = "The door opened.\n<!-- Story_Ledger\nNow: Day 1\n-->";
+    assert.equal(hideStreamingComment(`${old}\nShe stepped in.`), "The door opened.\nShe stepped in.");
+    assert.equal(hideStreamingComment(`${old}\nShe stepped in.\n<!-- Story_Ledger\nNow: Day`), "The door opened.\nShe stepped in.");
 });
 
 const flowArgs = (host, settings, extra = {}) => ({
@@ -159,6 +167,17 @@ test("fudgeFromControls reads the Next-turn controls like ST's panel did", () =>
     });
     assert.deepEqual(fudge, { appliedTo: null, dice: { "fate.a": 20, checks: [20, 3, 11] }, tier: "MAJOR", fire: "B2" });
     assert.deepEqual(fudgeFromControls({ dice: {}, checks: { locked: true, values: ["1", "2", "x"] }, calm: true }), { appliedTo: null, calm: true });
+});
+
+test("engine numbers are computed in the browser, so the Settings page saves them with no chat open", async () => {
+    // Settings -> Extensions can be opened with no chat (no branch to run an action against); the
+    // form is turned into settings.config by the same pure function the server action uses.
+    const form = { cfg: { tickCap: "5" }, chekhov: { firing: "fate", cap: "3" }, fate: { worldKeep: "4" } };
+    const local = configFromForm({}, form);
+    assert.equal(local.tickCap, 5);
+    assert.equal(local.sectionConfig.chekhov.firing, "fate");
+    const viaAction = await serverActions.save_config({ args: { form }, snapshot: { history: [], chat_data: {}, chat_data_revision: 0, settings: {}, user_name: "", char_name: "" } });
+    assert.deepEqual(local, viaAction.result.config);
 });
 
 test("configFormFromControls gathers the engine numbers form", () => {

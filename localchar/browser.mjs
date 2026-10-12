@@ -23,11 +23,12 @@ const noop = () => {};
 const OPENER = "<!-- story_ledger";
 
 /**
- * While a reply streams, hide the ledger comment: from its opener, or from a half-written opener at the
- * very end ("<!-- Story_Led", "<!-"), to the end of what has arrived. The block is not there yet.
+ * While a reply streams, hide the ledger comment: a finished one (a continue streams the old reply, its
+ * comment already closed) goes on its own; an unfinished one is cut from its opener, or from a
+ * half-written opener at the very end ("<!-- Story_Led", "<!-"), to the end of what has arrived.
  */
 export function hideStreamingComment(text) {
-    const source = String(text ?? "");
+    const source = String(text ?? "").replace(/\s*<!--\s*Story_Ledger[\s\S]*?-->/gi, "");
     const full = source.search(/<!--\s*Story_Ledger/i);
     if (full >= 0) return source.slice(0, full).replace(/\s+$/, "");
     const lt = source.lastIndexOf("<");

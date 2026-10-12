@@ -1386,6 +1386,32 @@ function validChekhov(v, defaults) {
   if (out.pruneAge <= out.eligibleAge) out.pruneAge = defaults.pruneAge > out.eligibleAge ? defaults.pruneAge : out.eligibleAge + 1;
   return out;
 }
+function sanitizeChekhov(input, prev) {
+  const num = (k, min) => {
+    const raw = input[k];
+    if (raw === void 0 || raw === null || String(raw).trim() === "" || !Number.isFinite(Number(raw))) return prev[k];
+    return Math.max(min, Math.round(Number(raw)));
+  };
+  const out = {
+    eligibleAge: num("eligibleAge", 0),
+    pruneAge: num("pruneAge", 1),
+    cap: num("cap", 1),
+    maxLoadsPerTurn: num("maxLoadsPerTurn", 1),
+    firedKeep: num("firedKeep", 0),
+    firing: input.firing === "fate" ? "fate" : "model"
+  };
+  if (out.pruneAge <= out.eligibleAge) out.pruneAge = out.eligibleAge + 1;
+  return out;
+}
+function sanitizeFate(input = {}, prev = DEFAULT_SECTION_CONFIG.fate) {
+  const out = JSON.parse(JSON.stringify(prev));
+  for (const key2 of ["deferredExpire", "worldKeep", "reach1Drop", "pursuitLimit", "residueKeep"]) {
+    const raw = input[key2];
+    if (raw === void 0 || raw === null || String(raw).trim() === "" || !Number.isFinite(Number(raw))) continue;
+    out[key2] = Math.max(1, Math.round(Number(raw)));
+  }
+  return out;
+}
 
 // src/model/fate-engine.js
 var REACH = {
@@ -4439,6 +4465,21 @@ function configFormFromControls({ cfg = [], gate = [], phi = [], axes = [], deca
 function settingFromControl({ type, checked, value: value2 }) {
   return type === "checkbox" ? Boolean(checked) : type === "number" ? Number(value2) : value2;
 }
+function configFromForm(current, form = {}) {
+  const c = resolveConfig(current);
+  for (const [key2, value2] of Object.entries(form.cfg || {})) c[key2] = Number(value2);
+  for (const [key2, value2] of Object.entries(form.gate || {})) c.romanceGate[key2] = Number(value2);
+  for (const [key2, value2] of Object.entries(form.phi || {})) c.phi[key2] = Number(value2);
+  for (const [key2, fields] of Object.entries(form.axes || {})) {
+    const axis = c.axes.find((a) => a.key === key2);
+    if (axis) for (const [field3, value2] of Object.entries(fields)) axis[field3] = Number(value2);
+  }
+  for (const [i, period] of Object.entries(form.decay || {})) if (c.decay[Number(i)]) c.decay[Number(i)].period = Number(period);
+  if (form.skip !== void 0) c.offstageSkip = String(form.skip || "").split(/[,\s]+/).map(Number).filter(Number.isFinite);
+  c.sectionConfig.chekhov = sanitizeChekhov(form.chekhov || {}, c.sectionConfig.chekhov);
+  c.sectionConfig.fate = sanitizeFate(form.fate || {}, c.sectionConfig.fate);
+  return c;
+}
 
 // localchar/panel.mjs
 var TITLE = "📒 Story Ledger";
@@ -4591,12 +4632,12 @@ function mountLedger({ host, body, startTab = "rules", fixedTab = null, getSetti
       return;
     }
     if (on("#sl-save-config")) {
-      const out = await host.callAction("save_config", { form: readConfigControls(body) });
-      if (out?.config) {
-        const next = { ...getSettings(), config: out.config };
-        await setSettings(next);
+      try {
+        await setSettings({ ...getSettings(), config: configFromForm(getSettings().config, readConfigControls(body)) });
         render();
         notify("success", "Engine numbers saved. They apply from the next reply on.");
+      } catch (error) {
+        notify("error", `The engine numbers were not saved: ${error?.message || error}`);
       }
       return;
     }
@@ -4686,7 +4727,7 @@ var noop = () => {
 };
 var OPENER = "<!-- story_ledger";
 function hideStreamingComment(text) {
-  const source = String(text ?? "");
+  const source = String(text ?? "").replace(/\s*<!--\s*Story_Ledger[\s\S]*?-->/gi, "");
   const full = source.search(/<!--\s*Story_Ledger/i);
   if (full >= 0) return source.slice(0, full).replace(/\s+$/, "");
   const lt = source.lastIndexOf("<");

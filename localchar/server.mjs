@@ -13,7 +13,7 @@
 
 import * as core from "../src/host/core.js";
 import { toStChat, proposalSource } from "./st-chat.mjs";
-import { resolveConfig, sanitizeChekhov, sanitizeFate } from "../src/model/config.js";
+import { configFromForm } from "./panel-logic.mjs";
 import { applyDecision, importFromLegacyNotebook } from "../src/model/notebook.js";
 import { setSend } from "../src/model/sections/quests.js";
 import { rewriteNewestSection } from "../src/model/turn.js";
@@ -66,7 +66,10 @@ export async function prepare(payload) {
     const ctx = context(payload);
     const { settings, chat, doc } = ctx;
     const type = payload.st_type || "normal";
-    if (!settings.enabled || core.SKIP_TYPES.has(type)) return { ...NOTHING };
+    if (!settings.enabled) return { ...NOTHING };
+    // index.js strips old blocks at CHAT_COMPLETION_PROMPT_READY on every generation while the ledger
+    // is on (impersonate included); only the injection, dice and fudges belong to ledger turns.
+    if (core.SKIP_TYPES.has(type)) return { ...NOTHING, transform: true };
 
     const fixup = payload.fixup || null;
     let turn = null;
@@ -114,6 +117,8 @@ export async function transformMessages(payload) {
 export async function finalize(payload) {
     const ctx = context(payload);
     const { settings, doc } = ctx;
+    // index.js onMessageReceived: nothing is written while the ledger is off, or for a skipped type.
+    if (!settings.enabled || core.SKIP_TYPES.has(payload.st_type || "normal")) return { content: payload.full_content, effects: [] };
     const chat = [...ctx.chat, { mes: payload.full_content, is_user: false, is_system: false, name: ctx.charName, swipe_id: 0 }];
     const index = chat.length - 1;
     const turn = payload.pending && payload.pending.turn && payload.pending.turn.index === index ? payload.pending.turn : null;
@@ -226,22 +231,7 @@ const questsSend = act(async (args, snapshot, ctx) => {
 });
 
 /** The engine-number form -> a sanitized settings.config. The host stores it as a global setting. */
-const saveConfig = act(async (args, snapshot, ctx) => {
-    const form = args.form || {};
-    const c = resolveConfig(ctx.settings.config);
-    for (const [key, value] of Object.entries(form.cfg || {})) c[key] = Number(value);
-    for (const [key, value] of Object.entries(form.gate || {})) c.romanceGate[key] = Number(value);
-    for (const [key, value] of Object.entries(form.phi || {})) c.phi[key] = Number(value);
-    for (const [key, fields] of Object.entries(form.axes || {})) {
-        const axis = c.axes.find(a => a.key === key);
-        if (axis) for (const [field, value] of Object.entries(fields)) axis[field] = Number(value);
-    }
-    for (const [i, period] of Object.entries(form.decay || {})) if (c.decay[Number(i)]) c.decay[Number(i)].period = Number(period);
-    if (form.skip !== undefined) c.offstageSkip = String(form.skip || "").split(/[,\s]+/).map(Number).filter(Number.isFinite);
-    c.sectionConfig.chekhov = sanitizeChekhov(form.chekhov || {}, c.sectionConfig.chekhov);
-    c.sectionConfig.fate = sanitizeFate(form.fate || {}, c.sectionConfig.fate);
-    return answer({ config: c });
-});
+const saveConfig = act(async (args, snapshot, ctx) => answer({ config: configFromForm(ctx.settings.config, args.form || {}) }));
 
 const resetConfig = act(async () => answer({ config: {} }));
 
@@ -376,13 +366,16 @@ export async function importStSettings({ extension_settings }) {
  * A new branch keeps only what still describes the history that was kept: a clock correction or
  * correction past the fork, fudges aimed at a dropped message, and proposals from dropped messages go.
  * (ST copies chat_metadata wholesale and can carry a correction from a future that no longer exists.)
+ * LocalChar's swipe is a fork at the reply's own index (`fork_boundary`), and the next reply lands on
+ * that same index, so what ST keeps for a swipe stays: fudges applied to that index, and a clock
+ * correction or correction made right after that reply (atLength = fork_boundary + 1).
  */
 export async function onFork({ data, fork_boundary, kept_message_ids }) {
   const doc = docOf(data);
   const kept = new Set(kept_message_ids || []);
-  if (doc.notebook.clockOverride && doc.notebook.clockOverride.atLength > fork_boundary) delete doc.notebook.clockOverride;
-  if (Array.isArray(doc.corrections)) doc.corrections = doc.corrections.filter(c => c.atLength <= fork_boundary);
-  if (doc.fudges && Number.isInteger(doc.fudges.appliedTo) && doc.fudges.appliedTo >= fork_boundary) doc.fudges = null;
+  if (doc.notebook.clockOverride && doc.notebook.clockOverride.atLength > fork_boundary + 1) delete doc.notebook.clockOverride;
+  if (Array.isArray(doc.corrections)) doc.corrections = doc.corrections.filter(c => c.atLength <= fork_boundary + 1);
+  if (doc.fudges && Number.isInteger(doc.fudges.appliedTo) && doc.fudges.appliedTo > fork_boundary) doc.fudges = null;
   doc.notebook.inbox = (doc.notebook.inbox || []).filter(item => !/^msg_/.test(String(item.source || "")) || kept.has(item.source));
   return { data: doc };
 }
