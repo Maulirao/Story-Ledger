@@ -10,22 +10,16 @@
 // Uses only SillyTavern's public getContext() API.
 // ──────────────────────────────────────────────────────────────────────────────
 
-import {
-    emptyNotebook, collectProposals, applyDecision, importFromLegacyNotebook, storyTime, dayRegression,
-} from "./src/model/notebook.js";
-import { resolveConfig, sanitizeChekhov, sanitizeFate } from "./src/model/config.js";
-import { describePair, PATTERN_GLOSS, relationsNotice } from "./src/model/relations.js";
-import { parseChanges } from "./src/model/changes.js";
-import { renderBlock, BLOCK_MARK } from "./src/model/block.js";
 import { setSend } from "./src/model/sections/quests.js";
-import { postTurn, latestState, initialState, writeBlockInto, stripBlocks, generationBase, rewriteNewestSection, withClockOverride, unreadNotices } from "./src/model/turn.js";
-import { renderStatePrompt, needsHandover, stripForPrompt, stripPromptText, buildTemplate, renderRules, renderTurnFacts, buildHandover } from "./src/model/prompt.js";
-import { buildGenerationReminder, buildLedgerDuty } from "./src/model/generation-reminder.js";
+import { applyDecision, importFromLegacyNotebook, storyTime } from "./src/model/notebook.js";
+import { resolveConfig, sanitizeChekhov, sanitizeFate } from "./src/model/config.js";
+import { latestState, stripBlocks, rewriteNewestSection } from "./src/model/turn.js";
+import { stripForPrompt, stripPromptText, renderTurnFacts } from "./src/model/prompt.js";
 import { buildLeanPrompt } from "./src/model/lean-prompt.js";
-import { needsFixup, acceptFixup, spliceMissing, spliceThoughts, fixupConfigInputs } from "./src/model/fixup.js";
-import { importForeign, proposeImportedRules } from "./src/model/import/index.js";
 import { SECTIONS } from "./src/model/sections/registry.js";
-import { rollTurnDice, withFudges, fudgesForGeneration, diceFromBlock, parseDiceCommand, parseForceCommand } from "./src/model/dice.js";
+import { rollTurnDice, withFudges, parseDiceCommand, parseForceCommand } from "./src/model/dice.js";
+import { BLOCK_MARK } from "./src/model/block.js";
+import * as core from "./src/host/core.js";
 import * as frankensteinTheme from "./src/ui/themes/frankenstein.js";
 import * as solaTheme from "./src/ui/themes/sola.js";
 import * as meguminTheme from "./src/ui/themes/megumin.js";
@@ -39,134 +33,53 @@ const REMINDER_KEY = "story_ledger_reminder";
 const IN_CHAT = 1;
 const ctx = () => SillyTavern.getContext();
 
-// ── Settings (global) and chat data (per chat) ──────────────────────────────
+// The logic between "SillyTavern gave me the chat" and "here is what to show, save or send"
+// lives in src/host/core.js, shared with the LocalChar extension. This file is SillyTavern's
+// wiring around it: events, the interceptor, toastr, the DOM and the popup's handlers.
+const { SKIP_TYPES, generationBase, fudgeSummary, hasFudgeSettings, prepareTurn } = core;
 
-const DEFAULT_SECTIONS = { scene: true, relationships: true, notebook: true, ...Object.fromEntries(SECTIONS.map(sec => [sec.key, true])) };
-const DEFAULT_SETTINGS = { enabled: true, stickyNotices: true, fixupMode: "full", fixupHistory: 4, depth: 1, role: 0, placement: "auto", theme: "frankenstein", checkStyle: "dnd", config: {} };
+// ── Settings (global) and chat data (per chat) ──────────────────────────────
 
 function settings() {
     const all = ctx().extensionSettings;
-    const s = all[NAME] = { ...DEFAULT_SETTINGS, ...(all[NAME] || {}) };
-    if (!s.sections) {
-        // 0.1 had one switch per part; carry the reader's choices over.
-        s.sections = {
-            scene: s.clock !== false,
-            relationships: s.relations !== false,
-            notebook: s.notebook !== false,
-        };
-        delete s.clock; delete s.relations; delete s.notebook;
-    }
-    s.sections = { ...DEFAULT_SECTIONS, ...s.sections };
-    return s;
+    return all[NAME] = core.normalizeSettings(all[NAME]);
 }
 const saveSettings = () => ctx().saveSettingsDebounced();
 // Warnings about a reply land when it finishes — often while the reader is in another
 // tab — so by default they stay until closed (✕ or a click) instead of fading out.
 const STICKY = { timeOut: 0, extendedTimeOut: 0, closeButton: true };
 const notice = (kind, message, title) => toastr[kind](message, title, settings().stickyNotices === false ? {} : STICKY);
-const engineConfig = (extra = {}) => ({
-    ...resolveConfig(settings().config), userName: ctx().name1,
-    sections: settings().sections, checkStyle: settings().checkStyle, ...extra,
-});
+const engineConfig = (extra = {}) => core.engineConfig(settings(), ctx().name1, extra);
 
-function chatData() {
-    const meta = ctx().chatMetadata || {};
-    if (!meta.storyLedger) {
-        // A chat that ran the Megumin fork keeps its notebook.
-        const legacy = meta.meguminNotebook;
-        meta.storyLedger = { notebook: legacy ? { ...emptyNotebook(), ...legacy } : emptyNotebook() };
-    }
-    const d = meta.storyLedger;
-    d.notebook = { ...emptyNotebook(), ...(d.notebook || {}) };
-    if (d.fudges === undefined) d.fudges = null;
-    // d.ctOffset / d.corrections are 0.1's replay inputs. They are kept: a 0.1 chat with
-    // no block yet is replayed from its comments with them (initialState).
-    return d;
-}
+const chatData = () => core.normalizeChatData(ctx().chatMetadata || {});
 async function saveChatData(mutator) {
     const d = chatData();
     mutator(d);
     await ctx().saveMetadata();
 }
 
-const activeRules = nb => (nb.enabled === false ? [] : nb.rules);
-
 // ── The state before message `index` ────────────────────────────────────────
 
-function stateBefore(chat, index, config) {
-    return startOf(chat, index, config).state;
-}
-
-/**
- * { state, errors } — errors are rows of the previous block that no longer parse. A clock
- * correction from the popup that is newer than that block is the story time (so due
- * setups are judged by the corrected time, the same one the model is told).
- */
-function startOf(chat, index, config) {
-    const d = chatData();
-    const found = latestState(chat, index, config);
-    if (found) return { state: withClockOverride(found.state, d.notebook.clockOverride, found.index), errors: found.errors };
-    const s = initialState(chat.slice(0, index), config, { ctOffset: d.ctOffset ?? null, corrections: d.corrections || [] });
-    if (!s.threads.length && d.notebook.threads.length) s.threads = [...d.notebook.threads];   // reader's starting list
-    return { state: withClockOverride(s, d.notebook.clockOverride, -1), errors: [] };
-}
-
-function blockFor(state) {
-    const s = settings();
-    return renderBlock(state, { rules: activeRules(chatData().notebook), config: engineConfig(), sections: s.sections });
-}
+const stateBefore = (chat, index, config) => core.stateBefore(chat, index, config, chatData());
+const blockFor = state => core.blockFor(state, { settings: settings(), chatData: chatData(), userName: ctx().name1 });
 
 // ── What the model reads ────────────────────────────────────────────────────
 
-// What a turn tells the model about the story before message `c.length`: the state, and the four texts built from it.
-function ledgerPromptParts(c, config) {
-    const nb = chatData().notebook;
-    const state = stateBefore(c, c.length, config);
-    const time = storyTime(c, nb);
-    if (state.scene.now && (!time.now || time.now.source !== "reader")) time.now = { text: state.scene.now, source: "notebook" };
-    const statePrompt = renderStatePrompt(state, {
-        notebook: nb.enabled === false ? { ...nb, rules: [], inbox: [] } : nb, config, sections: settings().sections, time,
-    });
-    return { state, statePrompt, rules: renderRules(config), template: buildTemplate(config), facts: renderTurnFacts(state, config) };
-}
-
-// The raw chat, never the interceptor's coreChat: prompt-side regex may already have
-// trimmed the blocks out of that copy. `base` = how many messages this generation builds on.
 // A fix-up passes the `config` its reply was built with and the `kase` it is asking for.
 function buildInjection(type = "normal", { config: given = null, kase = null } = {}) {
-    const s = settings();
-    if (!s.enabled || SKIP_TYPES.has(type)) { lastReminder = ""; return ""; }
     const raw = ctx().chat || [];
-    const c = raw.slice(0, generationBase(raw.length, type));
-    const index = generationBase(raw.length, type);
-    const active = given ? null : pendingFor(index);
-    const config = given || engineConfig(active ? {
-        dice: active.dice, fudges: active.fudges, fudgedDice: active.fudged, rolls: active.dice.checks,
-    } : {});
-    const reminderType = kase ? "ledger" : type;
-    const { state, statePrompt, rules, template, facts } = ledgerPromptParts(c, config);
-    const parts = [];
-    const duty = buildLedgerDuty(config, reminderType);
-    if (duty) parts.push(duty);
-    if (needsHandover(c)) {
-        // the importer already read what it could; the model is asked only for the rest
-        const imp = importForeign(c, config);
-        parts.push(buildHandover(imp.imported, { hasNow: Boolean(state.scene.now), sections: s.sections, unread: imp.unread }));
-        const d = chatData();
-        const r = proposeImportedRules(d.notebook, imp.rules, d.imported);
-        if (r.done && !d.imported) {
-            saveChatData(x => { x.notebook = r.notebook; x.imported = { source: imp.source, index: imp.index }; })
-                .then(() => notice("info", `${imp.rules.length} rule(s) from the previous preset are waiting in the 📜 Rules inbox.`, "📒 Story Ledger"))
-                .catch(e => console.error("[Story Ledger] could not save imported rules", e));
-        }
+    const out = core.buildInjection({
+        chat: raw, type, settings: settings(), chatData: chatData(), userName: ctx().name1,
+        pending: given ? null : pendingFor(generationBase(raw.length, type)), kase, givenConfig: given,
+    });
+    if (!out.text) { lastReminder = ""; return ""; }
+    if (out.chatDataPatch) {
+        saveChatData(d => Object.assign(d, out.chatDataPatch))
+            .then(() => out.notices.forEach(n => notice(n.kind, n.text, n.title)))
+            .catch(e => console.error("[Story Ledger] could not save imported rules", e));
     }
-    if (statePrompt) parts.push(statePrompt);
-    parts.push(rules);
-    parts.push(template);
-    if (facts) parts.push(facts);
-    lastReminder = ctx().substituteParams(buildGenerationReminder(state, config, reminderType, { kase }));
-    const reminder = s.placement === "macro" ? `\n\n${lastReminder}` : "";
-    return ctx().substituteParams(`<story_ledger>\n${parts.join("\n\n")}\n</story_ledger>${reminder}`);
+    lastReminder = ctx().substituteParams(out.reminder);
+    return ctx().substituteParams(out.text);
 }
 
 let lastInjection = "";
@@ -184,12 +97,6 @@ function clearInjection() {
 let pendingTurn = null;
 const chatId = () => (ctx().getCurrentChatId ? ctx().getCurrentChatId() : null);
 const pendingFor = index => pendingTurn && pendingTurn.chatId === chatId() && pendingTurn.index === index ? pendingTurn : null;
-const mergeTurnDice = (shown, fallback) => ({
-    fate: shown.fate || fallback.fate,
-    world: Number.isInteger(shown.world) ? shown.world : fallback.world,
-    checks: Array.isArray(shown.checks) ? [...shown.checks] : [...fallback.checks],
-});
-const SKIP_TYPES = new Set(["quiet", "impersonate", "first_message"]);
 
 globalThis.storyLedgerInterceptor = async function (_chat, _contextSize, _abort, type) {
     try {
@@ -213,19 +120,9 @@ globalThis.storyLedgerInterceptor = async function (_chat, _contextSize, _abort,
         // Background generations (summaries, other extensions' tasks) get nothing.
         if (!SKIP_TYPES.has(type) && s.enabled) {
             const raw = ctx().chat || [];
-            const index = generationBase(raw.length, type);
-            const samePending = pendingFor(index);
-            const fresh = rollTurnDice();
-            const baseDice = type === "continue"
-                ? mergeTurnDice(diceFromBlock(raw[index]?.mes), samePending?.dice || fresh)
-                : fresh;
-            const storedFudges = chatData().fudges;
-            const lifecycle = fudgesForGeneration(storedFudges, index);
-            if (JSON.stringify(lifecycle.next) !== JSON.stringify(storedFudges)) {
-                await saveChatData(d => { d.fudges = lifecycle.next; });
-            }
-            const applied = withFudges(baseDice, lifecycle.active);
-            pendingTurn = { chatId: chatId(), index, dice: applied.dice, fudges: lifecycle.active, fudged: applied.fudged };
+            const turn = prepareTurn({ chat: raw, type, settings: s, chatData: chatData(), pendingSame: pendingFor(generationBase(raw.length, type)) });
+            if (turn.fudgesChanged) await saveChatData(d => { d.fudges = turn.fudgesNext; });
+            pendingTurn = { chatId: chatId(), ...turn.pending };
         }
         lastReminder = "";
         lastInjection = (SKIP_TYPES.has(type) || !s.enabled) ? "" : buildInjection(type);
@@ -241,61 +138,25 @@ globalThis.storyLedgerInterceptor = async function (_chat, _contextSize, _abort,
 // ── Writing the block into a reply ──────────────────────────────────────────
 
 /**
- * Recompute message `i`'s block from the block before it and its own comment. Warnings are
- * shown every time, so a ↻ rebuild that meets the same problem says so again; rule proposals
- * are only collected when the reply arrives (`collect`), since rule numbers may have moved since.
+ * Recompute message `i`'s block from the block before it and its own comment (core.rebuildMessage),
+ * write it into the reply and its swipe, save, and show the notices. A received reply takes the
+ * dice rolled for it; ↻ rebuild keeps the dice its block already shows; a fix-up hands in the
+ * config it already settled.
  */
 async function rebuildMessage(i, { collect = true, config: given = null } = {}) {
     const c = ctx().chat || [];
     const msg = c[i];
     if (!msg || msg.is_user || msg.is_system) return;
-    // A received reply takes the dice rolled for it (same chat, same reply); ↻ rebuild keeps
-    // the dice its block already shows. A fix-up hands in the config it already settled.
-    const config = given || (() => {
-        const active = pendingFor(i);
-        const dice = active ? active.dice : diceFromBlock(msg.mes);
-        const saved = chatData().fudges;
-        const fudges = active ? active.fudges : (saved && saved.appliedTo === i ? saved : null);
-        return engineConfig({ dice, fudges, fudgedDice: active ? active.fudged : withFudges(dice, fudges).fudged, rolls: dice.checks || [] });
-    })();
-    const start = startOf(c, i, config);
-    const prev = start.state;
-    // Read the comment with every block taken out: after a continue, the rest of a
-    // cut-off comment sits after the block, and the block's own "-->" would end it early.
-    const changes = parseChanges(stripBlocks(msg.mes));
-    const { state, log, unparsed, warnings } = postTurn(prev, changes, config);
-    msg.mes = writeBlockInto(msg.mes, blockFor(state));
-    if (Array.isArray(msg.swipes) && msg.swipe_id !== undefined && msg.swipes[msg.swipe_id] !== undefined) msg.swipes[msg.swipe_id] = msg.mes;
+    const out = core.rebuildMessage({
+        chat: c, index: i, settings: settings(), chatData: chatData(), userName: ctx().name1,
+        pending: pendingFor(i), collect, givenConfig: given, proposalSource: `m${i}s${msg.swipe_id ?? 0}`,
+    });
+    setReply(msg, out.mes);
     ctx().updateMessageBlock(i, msg);
     await ctx().saveChat();
     decorateAll();
-
-    const s = settings();
-    if (start.errors.length) notice("warning", `${start.errors.length} row(s) in the previous block could not be read and kept their earlier values: ${start.errors.map(e => `${e.section}: ${e.row}`).join("; ")}`, "📒 Story Ledger");
-    if (!changes) {
-        notice("warning", "No ledger comment in this reply — the turn still advanced. Press ✎ on the block to have it written, or swipe.", "📒 Story Ledger");
-        return;
-    }
-    if (s.sections.scene) {
-        const back = dayRegression([prev.scene.now, state.scene.now]);
-        if (back) notice("warning", `The story went from Day ${back.from} back to Day ${back.to}. Swipe, or edit the block's Now line.`, "🕰️ Story clock");
-    }
-    const refused = relationsNotice(log, changes.relations.unparsed);
-    if (s.sections.relationships && refused) notice("info", refused, "💞 Story Ledger");
-    const unread = unreadNotices(changes, unparsed, s.sections, warnings);
-    if (unread.length) notice("info", `Could not apply: ${unread.map(u => `${u.section}: "${u.line}"${u.reason ? ` — ${u.reason}` : ""}`).join("; ")}`, "📒 Story Ledger");
-    for (const w of warnings || []) if (!unread.some(u => u.section === w.section && u.line === w.line)) notice("warning", w.text, w.section === "Chekhov" ? "🔫 Story Ledger" : "📒 Story Ledger");
-    if (collect && s.sections.notebook && changes.proposals.length) {
-        const before = chatData().notebook;
-        const cannot = [];
-        const after = collectProposals(before, changes.proposals, `m${i}s${msg.swipe_id ?? 0}`, cannot);
-        const added = after.inbox.length - before.inbox.length;
-        if (added > 0) {
-            await saveChatData(d => { d.notebook = after; });
-            notice("info", `${added} rule proposal${added > 1 ? "s" : ""} waiting.`, "📜 Story Ledger");
-        }
-        if (cannot.length) notice("info", `Could not apply: ${cannot.map(x => `${x.section}: "${x.line}" (${x.reason})`).join("; ")}`, "📜 Story Ledger");
-    }
+    if (out.chatDataPatch) await saveChatData(d => Object.assign(d, out.chatDataPatch));
+    for (const n of out.notices) notice(n.kind, n.text, n.title);
 }
 
 async function onMessageReceived(id, type) {
@@ -317,18 +178,13 @@ const fixupContinues = type => type === "continue" && fixupRun?.mode === "full" 
     && fixupRun.chatId === chatId() && fixupRun.index === generationBase((ctx().chat || []).length, type);
 
 // The dice and fudges the reply already has: a fix-up never rolls, merges or consumes any.
-function fixupConfig(i) {
-    const { dice, fudges } = fixupConfigInputs((ctx().chat || [])[i].mes, chatData().fudges, i);
-    return engineConfig({ dice, fudges, fudgedDice: withFudges(dice, fudges).fudged, rolls: dice.checks || [] });
-}
+const fixupConfig = i => core.fixupConfig({ chat: ctx().chat || [], index: i, settings: settings(), chatData: chatData(), userName: ctx().name1 });
 
-const setReply = (msg, mes) => {
+// Write a reply's text, keeping the current swipe in step with it.
+function setReply(msg, mes) {
     msg.mes = mes;
     if (Array.isArray(msg.swipes) && msg.swipe_id !== undefined && msg.swipes[msg.swipe_id] !== undefined) msg.swipes[msg.swipe_id] = mes;
-};
-
-// Every ledger comment of a message, finished or cut off, removed (history shows prose only).
-const withoutLedger = mes => stripBlocks(mes).replace(/<!--\s*Story_Ledger\b[\s\S]*?(?:-->|$)/gi, "").trim();
+}
 
 function mainPromptText() {
     const c = ctx();
@@ -347,31 +203,19 @@ function cardsInChat() {
 // The lean prompt's input for the reply `run` started from. State comes from before the reply.
 function leanInputs(i, run) {
     const c = ctx();
-    const chat = c.chat || [];
-    const { state, statePrompt, rules, template, facts } = ledgerPromptParts(chat.slice(0, i), run.config);
-    const history = chat.slice(0, i).filter(m => !m.is_system)
-        .map(m => ({ role: m.is_user ? "user" : "assistant", name: m.name, text: withoutLedger(m.mes) })).filter(m => m.text);
-    return {
+    return core.leanInputs({
+        chat: c.chat || [], index: i, run, settings: settings(), chatData: chatData(), userName: c.name1,
         mainPrompt: mainPromptText(),
         characters: cardsInChat(),
         personaName: c.name1,
         summary: String(c.extensionPrompts?.["1_memory"]?.value || "").trim(),
-        statePrompt: c.substituteParams(statePrompt), rules: c.substituteParams(rules),
-        template: c.substituteParams(template), turnFacts: c.substituteParams(facts),
-        history,
-        historyCount: settings().fixupHistory,
-        reply: { name: chat[i].name, text: stripBlocks(run.mes) },
-        reminder: c.substituteParams(buildGenerationReminder(state, run.config, "ledger", { kase: run.kase })),
-    };
+        substitute: text => c.substituteParams(text),
+    });
 }
 
 /** "missing", "thoughts" or null: what ✎ would ask for on message `i`. Only the last reply, and only while idle. */
 export function fixupCaseFor(i) {
-    const s = settings();
-    const chat = ctx().chat || [];
-    const msg = chat[i];
-    if (fixupRun || fixupAsking || !s.enabled || !msg || i !== chat.length - 1 || msg.is_user || msg.is_system) return null;
-    return needsFixup(msg.mes, s.sections);
+    return core.fixupCaseFor({ chat: ctx().chat || [], index: i, settings: settings(), busy: Boolean(fixupRun || fixupAsking) });
 }
 
 export async function startFixup(i) {
@@ -408,20 +252,16 @@ async function finalizeFixup(run, output = null) {
     try {
         const chat = ctx().chat || [];
         const msg = chat[run.index];
-        const unchanged = !run.abandoned && chatId() === run.chatId && msg && run.index === chat.length - 1
-            && msg.swipe_id === run.swipeId
-            && (run.mode === "full" ? String(msg.mes).startsWith(run.mes) : msg.mes === run.mes);
+        const unchanged = !run.abandoned && chatId() === run.chatId && core.fixupReplyUnchanged({ run, chat });
         if (!unchanged) {
             if (!run.abandoned) notice("warning", "The reply changed during the ledger fix-up; it was left as it is.", "📒 Story Ledger");
             return;
         }
         let reason = run.stopped ? "stopped" : run.error ? (run.error.message || String(run.error)) : null;
-        let accepted = null;
+        let judged = null;
         if (!reason) {
-            accepted = acceptFixup(run.mode === "full" ? msg.mes.slice(run.mes.length) : output, run.kase, {
-                sections: settings().sections, prev: stateBefore(chat.slice(0, run.index), run.index, run.config), config: run.config,
-            });
-            if (!accepted.ok) reason = accepted.reason;
+            judged = core.judgeFixup({ run, chat, settings: settings(), chatData: chatData(), userName: ctx().name1, output });
+            if (!judged.ok) reason = judged.reason;
         }
         // the reply as the run found it (only what the run itself wrote is undone: the guard proved it)
         const putBack = async why => {
@@ -433,8 +273,7 @@ async function finalizeFixup(run, output = null) {
             notice("warning", `Ledger fix-up kept nothing: ${why}.`, "📒 Story Ledger");
         };
         if (reason) { await putBack(reason); return; }
-        const text = stripBlocks(run.mes);
-        setReply(msg, accepted.comment ? spliceMissing(text, accepted.comment) : spliceThoughts(text, accepted.thoughts));
+        setReply(msg, judged.mes);
         try { await rebuildMessage(run.index, { config: run.config }); }
         catch (e) {
             console.error("[Story Ledger] could not write the fixed block", e);
@@ -500,9 +339,7 @@ async function editNewestQuests(mutator) {
 
 // ── The popup ───────────────────────────────────────────────────────────────
 
-const esc = s => String(s ?? "").replace(/[&<>"]/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch]));
 const lines = text => String(text || "").split(/\r?\n/).map(s => s.trim()).filter(Boolean);
-const hasOwn = (value, key) => Object.prototype.hasOwnProperty.call(value || {}, key);
 const validDie = value => Number.isInteger(Number(value)) && Number(value) >= 1 && Number(value) <= 20;
 const dieValue = (dice, key) => key.startsWith("fate.") ? dice.fate[key.at(-1)] : key === "world" ? dice.world : dice.checks;
 
@@ -528,181 +365,8 @@ function readFudgePanel($root) {
     return fudge;
 }
 
-function fudgeSummary(fudge) {
-    const parts = [];
-    if (fudge.dice) parts.push(...Object.keys(fudge.dice));
-    if (fudge.calm) parts.push("calm");
-    if (fudge.tier) parts.push(fudge.tier);
-    if (fudge.source) parts.push(fudge.source);
-    if (fudge.fire) parts.push(`fire ${fudge.fire}`);
-    return parts.length ? parts.join(", ") : "none";
-}
-
-const hasFudgeSettings = fudge => Object.keys(fudge || {}).some(key => key !== "appliedTo");
-
-function pairCard(state, from, to, config) {
-    const rel = { ct: state.ct, pairs: state.rel.pairs, selves: state.rel.selves };
-    const d = describePair(rel, from, to, config);
-    const rows = config.axes.filter(a => a.kind === "fond").map(f => {
-        const m = config.axes.find(a => a.key === f.mirror);
-        const fv = d.axes[f.key], mv = d.axes[m.key];
-        const val = v => `<b>${v.value}</b>${v.acc ? `<small> +${v.acc}</small>` : ""}`;
-        return `<div class="sl-row">
-            <span class="sl-lab sl-fond" title="${esc(f.meaning)}">${esc(f.name)} ${val(fv)}</span>
-            <span class="sl-bar sl-bar-fond"><i style="width:${(fv.value / config.axisMax) * 100}%"></i></span>
-            <span class="sl-bar sl-bar-friction"><i style="width:${(mv.value / config.axisMax) * 100}%"></i></span>
-            <span class="sl-lab sl-friction" title="${esc(m.meaning)}">${val(mv)} ${esc(m.name)}</span>
-        </div>`;
-    }).join("");
-    const chips = [
-        `<span class="sl-chip">Φ(${esc(from)}) ${d.phi}</span>`,
-        `<span class="sl-chip ${d.romance === "allowed" ? "sl-ok" : "sl-locked"}">romance ${d.romance}</span>`,
-        ...d.walls.map(w => `<span class="sl-chip sl-wall">WALL ${esc(w)}</span>`),
-        ...d.patterns.map(p => `<span class="sl-chip sl-pattern" title="${esc(PATTERN_GLOSS[p])}">${esc(p)}</span>`),
-    ].join("");
-    return `<div class="sl-pair"><div class="sl-pair-head"><b>${esc(from)} → ${esc(to)}</b></div>
-        <div class="sl-chips">${chips}</div>
-        <div class="sl-mirror-head"><span>fondness</span><span>friction</span></div>${rows}</div>`;
-}
-
-function popupHtml(tab, previewBaseDice = null) {
-    const c = ctx().chat || [];
-    const s = settings();
-    const config = engineConfig();
-    const nb = chatData().notebook;
-    const state = stateBefore(c, c.length, config);
-    const T = (id, label) => `<button class="sl-tab${tab === id ? " sl-on" : ""}" data-sl-popup-tab="${id}">${label}</button>`;
-    let body = "";
-    if (tab === "rules") {
-        const inbox = nb.inbox.map(i => `<div class="sl-item${i.stale ? " sl-stale" : ""}">
-            <div>${i.op === "add" ? `<b>Add</b> ${esc(i.text)}` : i.op === "edit" ? `<b>Edit</b> “${esc(i.targetText)}”<br>→ ${esc(i.text)}` : `<b>Remove</b> “${esc(i.targetText)}”${i.text ? `<br><i>${esc(i.text)}</i>` : ""}`}${i.stale ? "<br><small>The rule this pointed at no longer exists.</small>" : ""}</div>
-            <div class="sl-btns">${i.stale ? "" : `<button class="menu_button sl-approve" data-id="${i.id}">Approve</button>`}<button class="menu_button sl-reject" data-id="${i.id}">${i.stale ? "Dismiss" : "Reject"}</button></div>
-        </div>`).join("") || "<p><i>No proposals waiting.</i></p>";
-        body = `<label class="checkbox_label"><input type="checkbox" id="sl-nb-enabled" ${nb.enabled === false ? "" : "checked"}> Use the notebook in this chat</label>
-            <h4>Rules [R] <small>— one per line, sent verbatim every turn. Only you change these.</small></h4>
-            <textarea id="sl-rules" class="text_pole" rows="12">${esc(nb.rules.join("\n"))}</textarea>
-            <div class="sl-btns"><button class="menu_button" id="sl-save-rules">Save rules</button>
-                <button class="menu_button" id="sl-import" title="Fill the boxes from the newest Freaky/Realistic Frankenstein, Sola, Ancient Access or Megumin-fork notebook in this chat. Rules are not saved until you press Save.">Import from previous preset</button></div>
-            <h4>Proposals from the model</h4>${inbox}`;
-    } else if (tab === "threads") {
-        body = `<h4>Open threads [T] <small>— kept in the newest reply's block; edit them there</small></h4>
-            <ul class="sl-list">${state.threads.map(t => `<li>${esc(t)}</li>`).join("") || "<li><i>None yet.</i></li>"}</ul>
-            <h4>Starting list <small>— used only until the first reply carries a block</small></h4>
-            <textarea id="sl-threads" class="text_pole" rows="6">${esc(nb.threads.join("\n"))}</textarea>
-            <div class="sl-btns"><button class="menu_button" id="sl-save-threads">Save as starting list</button></div>`;
-    } else if (tab === "clock") {
-        const time = storyTime(c, nb);
-        const now = time.now && time.now.source === "reader" ? time.now : (state.scene.now ? { text: state.scene.now, source: "notebook" } : time.now);
-        const label = { notebook: "from the newest block", world_state: "from World State", ff_header: "from an old header", reader: "your correction — used until the next reply states a time" };
-        body = `<h4>🕰️ Story clock</h4>
-            <div>${now ? `<b>${esc(now.text)}</b> <small>(${label[now.source] || now.source})</small>` : "<i>No time stated yet.</i>"}</div>
-            ${time.timeline.length > 1 ? `<div class="sl-timeline">${time.timeline.map(esc).join(" → ")}</div>` : ""}
-            <div class="sl-btns"><input type="text" id="sl-clock" class="text_pole" placeholder="Correct the time, e.g. Day 12 — Tuesday, 21:44 | the lawn" value="${esc(nb.clockOverride ? nb.clockOverride.text : "")}">
-                <button class="menu_button" id="sl-clock-set">Set correction</button>${nb.clockOverride ? `<button class="menu_button" id="sl-clock-clear">Clear</button>` : ""}</div>`;
-    } else if (tab === "dice") {
-        const dice = previewBaseDice || rollTurnDice();
-        const fudge = chatData().fudges || {};
-        const locks = fudge.dice || {};
-        const die = (key, label, value, locked) => `<label class="sl-die"><span>${label}</span>
-            <input type="number" class="text_pole sl-num" data-fudge-value="${key}" min="1" max="20" step="1" value="${esc(value)}">
-            <input type="checkbox" data-fudge-lock="${key}" ${locked ? "checked" : ""}> lock</label>`;
-        const checksLocked = Array.isArray(locks.checks) && locks.checks.length === 3;
-        const checksValues = checksLocked ? locks.checks : dice.checks;
-        const bulletOptions = (state.chekhov?.bullets || []).map(b => `<option value="${esc(b.id)}" ${fudge.fire === b.id ? "selected" : ""}>${esc(b.id)} — ${esc(b.desc)}</option>`).join("");
-        const oldFire = fudge.fire && fudge.fire !== "none" && !(state.chekhov?.bullets || []).some(b => b.id === fudge.fire)
-            ? `<option value="${esc(fudge.fire)}" selected>${esc(fudge.fire)} (not active)</option>` : "";
-        const initialApplied = withFudges(dice, fudge);
-        const initialFacts = renderTurnFacts(state, engineConfig({ dice: initialApplied.dice, fudges: fudge, fudgedDice: initialApplied.fudged, rolls: initialApplied.dice.checks }));
-        body = `<p class="sl-meta">Lock dice or outcomes for the next reply. Swipes and continues of that reply keep these controls.</p>
-            <h4>Turn dice <small>— unlocked dice roll again when generation starts</small></h4>
-            <div class="sl-dice-grid">
-                ${die("fate.a", "Fate A", hasOwn(locks, "fate.a") ? locks["fate.a"] : dice.fate.a, hasOwn(locks, "fate.a"))}
-                ${die("fate.b", "Fate B", hasOwn(locks, "fate.b") ? locks["fate.b"] : dice.fate.b, hasOwn(locks, "fate.b"))}
-                ${die("fate.c", "Fate C", hasOwn(locks, "fate.c") ? locks["fate.c"] : dice.fate.c, hasOwn(locks, "fate.c"))}
-                ${die("world", "World", hasOwn(locks, "world") ? locks.world : dice.world, hasOwn(locks, "world"))}
-                <label class="sl-die sl-check-dice"><span>Checks</span>${checksValues.map((value, i) => `<input type="number" class="text_pole sl-num" data-fudge-check="${i}" min="1" max="20" step="1" value="${esc(value)}">`).join("")}
-                    <input type="checkbox" data-fudge-lock="checks" ${checksLocked ? "checked" : ""}> lock all 3</label>
-            </div>
-            <h4>Outcome controls</h4>
-            <div class="sl-dice-grid">
-                <label>Tier <select class="text_pole" id="sl-fudge-tier"><option value="">Auto</option>${["AMBIENT", "MINOR", "MAJOR"].map(x => `<option value="${x}" ${fudge.tier === x ? "selected" : ""}>${x}</option>`).join("")}</select></label>
-                <label>Source <select class="text_pole" id="sl-fudge-source"><option value="">Auto</option>${["TRUE", "WEIGHTED"].map(x => `<option value="${x}" ${fudge.source === x ? "selected" : ""}>${x}</option>`).join("")}</select></label>
-                <label class="checkbox_label"><input type="checkbox" id="sl-fudge-calm" ${fudge.calm ? "checked" : ""}> Calm (AMBIENT + TRUE)</label>
-                <label>Fire <select class="text_pole" id="sl-fudge-fire"><option value="">Auto</option><option value="none" ${fudge.fire === "none" ? "selected" : ""}>None</option>${oldFire}${bulletOptions}</select></label>
-            </div>
-            <div class="sl-btns"><button class="menu_button" id="sl-reroll-unlocked">Re-roll unlocked</button>
-                <button class="menu_button" id="sl-save-fudges">Save for next turn</button><button class="menu_button" id="sl-clear-fudges">Clear fudges</button></div>
-            <h4>Preview</h4><pre id="sl-turn-preview" class="sl-turn-preview">${esc(initialFacts || "No turn facts for the enabled sections.")}</pre>`;
-    } else if (tab === "quests") {
-        const found = latestState(c, c.length, config);
-        const questsOff = s.sections.quests === false;
-        if (!found) body = "<p><i>No reply carries a Story Ledger block yet — quests appear here once one does.</i></p>";
-        else {
-            const qs = found.state.quests || [];
-            const done = qs.filter(q => q.status !== "active");
-            const row = q => `<div class="sl-item"><div><b>${esc(q.id)} ${esc(q.kind)}</b> · ${esc(q.status)} — ${esc(q.objective)}${q.progress ? ` <small>(${esc(q.progress)})</small>` : ""}</div>${
-                q.status === "active" ? "<small>active — always sent</small>"
-                    : `<label class="checkbox_label"><input type="checkbox" class="sl-send" data-id="${esc(q.id)}" ${q.send ? "checked" : ""} ${questsOff ? "disabled" : ""}> Send to the model</label>`}</div>`;
-            body = `${questsOff ? `<p class="sl-meta"><b>The 📜 Quests section is switched off in Settings</b> — quests are not tracked or sent; switch it back on to change these.</p>` : ""}<p class="sl-meta">Every quest stays in the block for you. Active quests always reach the model; a finished one only when you tick it.</p>
-                ${done.length ? `<label class="checkbox_label"><input type="checkbox" id="sl-send-all" ${done.every(q => q.send) ? "checked" : ""} ${questsOff ? "disabled" : ""} data-mixed="${done.some(q => q.send) && !done.every(q => q.send) ? 1 : 0}"> <b>Send all finished quests</b></label>` : ""}
-                ${qs.map(row).join("") || "<p><i>No quests yet.</i></p>"}`;
-        }
-    } else if (tab === "rel") {
-        const here = new Set([...state.scene.present, config.userName]);
-        const pairs = Object.values(state.rel.pairs).sort((a, b) => (here.has(b.from) || here.has(b.to)) - (here.has(a.from) || here.has(a.to)));
-        body = `<div class="sl-meta">Turn ${state.ct} · present: ${state.scene.present.map(esc).join(", ") || "—"}</div>
-            <p class="sl-meta">Edit the numbers in the newest reply's block to correct them; the next turn starts from your edit.</p>
-            ${pairs.map(p => pairCard(state, p.from, p.to, config)).join("") || "<p><i>No relationships yet. The model creates them with NEW lines; on a chat that ran another preset, the first reply calibrates them from its old state.</i></p>"}`;
-    } else {
-        const cf = config;
-        const axisRows = cf.axes.map(a => `<tr><td title="${esc(a.meaning)}">${esc(a.name)} (${a.key})</td><td><input type="number" class="text_pole sl-num" data-cfg-axis="${a.key}" data-field="period" value="${a.period}"></td><td><input type="number" class="text_pole sl-num" data-cfg-axis="${a.key}" data-field="threshold" value="${a.threshold}"></td></tr>`).join("");
-        const decayRows = cf.decay.map((d, i) => `<tr><td>${d.pair.join(" ↔ ")}</td><td><input type="number" class="text_pole sl-num" data-cfg-decay="${i}" value="${d.period}"></td></tr>`).join("");
-        const num = (k, label) => `<label>${label} <input type="number" class="text_pole sl-num" data-cfg="${k}" value="${cf[k]}"></label>`;
-        const sec = { scene: "🕰️ Scene & story clock", relationships: "💞 Relationships", notebook: "📓 Rules notebook & threads",
-            ...Object.fromEntries(SECTIONS.map(x => [x.key, typeof x.title === "function" ? x.title({ checkStyle: s.checkStyle }) : x.title])) };
-        body = `<label class="checkbox_label"><input type="checkbox" data-set="enabled" ${s.enabled ? "checked" : ""}> Story Ledger on</label>
-            <label class="checkbox_label" title="Warnings about a reply stay on screen until closed, so they are not missed while you are in another tab"><input type="checkbox" data-set="stickyNotices" ${s.stickyNotices !== false ? "checked" : ""}> Keep reply warnings until dismissed</label>
-            <div class="sl-grid"><label>Ledger fix-up context <select class="text_pole" data-set="fixupMode">
-                    <option value="full" title="Sends the whole normal prompt. If your provider caches prompts, much of it may be a cache hit." ${s.fixupMode !== "lean" ? "selected" : ""}>Full</option>
-                    <option value="lean" title="Sends a short prompt (system, cards, summaries, recent messages). Fewer input tokens on long chats, but it does not reuse the chat's cached prefix." ${s.fixupMode === "lean" ? "selected" : ""}>Lean</option></select></label>
-                <label id="sl-fixup-history" ${s.fixupMode === "lean" ? "" : 'style="display:none"'}>Recent messages <input type="number" class="text_pole sl-num" data-set="fixupHistory" value="${s.fixupHistory}" min="0" max="20"></label></div>
-            <h4>Sections</h4>
-            ${Object.entries(sec).map(([k, label]) => `<label class="checkbox_label"><input type="checkbox" data-section="${k}" ${s.sections[k] ? "checked" : ""}> ${label}</label>`).join("")}
-            <h4>Look</h4>
-            <div class="sl-grid"><label>Theme <select class="text_pole" data-set="theme">${[["frankenstein", "Frankenstein"], ["sola", "Sola"], ["megumin", "Megumin"]].map(([v, l]) => `<option value="${v}" ${(s.theme || "frankenstein") === v ? "selected" : ""}>${l}</option>`).join("")}</select></label>
-                <label>Check style <select class="text_pole" data-set="checkStyle"><option value="dnd" ${s.checkStyle !== "arrow" ? "selected" : ""}>DnD (locked DC)</option><option value="arrow" ${s.checkStyle === "arrow" ? "selected" : ""}>Wind's Arrow (Sola)</option></select></label></div>
-            <h4>Prompt placement</h4>
-            <div class="sl-grid">
-                <label>Placement <select class="text_pole" data-set="placement"><option value="auto" ${s.placement === "auto" ? "selected" : ""}>automatic, in chat at depth</option><option value="macro" ${s.placement === "macro" ? "selected" : ""}>only where a preset uses {{story_ledger}}</option></select></label>
-                <label>Depth <input type="number" class="text_pole sl-num" data-set="depth" value="${s.depth}" min="0"></label>
-                <label>Role <select class="text_pole" data-set="role"><option value="0" ${+s.role === 0 ? "selected" : ""}>system</option><option value="1" ${+s.role === 1 ? "selected" : ""}>user</option><option value="2" ${+s.role === 2 ? "selected" : ""}>assistant</option></select></label>
-            </div>
-            <h4>Relationship engine numbers <small>— FrankenSIM 3.0's defaults; they apply from the next reply on</small></h4>
-            <div class="sl-grid">${num("tickCap", "Tick cap / acc / turn")}${num("directMax", "DIRECT max")}${num("axisMin", "Axis min")}${num("axisMax", "Axis max")}${num("decayLead", "Decay gap")}${num("floorDivisor", "Floor divisor")}${num("floorMax", "Floor max")}${num("wallMin", "WALL min")}${num("gravityMin", "Gravity Well min")}</div>
-            <div class="sl-grid"><label>Romance gate E ≥ <input type="number" class="text_pole sl-num" data-cfg-gate="E" value="${cf.romanceGate.E}"></label><label>or L ≥ <input type="number" class="text_pole sl-num" data-cfg-gate="L" value="${cf.romanceGate.L}"></label>
-                <label>Offstage skip values <input type="text" class="text_pole" data-cfg-skip value="${cf.offstageSkip.join(", ")}"></label></div>
-            <div class="sl-grid"><label>Φ period <input type="number" class="text_pole sl-num" data-cfg-phi="period" value="${cf.phi.period}"></label><label>Φ threshold <input type="number" class="text_pole sl-num" data-cfg-phi="threshold" value="${cf.phi.threshold}"></label><label>Φ acc cap <input type="number" class="text_pole sl-num" data-cfg-phi="accCap" value="${cf.phi.accCap}"></label></div>
-            <table class="sl-table"><tr><th>Axis</th><th>Convert every N turns</th><th>at accumulator ≥</th></tr>${axisRows}</table>
-            <table class="sl-table"><tr><th>Mirror decay</th><th>every N turns</th></tr>${decayRows}</table>
-            <h4>🔫 Chekhov's Gun</h4>
-            <div class="sl-grid">
-                <label>Who fires bullets <select class="text_pole" data-chk-firing>
-                    <option value="model" ${cf.sectionConfig.chekhov.firing === "model" ? "selected" : ""}>The model, when the moment is right</option>
-                    <option value="fate" ${cf.sectionConfig.chekhov.firing === "fate" ? "selected" : ""}>Fate's pick</option></select></label>
-                ${[["eligibleAge", "Eligible from age"], ["pruneAge", "Prune at age"], ["cap", "Active cap"], ["maxLoadsPerTurn", "Loads per reply"], ["firedKeep", "Fired kept (0 = all)"]]
-                    .map(([k, label]) => `<label>${label} <input type="number" min="${k === "eligibleAge" || k === "firedKeep" ? 0 : 1}" class="text_pole sl-num" data-chk="${k}" value="${cf.sectionConfig.chekhov[k]}"></label>`).join("")}
-            </div>
-            <h4>🎲 Fate & World Sim</h4>
-            <div class="sl-grid">${[["deferredExpire", "Deferred expiry"], ["worldKeep", "World entries kept"], ["reach1Drop", "Drop Reach 1 at age"], ["pursuitLimit", "Pursuit limit"], ["residueKeep", "Residue lines kept"]]
-                .map(([k, label]) => `<label>${label} <input type="number" min="1" class="text_pole sl-num" data-fate="${k}" value="${cf.sectionConfig.fate[k]}"></label>`).join("")}</div>
-            <div class="sl-btns"><button class="menu_button" id="sl-save-config">Save engine numbers</button><button class="menu_button" id="sl-reset-config">Reset to defaults</button></div>`;
-    }
-    return `<div class="sl-popup">
-        <h3>📒 Story Ledger</h3>
-        <div class="sl-tabs sl-popup-tabs">${T("rules", "📜 Rules")}${T("threads", "🧵 Threads")}${T("clock", "🕰️ Clock")}${T("quests", "🗺️ Quests")}${T("rel", "💞 Relationships")}${T("dice", "🎲 Next turn")}${T("settings", "⚙️ Settings")}</div>
-        <div class="sl-popup-body">${body}</div>
-    </div>`;
-}
+const popupHtml = (tab, previewBaseDice = null) => core.popupHtml(
+    tab, { chat: ctx().chat || [], settings: settings(), chatData: chatData(), userName: ctx().name1 }, previewBaseDice);
 
 export async function openLedgerPopup(startTab = "rules") {
     let tab = startTab;
