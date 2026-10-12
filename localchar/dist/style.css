@@ -1,0 +1,252 @@
+/*
+ * Story Ledger on LocalChar: the extension's CSS is written against SillyTavern's theme variables and
+ * classes. This maps them onto LocalChar's tokens inside the two places the extension draws: the panel
+ * (`.lc-ext-host`, the element the host hands over) and the state block in a message (`.preset-message`).
+ * It is prepended to style.css by localchar/build.mjs.
+ */
+
+.lc-ext-host,
+.preset-message {
+    --SmartThemeBodyColor: var(--text-default);
+    --SmartThemeEmColor: var(--text-strong);
+    --SmartThemeBorderColor: var(--rule-default);
+    --SmartThemeBlurTintColor: var(--surface-raised);
+}
+
+/* ST's buttons, fields and checkbox rows inside the panel */
+.lc-ext-host .menu_button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 44px;
+    padding: var(--inset-control-block) var(--inset-action-inline);
+    border: 1px solid var(--rule-default);
+    border-radius: var(--radius-control);
+    background: var(--surface-control);
+    color: var(--text-default);
+    font: inherit;
+    cursor: pointer;
+}
+
+.lc-ext-host .menu_button:focus-visible,
+.lc-ext-host .text_pole:focus-visible,
+.lc-ext-host .sl-tab:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+.lc-ext-host .text_pole {
+    box-sizing: border-box;
+    min-height: 44px;
+    padding: var(--inset-control-block) var(--inset-control-inline);
+    border: 1px solid var(--rule-default);
+    border-radius: var(--radius-control);
+    background: var(--surface-inset);
+    color: var(--text-default);
+    font: inherit;
+}
+
+.lc-ext-host textarea.text_pole { min-height: 6rem; resize: vertical; }
+
+.lc-ext-host .checkbox_label {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-height: 44px;
+    cursor: pointer;
+}
+
+.lc-ext-host .checkbox_label input { accent-color: var(--accent); }
+
+.lc-ext-host .sl-popup { max-width: 100%; }
+
+/* Story Ledger — cards under messages and the popup. Built on SillyTavern's theme
+   variables so it follows the user's theme; the look borrows from Megumin Suite's
+   block card: a tinted card, a strip of tabs, warm accents for fondness, cool for friction. */
+
+.sl-popup {
+    --sl-fond: #f43f5e;
+    --sl-friction: #38bdf8;
+    --sl-accent: #eab308;
+    --sl-dim: color-mix(in srgb, var(--SmartThemeBodyColor) 55%, transparent);
+    --sl-line: var(--SmartThemeBorderColor);
+}
+
+/* ── Frankenstein theme: FF5's look on the state block in a reply (display only) ── */
+.sl-theme-frankenstein {
+    --sl-fk-teal: #94e2d5; --sl-fk-purple: #cba6f7; --sl-fk-orange: #fab387; --sl-fk-gold: #f9e2af;
+    --sl-fk-fond: #f38ba8; --sl-fk-friction: #89b4fa;
+    background: rgba(20, 20, 30, 0.4); border-radius: 6px; margin: 6px 0 2px; font-size: 0.9em;
+}
+.sl-theme-frankenstein > summary {
+    background: linear-gradient(90deg, #313244, #1e1e2e); color: #cdd6f4; padding: 8px 12px;
+    font-weight: bold; letter-spacing: 1px; text-transform: uppercase; cursor: pointer; list-style: none;
+    border-bottom: 2px solid #89b4fa; border-radius: 6px 6px 0 0;
+}
+.sl-theme-frankenstein .sl-rebuild, .sl-theme-frankenstein .sl-fixup { float: right; opacity: 0.55; padding: 0 4px; cursor: pointer; }
+.sl-theme-frankenstein .sl-rebuild:hover, .sl-theme-frankenstein .sl-fixup:hover { opacity: 1; }
+.sl-theme-frankenstein .sl-next-turn { float: right; opacity: 0.75; padding: 0 6px; cursor: pointer; }
+.sl-theme-frankenstein .sl-next-turn:hover { opacity: 1; }
+.sl-theme-frankenstein .sl-fk-section { --sl-grp: var(--sl-fk-teal); margin: 3px 4px; border-radius: 4px;
+    border: 1px solid color-mix(in srgb, var(--sl-grp) 20%, transparent); border-left: 4px solid var(--sl-grp);
+    background: color-mix(in srgb, var(--sl-grp) 5%, transparent); padding: 0 10px 6px; }
+.sl-theme-frankenstein .sl-grp-memory { --sl-grp: var(--sl-fk-purple); }
+.sl-theme-frankenstein .sl-grp-sim { --sl-grp: var(--sl-fk-orange); }
+.sl-theme-frankenstein .sl-fk-section > summary {
+    margin: 0 -10px 4px; padding: 6px 10px; color: var(--sl-grp); font-weight: bold; letter-spacing: 0.5px;
+    text-transform: uppercase; cursor: pointer; list-style: none;
+    background: linear-gradient(90deg, color-mix(in srgb, var(--sl-grp) 25%, transparent), transparent);
+}
+.sl-theme-frankenstein .sl-fk-section b { color: var(--sl-fk-gold); font-weight: 600; }
+/* relationship rows: bars replace the raw numbers on screen; the raw rows stay in the message */
+.sl-theme-frankenstein .sl-fk-has-bars > :not(summary):not(.sl-fk-pairs) { display: none; }
+.sl-fk-pair { margin: 4px 0 8px; }
+.sl-fk-pair-name { color: var(--sl-fk-gold); font-weight: 600; margin-bottom: 2px; }
+.sl-fk-pair-note { font-size: 0.85em; font-style: italic; opacity: 0.85; margin: 0 0 4px; }
+.sl-fk-row { display: grid; grid-template-columns: minmax(90px, 1fr) 1fr 1fr minmax(90px, 1fr); gap: 6px; align-items: center; margin: 2px 0; }
+.sl-fk-lab { font-size: 0.85em; white-space: nowrap; }
+.sl-fk-lab small { opacity: 0.7; margin-left: 2px; }
+.sl-fk-lab.sl-fond { text-align: right; color: var(--sl-fk-fond); }
+.sl-fk-lab.sl-friction { color: var(--sl-fk-friction); }
+.sl-fk-bar { height: 7px; border-radius: 4px; background: rgba(205, 214, 244, 0.1); display: flex; overflow: hidden; }
+.sl-fk-bar i { display: block; height: 100%; border-radius: 4px; }
+.sl-fk-bar.sl-fond { justify-content: flex-end; }
+.sl-fk-bar.sl-fond i { background: linear-gradient(90deg, transparent, var(--sl-fk-fond)); }
+.sl-fk-bar.sl-friction i { background: linear-gradient(90deg, var(--sl-fk-friction), transparent); }
+.sl-fk-tag { display: inline-block; font-size: 0.75em; font-weight: 700; padding: 0 5px; border-radius: 4px; margin-right: 4px; }
+.sl-fk-R { color: #1e1e2e; background: var(--sl-fk-gold); }
+.sl-fk-T { color: #1e1e2e; background: var(--sl-fk-teal); }
+.sl-fk-chip { display: inline-block; font-size: 0.78em; padding: 0 6px; border-radius: 999px; margin: 0 2px; border: 1px solid currentColor; }
+.sl-fk-hot { color: #fab387; }
+.sl-fk-eligible { color: #a6e3a1; }
+.sl-fk-secret { color: #cba6f7; }
+.sl-fk-locked { color: #9399b2; }
+.sl-fk-scheduled { color: #89b4fa; }
+.sl-fk-due { color: #89dceb; font-weight: 700; }
+.sl-fk-fired { color: #f38ba8; }
+.sl-fk-tier { display: inline-block; font-size: 0.78em; font-weight: 700; padding: 0 6px; border-radius: 999px; margin: 0 2px; border: 1px solid currentColor; }
+.sl-fk-tier-ambient { color: #94e2d5; }
+.sl-fk-tier-minor { color: #f9e2af; }
+.sl-fk-tier-major { color: #f38ba8; }
+.sl-fk-fudged { color: #cba6f7; border-bottom: 1px dotted currentColor; }
+@media (max-width: 600px) {
+    .sl-fk-row { grid-template-columns: 1fr 1fr; }
+    .sl-fk-row .sl-fk-bar { display: none; }
+}
+
+/* ── popup ── */
+.sl-popup { text-align: left; }
+.sl-popup .sl-tabs { display: flex; flex-wrap: wrap; gap: 2px; padding: 4px 4px 0; border-bottom: 1px solid var(--sl-line); }
+.sl-popup .sl-tab { background: transparent; border: 0; border-bottom: 2px solid transparent; color: var(--sl-dim); padding: 4px 10px; cursor: pointer; font: inherit; }
+.sl-popup .sl-tab:hover { color: var(--SmartThemeBodyColor); }
+.sl-popup .sl-tab.sl-on { color: var(--SmartThemeBodyColor); border-bottom-color: var(--sl-accent); }
+.sl-list { margin: 0; padding-left: 18px; }
+.sl-list li { margin: 2px 0; }
+.sl-chips { display: flex; flex-wrap: wrap; gap: 4px; margin: 4px 0; }
+.sl-chip { display: inline-flex; align-items: center; gap: 4px; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--sl-line); font-size: 0.9em; }
+.sl-chip.sl-ok { border-color: color-mix(in srgb, #22c55e 60%, transparent); color: #4ade80; }
+.sl-chip.sl-locked { color: var(--sl-dim); }
+.sl-chip.sl-wall { border-color: var(--sl-accent); color: var(--sl-accent); }
+.sl-chip.sl-pattern { border-color: color-mix(in srgb, #a855f7 60%, transparent); color: #c084fc; cursor: help; }
+.sl-popup h3 { text-align: center; margin: 0 0 6px; }
+.sl-popup h4 { margin: 14px 0 6px; }
+.sl-popup h4 small { font-weight: normal; color: var(--sl-dim); }
+.sl-popup-tabs { margin-bottom: 8px; }
+.sl-popup textarea { width: 100%; }
+.sl-btns { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 6px 0; }
+.sl-popup .menu_button { width: auto; white-space: nowrap; padding: 4px 14px; }
+.sl-item {
+    display: flex; justify-content: space-between; align-items: center; gap: 12px;
+    border: 1px solid var(--sl-line); border-radius: 6px; padding: 6px 10px; margin: 6px 0;
+}
+.sl-item.sl-stale { opacity: 0.6; }
+.sl-timeline, .sl-meta { color: var(--sl-dim); font-size: 0.9em; margin: 4px 0; }
+#sl-clock { flex: 1; min-width: 220px; }
+.sl-grid { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; margin: 6px 0; }
+.sl-grid label { display: flex; align-items: center; gap: 6px; }
+.sl-dice-grid { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; margin: 8px 0; }
+.sl-die { display: inline-flex; align-items: center; gap: 6px; }
+.sl-check-dice { flex-wrap: wrap; }
+.sl-turn-preview { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 32em; overflow: auto; padding: 8px; border: 1px solid var(--sl-line); border-radius: 6px; background: color-mix(in srgb, var(--SmartThemeBodyColor) 5%, transparent); font: inherit; }
+.sl-num { width: 4.5em !important; display: inline-block; }
+.sl-table { border-collapse: collapse; margin: 8px 0; }
+.sl-table td, .sl-table th { padding: 2px 10px 2px 0; text-align: left; }
+.sl-logbox { margin-top: 12px; }
+.sl-logbox li { font-size: 0.9em; }
+.sl-log-refused { color: var(--sl-accent); }
+
+/* relationship pair card: mirrored bars, fondness grows left, friction grows right */
+.sl-pair {
+    border: 1px solid var(--sl-line); border-left: 3px solid var(--sl-fond);
+    border-radius: 8px; padding: 8px 12px; margin: 10px 0;
+    background: color-mix(in srgb, var(--SmartThemeBlurTintColor) 60%, transparent);
+}
+.sl-pair-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.sl-pair-actions { display: flex; gap: 6px; }
+.sl-mirror-head { display: grid; grid-template-columns: 1fr 1fr; color: var(--sl-dim); font-size: 0.8em; margin-top: 6px; }
+.sl-mirror-head span:first-child { text-align: right; padding-right: 8px; }
+.sl-mirror-head span:last-child { padding-left: 8px; }
+.sl-row { display: grid; grid-template-columns: minmax(110px, 1fr) 1fr 1fr minmax(110px, 1fr); align-items: center; gap: 6px; margin: 3px 0; }
+.sl-lab { font-size: 0.88em; white-space: nowrap; }
+.sl-lab small { color: var(--sl-dim); }
+.sl-lab.sl-fond { text-align: right; color: color-mix(in srgb, var(--sl-fond) 80%, var(--SmartThemeBodyColor)); }
+.sl-lab.sl-friction { color: color-mix(in srgb, var(--sl-friction) 80%, var(--SmartThemeBodyColor)); }
+.sl-bar { height: 8px; border-radius: 4px; background: color-mix(in srgb, var(--SmartThemeBodyColor) 10%, transparent); display: flex; overflow: hidden; }
+.sl-bar i { display: block; height: 100%; border-radius: 4px; }
+.sl-bar-fond { justify-content: flex-end; }
+.sl-bar-fond i { background: linear-gradient(90deg, transparent, var(--sl-fond)); }
+.sl-bar-friction i { background: linear-gradient(90deg, var(--sl-friction), transparent); }
+.sl-acc { width: 3.5em !important; opacity: 0.8; }
+@media (max-width: 600px) {
+    .sl-row { grid-template-columns: 1fr 1fr; }
+    .sl-row .sl-bar { display: none; }
+}
+
+/* ── Sola theme: warm showrunner console (display only) ── */
+.sl-theme-sola {
+    --sl-so-coral: #E07A5F; --sl-so-amber: #F3B74B; --sl-so-sand: #F0DCC4; --sl-so-orange: #F4A261;
+    margin: 6px 0 2px; border-radius: 10px; font-size: 0.9em;
+    background: rgba(42, 28, 20, 0.75); border: 1px solid rgba(224, 122, 95, 0.45);
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.28); color: var(--sl-so-sand);
+}
+.sl-theme-sola > summary { padding: 9px 12px; color: var(--sl-so-coral); font-weight: 600; cursor: pointer; list-style: none; }
+.sl-theme-sola .sl-rebuild, .sl-theme-sola .sl-fixup, .sl-theme-sola .sl-next-turn { float: right; opacity: 0.6; padding: 0 4px; cursor: pointer; }
+.sl-theme-sola .sl-rebuild:hover, .sl-theme-sola .sl-fixup:hover, .sl-theme-sola .sl-next-turn:hover { opacity: 1; }
+.sl-theme-sola details { margin: 6px 8px; border-radius: 6px; padding: 0 10px 6px; background: rgba(20, 12, 8, 0.6); border-left: 3px solid var(--sl-so-coral); }
+.sl-theme-sola details > summary { padding: 6px 0; cursor: pointer; list-style: none; font-weight: 600; color: var(--sl-so-coral); }
+.sl-theme-sola .sl-sola-cabinet { border-left-color: var(--sl-so-amber); }
+.sl-theme-sola .sl-sola-cabinet > summary { color: var(--sl-so-amber); }
+.sl-theme-sola .sl-sola-note { background: rgba(224, 122, 95, 0.1); font-style: italic; }
+.sl-theme-sola .sl-sola-note > summary { font-style: normal; color: var(--sl-so-orange); }
+.sl-theme-sola .sl-sola-bond .sl-fk-pair-name { color: var(--sl-so-orange); }
+.sl-theme-sola .sl-fk-has-bars > :not(summary):not(.sl-fk-pairs) { display: none; }
+.sl-sola-hud { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 4px; font-size: 0.82em; }
+.sl-sola-chip { padding: 2px 10px; border-radius: 999px; background: rgba(42, 28, 20, 0.85); border: 1px solid rgba(224, 122, 95, 0.45); color: #F0DCC4; }
+.sl-sola-chip b { color: #F4A261; margin-right: 4px; }
+.sl-sola-major { border-color: #E07A5F; } .sl-sola-minor { border-color: #F3B74B; } .sl-sola-ambient { opacity: 0.8; }
+
+/* ── Megumin theme: one card with a tab strip (display only) ── */
+.sl-theme-megumin {
+    margin: 14px 0 4px; border-radius: 12px; overflow: hidden; font-size: 0.9em;
+    border: 1px solid var(--SmartThemeBorderColor, rgba(255, 255, 255, 0.14)); background: rgba(0, 0, 0, 0.22);
+}
+.sl-theme-megumin > summary { padding: 9px 14px; cursor: pointer; list-style: none; font-weight: 600; background: rgba(0, 0, 0, 0.28); }
+.sl-theme-megumin .sl-rebuild, .sl-theme-megumin .sl-fixup, .sl-theme-megumin .sl-next-turn { float: right; opacity: 0.6; padding: 0 4px; cursor: pointer; }
+.sl-theme-megumin .sl-rebuild:hover, .sl-theme-megumin .sl-fixup:hover, .sl-theme-megumin .sl-next-turn:hover { opacity: 1; }
+.sl-mg-tabs { display: flex; overflow-x: auto; background: rgba(0, 0, 0, 0.28); border-bottom: 1px solid var(--SmartThemeBorderColor, rgba(255, 255, 255, 0.12)); }
+.sl-mg-tab {
+    display: flex; align-items: center; gap: 6px; padding: 8px 14px; white-space: nowrap; cursor: pointer;
+    background: transparent; border: 0; border-right: 1px solid var(--SmartThemeBorderColor, rgba(255, 255, 255, 0.1));
+    border-bottom: 2px solid transparent; color: var(--SmartThemeEmColor, #9aa0a6); font: inherit; font-size: 0.8em; font-weight: 600;
+}
+.sl-mg-tab:hover { background: rgba(255, 255, 255, 0.05); color: var(--SmartThemeBodyColor, #e8e8e8); }
+.sl-mg-tab.sl-mg-active { background: rgba(245, 158, 11, 0.1); color: var(--SmartThemeBodyColor, #e8e8e8); border-bottom-color: #f59e0b; }
+.sl-theme-megumin > details { margin: 0; padding: 4px 14px 8px; border: 0; }
+.sl-theme-megumin > details > summary { font-weight: 600; color: #f59e0b; cursor: pointer; list-style: none; padding: 4px 0; }
+.sl-theme-megumin .sl-mg-hidden { display: none; }
+.sl-theme-megumin .sl-fk-has-bars > :not(summary):not(.sl-fk-pairs) { display: none; }
+/* line breaks SillyTavern leaves between sections would show as gaps (FF's regex collapses them too) */
+.sl-theme-megumin > br, .sl-theme-sola > br, .sl-theme-megumin > p:empty, .sl-theme-sola > p:empty { display: none; }
+/* the shared bars and chips read these colours in every theme */
+.sl-theme-sola, .sl-theme-megumin {
+    --sl-fk-teal: #94e2d5; --sl-fk-purple: #cba6f7; --sl-fk-orange: #fab387; --sl-fk-gold: #f9e2af;
+    --sl-fk-fond: #f38ba8; --sl-fk-friction: #89b4fa;
+}
+.sl-theme-sola { --sl-fk-fond: #E07A5F; --sl-fk-gold: #F4A261; }

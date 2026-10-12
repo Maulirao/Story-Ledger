@@ -1,0 +1,58 @@
+/*
+ * Story Ledger on LocalChar: the extension's CSS is written against SillyTavern's theme variables and
+ * classes. This maps them onto LocalChar's tokens inside the two places the extension draws: the panel
+ * (`.lc-ext-host`, the element the host hands over) and the state block in a message (`.preset-message`).
+ * It is prepended to style.css by localchar/build.mjs.
+ */
+
+.lc-ext-host,
+.preset-message {
+    --SmartThemeBodyColor: var(--text-default);
+    --SmartThemeEmColor: var(--text-strong);
+    --SmartThemeBorderColor: var(--rule-default);
+    --SmartThemeBlurTintColor: var(--surface-raised);
+}
+
+/* ST's buttons, fields and checkbox rows inside the panel */
+.lc-ext-host .menu_button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 44px;
+    padding: var(--inset-control-block) var(--inset-action-inline);
+    border: 1px solid var(--rule-default);
+    border-radius: var(--radius-control);
+    background: var(--surface-control);
+    color: var(--text-default);
+    font: inherit;
+    cursor: pointer;
+}
+
+.lc-ext-host .menu_button:focus-visible,
+.lc-ext-host .text_pole:focus-visible,
+.lc-ext-host .sl-tab:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+.lc-ext-host .text_pole {
+    box-sizing: border-box;
+    min-height: 44px;
+    padding: var(--inset-control-block) var(--inset-control-inline);
+    border: 1px solid var(--rule-default);
+    border-radius: var(--radius-control);
+    background: var(--surface-inset);
+    color: var(--text-default);
+    font: inherit;
+}
+
+.lc-ext-host textarea.text_pole { min-height: 6rem; resize: vertical; }
+
+.lc-ext-host .checkbox_label {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-height: 44px;
+    cursor: pointer;
+}
+
+.lc-ext-host .checkbox_label input { accent-color: var(--accent); }
+
+.lc-ext-host .sl-popup { max-width: 100%; }

@@ -1,0 +1,14 @@
+{
+  "name": "story-ledger",
+  "version": "0.6.0",
+  "private": true,
+  "type": "module",
+  "description": "Story Ledger for SillyTavern and LocalChar.",
+  "scripts": {
+    "test": "node --test tests/*.test.mjs",
+    "build:localchar": "node localchar/build.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "0.21.5"
+  }
+}
