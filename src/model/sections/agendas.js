@@ -23,7 +23,14 @@ const COMMANDS = [
     { id: "agendas.body", form: "Name body: …", example: "Ana body: a bandaged hand", keywords: ["body"] },
 ];
 
-function progressRecap(line) {
+function progressRecap(line, normalized) {
+    // Bare fractions are a comment shorthand for the parenthesized recap.
+    const bare = normalized && line.match(/^([^:]+?)\s*:\s*("[^"]+"|[^"\s][^"]*?)\s+(\d+)\s*\/\s*(\d+)\s*(?:\((.+)\)|[—–]\s*(.+)|(continues\b.*))?$/i);
+    if (bare) {
+        if (/^new\b/i.test(bare[2])) return null; // malformed command, not a recap
+        const note = bare[5] || bare[6] || bare[7];
+        line = `${bare[1]}: ${bare[2]} (${bare[3]}/${bare[4]})${note ? ` — ${note}` : ""}`;
+    }
     const m = line.match(/^([^:]+?)\s*:\s*(\S.*?)\s+\(\s*(\d+)\s*\/\s*(\d+)\s*\)("?)\s*(?:[—–]\s*(.+)|(continues\b.*))?$/i);
     if (!m || Number(m[4]) <= 0 || Number(m[3]) > Number(m[4])) return null;
     let task = m[2].trim();
@@ -94,7 +101,7 @@ export default {
                 const field = { knows: "aware", fib: "fibs", fibs: "fibs", circle: "circle", body: "body" }[m[2].toLowerCase()];
                 const v = m[3].trim();
                 a[field] = (field === "aware" || field === "fibs") && a[field] ? `${a[field]}; ${v}` : v;
-            } else if ((m = progressRecap(line))) {
+            } else if ((m = progressRecap(line, ctx.normalizedChanges))) {
                 // A task/progress recap is an explicit update; keep its note and do not auto-tick it again.
                 const [n, a] = entry(state, m.name);
                 Object.assign(a, { task: m.task, step: m.step, max: m.max });

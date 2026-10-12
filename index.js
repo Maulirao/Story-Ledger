@@ -282,9 +282,9 @@ async function rebuildMessage(i, { collect = true, config: given = null } = {}) 
     }
     const refused = relationsNotice(log, changes.relations.unparsed);
     if (s.sections.relationships && refused) notice("info", refused, "💞 Story Ledger");
-    const unread = unreadNotices(changes, unparsed, s.sections);
-    if (unread.length) notice("info", `Could not read: ${unread.map(u => `${u.section}: "${u.line}"`).join("; ")}`, "📒 Story Ledger");
-    for (const w of warnings || []) notice("warning", w.text, w.section === "Chekhov" ? "🔫 Story Ledger" : "📒 Story Ledger");
+    const unread = unreadNotices(changes, unparsed, s.sections, warnings);
+    if (unread.length) notice("info", `Could not apply: ${unread.map(u => `${u.section}: "${u.line}"${u.reason ? ` — ${u.reason}` : ""}`).join("; ")}`, "📒 Story Ledger");
+    for (const w of warnings || []) if (!unread.some(u => u.section === w.section && u.line === w.line)) notice("warning", w.text, w.section === "Chekhov" ? "🔫 Story Ledger" : "📒 Story Ledger");
     if (collect && s.sections.notebook && changes.proposals.length) {
         const before = chatData().notebook;
         const cannot = [];

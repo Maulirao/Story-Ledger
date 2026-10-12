@@ -153,7 +153,8 @@ gain IDs automatically without changing their descriptions. Use `- I7 (left behi
 to remove a specific entry, or `I7 update: towel (on Jan)` to change its description
 without changing its ID. Additions stay `+ item`; the model must not invent IDs.
 ID removals also accept multiple parenthetical notes, such as
-`- I7 ($50) (paid for supplies)`; the ID determines which entry is removed.
+`- I7 ($50) (paid for supplies)`, or colon descriptions such as
+`- I7: towel (left behind)`; the ID determines which entry is removed.
 One ID identifies one listed entry, including any quantity in its description.
 Removed IDs are not reused along the retained sequence of snapshots.
 
@@ -176,6 +177,18 @@ Currency symbols also work (`money: $50`). Currency may be omitted when there is
 only one known balance; an initial amount without a currency remains unspecified.
 Different currencies stay separate; there is no automatic currency conversion.
 Only explicit initialization/correction sets a total. Income and expenses use deltas.
+Before the first transaction in a currency, initialize its known pre-transaction
+balance with `money:` before the delta. Cash in an old item entry does not set that
+balance automatically. Parenthetical explanations are ignored for arithmetic, and
+removing a cash item does not deduct from Money a second time.
+The final generation reminder repeats the baseline requirement and lists which
+currencies are initialized. Refused money transactions explain missing balances,
+ambiguous currencies, or insufficient funds; they do not invent a balance.
+
+Agenda progress recaps accept both `Name: "task" (1/3)` and `Name: "task" 1/3`.
+A trailing parenthetical explanation is retained in the task description. Recaps
+preserve the NPC's other fields and do not receive another off-screen progress tick
+in the same turn. Impossible progress remains refused.
 
 For ammo and other counted or measured supplies, `supply: 12 rounds | 9mm ammunition`
 creates a stack with an item ID. `I7 adjust: -3 (fired)` consumes three from that

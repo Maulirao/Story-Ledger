@@ -115,21 +115,22 @@ function measured(text, money = false) {
     return { amount: decimal(number[1]), unit: money ? label.toUpperCase() : label };
 }
 
-function moneyChange(inv, line) {
+function moneyChange(inv, line, ctx) {
     const command = closedForm(line).match(/^money\s*(:|[+-])\s*(.*)$/i);
     if (!command) return false;
     const value = measured(command[2], true);
     if (!value) return false;
     const keys = Object.keys(inv.money || {});
     const currency = value.unit || (keys.length === 1 ? keys[0] : keys.length === 0 && command[1] === ":" ? "" : null);
-    if (currency === null) return false;
+    const refuse = text => { ctx?.warnings?.push({ section: "Inventory", line, text }); return false; };
+    if (currency === null) return refuse(keys.length ? "Money currency is ambiguous; copy the currency from the intended balance." : "Money has no starting balance. Initialize the known pre-transaction amount and currency with money: before applying this change.");
     if (command[1] === ":") {
         inv.money = { ...(inv.money || {}), [currency]: value.amount };
         return true;
     }
-    if (!Object.hasOwn(inv.money || {}, currency)) return false;
+    if (!Object.hasOwn(inv.money || {}, currency)) return refuse(`Money has no starting balance for ${currency}. Initialize its known pre-transaction amount with money: before applying this change.`);
     const next = adjustDecimal(inv.money[currency], command[1] + value.amount);
-    if (next === null) return false;
+    if (next === null) return refuse(`Insufficient Money: balance ${inv.money[currency]}${currency ? ` ${currency}` : ""}, expense ${value.amount}${currency ? ` ${currency}` : ""}. Balance unchanged; report any actual income first or correct the known balance.`);
     inv.money[currency] = next;
     return true;
 }
@@ -270,7 +271,7 @@ export default {
             const rawOf = re => { const r = rawLine && rawLine.match(re); return r ? r[1] : undefined; };
             let m;
             if (normalized && /^money\b/i.test(line)) {
-                if (!moneyChange(inv, line)) unparsed.push(line);
+                if (!moneyChange(inv, line, ctx)) unparsed.push(line);
             }
             else if (normalized && /^(?:supply\b|\+\s*supply\s*:)/i.test(line)) {
                 m = line.match(/^(?:\+\s*)?supply\s*:\s*(.*?)\s*\|\s*(\S[\s\S]*)$/i);
@@ -303,7 +304,7 @@ export default {
             }
             else if (normalized && /^-\s*I\d+\b/i.test(line)) {
                 m = closedForm(line).match(/^-\s*(I\d+)\b([\s\S]*)$/i);
-                const at = m && removalNote(m[2]) ? (inv.itemIds || []).indexOf(m[1].toUpperCase()) : -1;
+                const at = m && (removalNote(m[2]) || /^\s*:\s*\S/.test(m[2])) ? (inv.itemIds || []).indexOf(m[1].toUpperCase()) : -1;
                 if (at < 0) unparsed.push(line);
                 else removeEntry(inv, at);
             }
@@ -364,7 +365,7 @@ export default {
         return parts.length ? `{{user}}: ${parts.join(" · ")}` : "";
     },
     rules: () => [
-        "Money is a balance per currency, without item IDs. Initialize or explicitly correct it with `money: amount currency`; report actual income with `money + amount currency (why)` and spending with `money - amount currency (why)`. Report the amount actually handed over after any returned change, not just the price. The ledger calculates balances; never restate a balance every turn. Copy the currency from Money; omit it only when there is one unambiguous balance. Do not infer a balance from a bill's denomination. Noteworthy bills remain ordinary items or counted supplies, and do not automatically alter Money.",
+        "Money is a balance per currency, without item IDs. Initialize or explicitly correct it with `money: amount currency`; report actual income with `money + amount currency (why)` and spending with `money - amount currency (why)`. Before the FIRST income or expense in a currency, initialize its known PRE-TRANSACTION balance with a `money:` line in the same comment, BEFORE the delta. Cash carried over as an ordinary item does not initialize Money. Use the actual known total and currency from the story; if the total is unknown, do not invent it or emit a delta against an uninitialized balance. Report the amount actually handed over after any returned change, not just the price. Keep explanations inside parentheses after the amount and currency; explanations do not affect arithmetic. The ledger calculates balances; never restate a balance every turn. Copy the currency from Money; omit it only when there is one unambiguous balance. Do not infer a balance from a bill's denomination. Noteworthy bills remain ordinary items or counted supplies, and do not automatically alter Money. Removing a spent cash item is independent of reporting its money expense; never debit Money twice for the item removal.",
         "Supplies are counted or measured stacks (ammo, food, batteries, water), each with an I# ID. Create a new stack with `supply: amount unit | item`; convert an existing item or explicitly correct its count with `I# quantity: amount unit`. For partial use or replenishment, write a signed delta such as `I# adjust: -3 (used)` or `I# adjust: +5 (restocked)`; the ledger does the arithmetic. Reuse an existing ID rather than creating a new stack every turn. Keep ammo types, units and other distinct supplies separate. Quantity metadata is authoritative; a number in an item's description does not set its count. Zero balances and stacks retain identity for replenishment; adjustments cannot overdraw known amounts. A `- I#` line removes the whole entry.",
         "Inventory is {{user}}'s alone: add items with `+ item` when found; the ledger assigns their I# IDs. Prefer `- I# (why)` when lost or used, and `I# update: description` when an item's description or holder changes; copy an existing ID from the inventory, never invent one. Name removals also work: full name first, otherwise a unique base name ignoring trailing parenthetical notes; ambiguous items need an ID. IDs are not unit counts. Award a title for a real accomplishment; track temporary conditions (Injured, Tired, Inspired) and clear them with time or action. Active conditions are in Status; condition text inside items or titles does not create a Status entry. For status removals, copy the existing condition name exactly, without explanations; clearing an already-absent condition is harmless. A changed condition needs two lines: `status - old condition` and `status + new condition`. Mods are ±1–2 on rolls in the domain they fit only. Never put stats, modifiers or title names in prose.",
     ].join("\n"),

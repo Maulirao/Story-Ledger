@@ -196,6 +196,29 @@ test("the screenshot's agenda progress lines keep their task, progress and notes
     assert.deepEqual(parseBlock(renderBlock(r.state, { rules: [], config: C, sections: {} }), { config: C }).state.agendas, r.state.agendas);
 });
 
+test("bare agenda fractions accept quoted tasks and preserve trailing explanations without another tick", () => {
+    const s = emptyState();
+    s.agendas.Erin = { task: "old task", step: 0, max: 4, aware: "directions", fibs: "", circle: "family", body: "tired" };
+    const r = run(s, 'Agendas:\n- Thérèse Paquet: "wrap the Vermont loaves done; close the shop at noon, Canada Day prep at home" 2/3\n- Erin: "move the family into chalet Lambert today, mattress and all" 1/3 (directions secured, croissants for the movers)');
+    assert.deepEqual(r.unparsed, []);
+    assert.deepEqual(r.state.agendas["Thérèse Paquet"], { task: "wrap the Vermont loaves done; close the shop at noon, Canada Day prep at home", step: 2, max: 3, aware: "", fibs: "", circle: "", body: "" });
+    assert.deepEqual(r.state.agendas.Erin, { ...s.agendas.Erin, task: "move the family into chalet Lambert today, mattress and all — directions secured, croissants for the movers", step: 1, max: 3 });
+    assert.deepEqual(parseBlock(renderBlock(r.state, { rules: [], config: C, sections: {} }), { config: C }).state.agendas, r.state.agendas);
+});
+
+test("bare agenda fraction variants refuse impossible or incomplete progress alongside valid updates", () => {
+    for (const line of ['Ana: "repair" 1/3', 'Ana: repair 1/3', 'Ana: "repair" 1 / 3 — tools found', 'Ana: "repair" 1/3 (tools (and glue) found)']) {
+        const r = run(emptyState(), `Agendas:\n- ${line}`);
+        assert.deepEqual(r.unparsed, [], line);
+        assert.equal(r.state.agendas.Ana.step, 1, line);
+        assert.equal(r.state.agendas.Ana.max, 3, line);
+    }
+    const bad = ['Ana: "repair" 4/3', 'Ana: "repair" 0/0', 'Ana: "repair" -1/3', 'Ana: "repair" 1/-3', 'Ana: "repair" 1/3 (tools found', 'Ana: "" 1/3', 'Ana: "repair" 1/3 extra command', 'Ana: new repair 1/3', 'Ana: new 1/3'];
+    const r = run(emptyState(), `Agendas:\n${bad.map(line => `- ${line}`).join("\n")}\n- Erin: "move house" 1/3`);
+    assert.deepEqual(r.unparsed, bad.map(line => ({ section: "Agendas", line })));
+    assert.deepEqual(Object.keys(r.state.agendas), ["Erin"]);
+});
+
 test("agenda progress shorthand preserves NPC fields and is not advanced twice", () => {
     const s = emptyState();
     s.agendas.Dean = { task: "officiate the buoy race", step: 0, max: 3, aware: "the race rules", fibs: "a white lie", circle: "friends", body: "holding a flag" };

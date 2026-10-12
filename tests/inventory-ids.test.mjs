@@ -186,6 +186,25 @@ test("the screenshot's I8 removal accepts multiple parenthetical notes without d
     assert.deepEqual(previous.inv.items, ["$50", "key"]);
 });
 
+test("colon descriptions on ID removals do not select another item or modify a balance", () => {
+    const previous = emptyState();
+    previous.inv.items = ["$50", "key"];
+    previous.inv.itemIds = ["I8", "I9"];
+    previous.inv.money = { CAD: "12" };
+    for (const line of ["- I8: $50 (Gilles's cash, spent at the dealer)", "- i8 : inaccurate description mentioning I9"]) {
+        const r = turn(previous, `- ${line}`);
+        assert.deepEqual(r.unparsed, [], line);
+        assert.deepEqual(r.state.inv.items, ["key"], line);
+        assert.deepEqual(r.state.inv.itemIds, ["I9"], line);
+        assert.deepEqual(r.state.inv.money, { CAD: "12" }, line);
+    }
+    for (const line of ["- I99: $50 (spent)", "- I8:"]) {
+        const r = turn(previous, `- ${line}`);
+        assert.deepEqual(r.state.inv, previous.inv, line);
+        assert.deepEqual(r.unparsed, [{ section: "Inventory", line }], line);
+    }
+});
+
 test("latestState reuses retained identities when an ID snapshot contains a legacy inventory row", () => {
     const previous = turn(emptyState(), "- + key\n- + towel").state;
     const mixed = block(previous).replace('- <b>Item I1:</b> key', '- <b>Inv:</b> key');

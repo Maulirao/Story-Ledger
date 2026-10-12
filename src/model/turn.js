@@ -100,9 +100,14 @@ const ownerOf = name => {
  * Parser and engine "could not read" lines for the reply notice. Diagnostics of a known
  * heading whose section is switched off are dropped; unknown headings stay visible.
  */
-export function unreadNotices(changes, unparsed, sections = {}) {
+export function unreadNotices(changes, unparsed, sections = {}, warnings = []) {
     const off = u => { const k = ownerOf(u.section); return Boolean(k) && (sections || {})[k] === false; };
-    return [...((changes && changes.unparsed) || []).filter(u => !off(u)), ...(unparsed || [])];
+    const remaining = [...warnings];
+    return [...((changes && changes.unparsed) || []).filter(u => !off(u)), ...(unparsed || [])].map(u => {
+        const at = remaining.findIndex(w => w.section === u.section && w.line === u.line);
+        const diagnostic = at >= 0 ? remaining.splice(at, 1)[0] : null;
+        return diagnostic ? { ...u, reason: diagnostic.text } : u;
+    });
 }
 
 /** Lines for <story_ledger_turn>: what the sections announce before the reply is written. */

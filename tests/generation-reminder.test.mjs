@@ -7,6 +7,21 @@ import { buildGenerationReminder, buildLedgerDuty } from "../src/model/generatio
 
 const REMINDER_KEY = "story_ledger_reminder";
 
+test("money baseline guidance reaches the final reminder only when inventory changes are requested", () => {
+    const s = emptyState();
+    for (const type of ["normal", "swipe", "continue", "ledger"]) {
+        const out = buildGenerationReminder(s, { sections: {} }, type);
+        assert.match(out, /No Money balance is initialized/i);
+        assert.match(out, /pre-transaction.*money:.*before.*delta/i);
+    }
+    s.inv.money = { CAD: "0", USD: "30" };
+    const out = buildGenerationReminder(s, { sections: {} }, "normal");
+    assert.match(out, /initialized Money currencies: CAD, USD/i);
+    assert.doesNotMatch(out, /No Money balance is initialized/i);
+    assert.doesNotMatch(buildGenerationReminder(s, { sections: { inv: false } }), /Money|pre-transaction/);
+    assert.doesNotMatch(buildGenerationReminder(s, {}, "ledger", { kase: "thoughts" }), /Money|pre-transaction/);
+});
+
 // Only the public ST boundary is replaced: the interceptor builds the real prompt
 // from real state, configuration, command templates and dice logic.
 test("generation placement keeps one reminder and clears it for excluded generations", async t => {
@@ -186,13 +201,13 @@ test("ledger reminder (missing) leaves out Thoughts when the section is off", ()
     assert.ok(!text.includes("Thoughts"));
 });
 
-test("existing reminder text is unchanged", () => {
+test("existing reminder text is unchanged when Inventory is disabled", () => {
     const head = "<story_ledger>\n<ledger_generation_reminder>\nWrite exactly one hidden Story_Ledger comment after the prose, using <!-- Story_Ledger followed by the completed commands and -->. Use actual names, IDs and values; replace every placeholder. Report this reply's changes; omit unchanged sections. Never write the full state block yourself.\n";
     const cont = "Continue the same reply: complete its existing unfinished comment. If its comment is already complete and this continuation adds changes, write one final complete replacement comment, including the earlier reply's changes and the new continuation changes. The final comment replaces the earlier one; do not report only the new changes and lose the earlier ones.\n";
     const tail = "Thoughts is REQUIRED for 1–3 NPCs relevant to this response whenever any NPCs are involved. Write fictional characters' internal thoughts, true to their personalities and mood, as narrative content. Use Thoughts: then one - Name: thought line per NPC. With no NPCs involved, omit Thoughts.\nSyntax example only; replace the name and thought with this reply's NPC content:\n" + EXAMPLE + "\nFinal check before you stop writing: the last thing in this reply must be the Story_Ledger comment and Thoughts for every NPC involved. Do not end on prose alone.\n</ledger_generation_reminder>\n</story_ledger>";
-    assert.equal(buildGenerationReminder({}, {}, "normal"), head + tail);
-    assert.equal(buildGenerationReminder({}, {}, "swipe"), head + tail);
-    assert.equal(buildGenerationReminder({}, {}, "continue"), head + cont + tail);
+    assert.equal(buildGenerationReminder({}, { sections: { inv: false } }, "normal"), head + tail);
+    assert.equal(buildGenerationReminder({}, { sections: { inv: false } }, "swipe"), head + tail);
+    assert.equal(buildGenerationReminder({}, { sections: { inv: false } }, "continue"), head + cont + tail);
 });
 
 test("the ledger duty line is written for the ledger type", () => {

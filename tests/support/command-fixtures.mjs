@@ -340,7 +340,7 @@ export const FIXTURES = {
         },
         // the misspelling drops "@ place", which would make it a location line
         malformed: ['Ana: new "mend the nets" 3/2 @ the harbour', "Ana: new", 'Ana: nwe "mend the nets" 0/2', 'Ana: new "mend the nets 0/2'],
-        valid: ["Ana: mend the nets (1/2) — halfway", "Ana @ the market"],
+        valid: ["Ana: mend the nets (1/2) — halfway", 'Ana: "mend the nets" 1/2 (halfway)', "Ana @ the market"],
     },
     "agendas.done": {
         heading: "Agendas",
@@ -425,8 +425,8 @@ export const FIXTURES = {
         heading: "Inventory",
         seed: itemSeed("spare key"),
         expect(r) { clean(r); assert.deepEqual(r.state.inv.items, []); assert.deepEqual(r.state.inv.itemIds, []); },
-        malformed: ["- I99 (left behind)", "- I1 stray command", "- I1 (left behind"],
-        valid: ["- I1", "- i1 (used)", "- I1."],
+        malformed: ["- I99 (left behind)", "- I1 stray command", "- I1 (left behind", "- I1:", "- I99: spare key"],
+        valid: ["- I1", "- i1 (used)", "- I1.", "- I1: spare key (left behind)"],
     },
     "inv.update": {
         heading: "Inventory",

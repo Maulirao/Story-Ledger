@@ -34,6 +34,11 @@ export function buildGenerationReminder(state, config = {}, type = "normal", { k
         const list = awaiting.map(([pair, note]) => `${pair.replace(/\s*→\s*/, " → ")}${note ? ` (${note})` : ""}`).join("; ");
         lines.push(`Missing NEW baselines: ${list}. In Relationships, write a NEW line for each, calibrated from the record and story before the queued interactions and before the current beat; include all twelve axes and Φ using the template's command syntax. Saved relationship changes, including queued ticks, will apply automatically once the baseline exists; do not repeat saved ticks or events. Report only this reply's new events separately.`);
     }
+    if (sections.inv !== false && !(ledger && kase === "thoughts")) {
+        const currencies = Object.keys(state?.inv?.money || {});
+        const known = currencies.length ? `Initialized Money currencies: ${currencies.map(c => c || "unspecified").join(", ")}.` : "No Money balance is initialized.";
+        lines.push(`${known} Before a transaction in a currency without a balance, initialize its known pre-transaction amount with money: amount currency BEFORE the delta. Cash in Items does not initialize Money. Never invent an unknown total; once initialized, report only actual income or spending deltas.`);
+    }
     const thoughts = sections.thoughts !== false ? " and Thoughts for every NPC involved" : "";
     lines.push(
         `Final check before you stop writing: the last thing in this reply must be the Story_Ledger comment${thoughts}. Do not end on prose alone.`,

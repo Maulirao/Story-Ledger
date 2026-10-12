@@ -4,12 +4,41 @@ import { resolveConfig } from "../src/model/config.js";
 import { emptyState } from "../src/model/state.js";
 import { parseChanges } from "../src/model/changes.js";
 import { postTurn, latestState } from "../src/model/turn.js";
+import { unreadNotices } from "../src/model/turn.js";
 import { renderBlock, parseBlock } from "../src/model/block.js";
 import { renderStatePrompt } from "../src/model/prompt.js";
 
 const C = { ...resolveConfig(), userName: "Jan", sections: {} };
 const turn = (s, body) => postTurn(s, parseChanges(`<!-- Story_Ledger\nInventory:\n${body}\n-->`), C);
 const block = s => renderBlock(s, { config: C, sections: {}, rules: [] });
+
+test("the annotated CAD expense applies when funded and explains balance refusals without guessing", () => {
+    const line = "money - 20 CAD (two loaves; change steered by Thérèse into the counter tip jar)";
+    const funded = turn(emptyState(), "- money: 30 CAD").state;
+    const paid = turn(funded, `- ${line}`);
+    assert.deepEqual(paid.unparsed, []);
+    assert.deepEqual(paid.warnings, []);
+    assert.deepEqual(paid.state.inv.money, { CAD: "10" });
+    for (const [s, pattern] of [[emptyState(), /no starting balance.*CAD/i], [turn(emptyState(), "- money: 5 CAD").state, /insufficient.*5 CAD.*20 CAD/i]]) {
+        const result = turn(s, `- ${line}`);
+        assert.deepEqual(result.state.inv, s.inv);
+        assert.deepEqual(result.unparsed, [{ section: "Inventory", line }]);
+        assert.equal(result.warnings.length, 1);
+        const notice = unreadNotices(null, result.unparsed, {}, result.warnings);
+        assert.equal(notice.length, 1);
+        assert.match(notice[0].reason, pattern);
+    }
+});
+
+test("repeated money commands retain each refusal's reason in occurrence order", () => {
+    const result = turn(emptyState(), "- money - 20 CAD\n- money: 5 CAD\n- money - 20 CAD");
+    const notice = unreadNotices(null, result.unparsed, {}, result.warnings);
+    assert.equal(notice.length, 2);
+    assert.match(notice[0].reason, /no starting balance.*CAD/i);
+    assert.match(notice[1].reason, /insufficient.*5 CAD.*20 CAD/i);
+    assert.deepEqual(result.state.inv.money, { CAD: "5" });
+    assert.equal(result.warnings.length, 2);
+});
 
 test("money balances have no item IDs and spending preserves the remainder", () => {
     const first = turn(emptyState(), "- money: 50 USD\n- money: 20 CAD\n- + noteworthy $50 bill (serial ABC)");
@@ -21,6 +50,19 @@ test("money balances have no item IDs and spending preserves the remainder", () 
     assert.deepEqual(paid.state.inv.money, { USD: "32", CAD: "25" });
     assert.deepEqual(paid.state.inv.items, ["noteworthy $50 bill (serial ABC)"]);
     assert.deepEqual(first.state.inv.money, { USD: "50", CAD: "20" });
+});
+
+test("initial cash migration spends from an explicit baseline while ID descriptions are only commentary", () => {
+    const previous = emptyState();
+    previous.inv.items = ["$50", "key"];
+    previous.inv.itemIds = ["I8", "I9"];
+    const r = turn(previous, "- money: 50 CAD\n- money - 50 CAD (Gilles's fifty for the impeller part, handed to the dealer)\n- - I8: $50 (Gilles's cash, spent at the dealer)");
+    assert.deepEqual(r.unparsed, []);
+    assert.deepEqual(r.state.inv.money, { CAD: "0" });
+    assert.deepEqual(r.state.inv.items, ["key"]);
+    assert.deepEqual(r.state.inv.itemIds, ["I9"]);
+    assert.equal(previous.inv.money, undefined);
+    assert.deepEqual(previous.inv.items, ["$50", "key"]);
 });
 
 test("decimal balances and measured supplies use exact arithmetic", () => {
