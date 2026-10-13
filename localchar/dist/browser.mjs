@@ -928,11 +928,10 @@ var COMMANDS6 = [
   { id: "inv.supply", form: "supply: amount unit | item", example: "supply: 12 rounds | 9mm ammunition", keywords: ["supply"] },
   { id: "inv.quantity", form: "I# quantity: amount unit", example: "I1 quantity: 12 rounds", keywords: ["quantity"] },
   { id: "inv.adjust", form: "I# adjust: delta (why)", example: "I1 adjust: -3 (fired)", keywords: ["adjust"] },
-  { id: "inv.title-add", form: "title: name", example: "title: Harbour Friend", keywords: ["title"] },
+  { id: "inv.title-add", form: "title: name | effects", example: "title: Harbour Friend | +1 social: dockworkers", keywords: ["title"] },
   { id: "inv.title-remove", form: "title - name", example: "title - Harbour Friend", keywords: ["title"] },
-  { id: "inv.status-add", form: "status + condition", example: "status + Tired", keywords: ["status"] },
-  { id: "inv.status-remove", form: "status - condition", example: "status - Tired", keywords: ["status"] },
-  { id: "inv.mods", form: "mods: text", example: "mods: +1 Stealth (soft boots)", keywords: ["mods"] }
+  { id: "inv.status-add", form: "status + condition | effects", example: "status + Legs spent | -2 physical: running", keywords: ["status"] },
+  { id: "inv.status-remove", form: "status - condition", example: "status - Tired", keywords: ["status"] }
 ];
 var ROWS = [["items", "Inv"], ["titles", "Titles/Skills"], ["status", "Status"]];
 var ENTRY_ROWS = { title: "titles", condition: "status" };
@@ -1170,7 +1169,8 @@ var inventory_default = {
         const items = readList(m[2]);
         value2.items.push(...items);
         itemIds.push(...items.map(() => null));
-      } else if (entryKey && unesc(m[2])) value2[entryKey].push(readEntry(m[2]));
+      } else if (entryKey && !unesc(m[2])) {
+      } else if (entryKey) value2[entryKey].push(readEntry(m[2]));
       else if (hit) value2[hit[0]].push(...readLegacyRow(m[2]));
       else if (label === "mods") {
       } else {
@@ -1181,6 +1181,7 @@ var inventory_default = {
     }
     if (itemIds.length) value2.itemIds = itemIds;
     value2.titles = mergeEntries(value2.titles);
+    value2.status = mergeEntries(value2.status);
     if (errors.length && prevValue) {
       for (const k of ["items", "titles", "status"]) if (!value2[k].length || k === "items" && itemError) {
         value2[k] = k === "items" ? [...prevValue[k]] : (prevValue[k] || []).map(toEntry);
@@ -1212,6 +1213,28 @@ var inventory_default = {
       return true;
     };
     const entry2 = (name) => ({ name: name.trim(), effects: [], hint: "" });
+    const warn = (line, text) => ctx?.warnings?.push({ section: "Inventory", line, text });
+    const find = (list, name, raw) => {
+      const names = entryNames(list);
+      return normalized ? nameMatches(names, name, raw)[0] ?? -1 : names.findIndex((x) => same(x, name));
+    };
+    const withEffects = (text, rawText) => {
+      const bar = text.indexOf("|");
+      if (bar < 0 || !text.slice(bar + 1).trim() || !text.slice(0, bar).trim()) return null;
+      const rawBar = rawText === void 0 ? -1 : rawText.indexOf("|");
+      return { name: text.slice(0, bar).trim(), rawName: rawBar < 0 ? void 0 : rawText.slice(0, rawBar).trim(), ...parseEffects(text.slice(bar + 1)) };
+    };
+    const needsEffect = (line, name) => warn(line, `"${name}" needs an effect — give it one with title: ${name} | effects.`);
+    const setEntry = (list, line, parsed, title) => {
+      for (const w of parsed.warnings) warn(line, `Effect ignored: ${w}.`);
+      const at = find(list, parsed.name, parsed.rawName);
+      if (at < 0) list.push({ name: parsed.name, effects: parsed.effects, hint: "" });
+      else {
+        list[at].effects = parsed.effects;
+        list[at].hint = "";
+      }
+      if (title && !parsed.effects.length) needsEffect(line, parsed.name);
+    };
     lines2.forEach((text, i) => {
       const line = String(text).trim();
       const rawLine = normalized && raws[i] !== void 0 ? String(raws[i]).trim() : null;
@@ -1256,10 +1279,20 @@ var inventory_default = {
         if (at < 0) unparsed.push(line);
         else removeEntry(inv, at);
       } else if (m = line.match(/^title\s*:\s*(.+)$/i)) {
-        if (!inv.titles.some((t) => same(t.name, m[1]))) inv.titles.push(entry2(m[1]));
+        const parsed = withEffects(m[1], rawOf(/^title\s*:\s*(.+)$/i));
+        if (parsed) setEntry(inv.titles, line, parsed, true);
+        else if (find(inv.titles, m[1].trim(), void 0) < 0) {
+          inv.titles.push(entry2(m[1]));
+          needsEffect(line, m[1].trim());
+        }
       } else if (m = line.match(/^title\s*-\s*(.+)$/i)) {
         if (!del(inv.titles, m[1], rawOf(/^title\s*-\s*(.+)$/i))) unparsed.push(line);
       } else if (m = line.match(/^status\s*[:+]\s*(.+)$/i)) {
+        const parsed = withEffects(m[1], rawOf(/^status\s*[:+]\s*(.+)$/i));
+        if (parsed) {
+          setEntry(inv.status, line, parsed, false);
+          return;
+        }
         const conditions = readList(m[1]);
         if (!conditions.length) unparsed.push(line);
         for (const condition of conditions) if (!inv.status.some((t) => same(t.name, condition))) inv.status.push(entry2(condition));
@@ -1277,8 +1310,8 @@ var inventory_default = {
         conditions.forEach((condition, j) => {
           if (!removeStatus(inv.status, condition, aligned ? rawConditions[j] : void 0, del, normalized)) unparsed.push(`status - ${condition}`);
         });
-      } else if (/^mods\s*:/i.test(line)) {
-      } else if (m = line.match(/^\+\s*(.+)$/)) {
+      } else if (/^mods\s*:/i.test(line)) warn(line, "Mods are computed from title and condition effects; use title: or status + with | effects.");
+      else if (m = line.match(/^\+\s*(.+)$/)) {
         inv.items.push(m[1].trim());
         inv.itemIds = inv.itemIds || [];
         inv.itemIds.push(nextId(state, "I", inv.itemIds));

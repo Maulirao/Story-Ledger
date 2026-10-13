@@ -477,7 +477,7 @@ export const FIXTURES = {
         heading: "Inventory",
         expect(r) {
             clean(r);
-            assert.deepEqual(r.state.inv.titles, E("Harbour Friend"));
+            assert.deepEqual(r.state.inv.titles, [{ name: "Harbour Friend", effects: [{ kind: "numeric", n: 1, category: "social", focus: "dockworkers" }], hint: "" }]);
         },
         malformed: ["title:", "titel: Harbour Friend", "title Harbour Friend"],
     },
@@ -494,7 +494,7 @@ export const FIXTURES = {
         heading: "Inventory",
         expect(r) {
             clean(r);
-            assert.deepEqual(r.state.inv.status, E("Tired"));
+            assert.deepEqual(r.state.inv.status, [{ name: "Legs spent", effects: [{ kind: "numeric", n: -2, category: "physical", focus: "running" }], hint: "" }]);
         },
         malformed: ["status +", "stauts + Tired", "status Tired"],
     },
@@ -507,18 +507,6 @@ export const FIXTURES = {
         },
         valid: ["status - Unknown"],
         malformed: ["status -", "stauts - Tired"],
-    },
-    // Mods are computed from title and condition effects: "mods:" leaves state untouched
-    // (Task 4 adds a notice for it). "mods:" alone is still a valid form.
-    "inv.mods": {
-        heading: "Inventory",
-        expect(r, base) {
-            clean(r);
-            assert.equal("mods" in r.state.inv, false);
-            assert.deepEqual(r.state.inv, base.inv);
-        },
-        malformed: ["mosd: +1 Stealth (soft boots)", "mods +1 Stealth (soft boots)"],
-        valid: ["mods:"],
     },
 
     // ── Chekhov (story time Day 3 — 12:00)

@@ -63,3 +63,51 @@ test("an older string state renders as entry rows", () => {
     assert.match(out, /<b>Condition:<\/b> Tired\n/);
     assert.doesNotMatch(out, /\+1 social/);
 });
+
+// ── Task 4: commands carry effects
+import { postTurn } from "../src/model/turn.js";
+import { parseChanges } from "../src/model/changes.js";
+const ch = body => parseChanges(`<!-- Story_Ledger\n${body}\n-->`);
+const run = (s, body) => postTurn(s, ch(`Inventory:\n${body}`), C);
+const invWarnings = r => r.warnings.filter(w => w.section === "Inventory");
+test("title: Name | effects adds, and replaces effects on an existing title", () => {
+    let r = run(emptyState(), "- title: Strong Swimmer | +2 physical: swimming");
+    r = run(r.state, "- title: strong swimmer | +1 physical: swimming; proficiency: diving");
+    assert.deepEqual(r.state.inv.titles, [{ name: "Strong Swimmer", effects: [{ kind: "numeric", n: 1, category: "physical", focus: "swimming" }, { kind: "proficiency", skill: "diving" }], hint: "" }]);
+});
+test("filling a needs-effect title clears its hint", () => {
+    const s = emptyState(); s.inv.titles = [{ name: "Undefeated Charioteer", effects: [], hint: "passive +1" }];
+    assert.deepEqual(run(s, "- title: Undefeated Charioteer | +1 physical: carrying").state.inv.titles[0].hint, "");
+});
+test("title without effects is accepted with a warning", () => {
+    const r = run(emptyState(), "- title: Charmer");
+    assert.deepEqual(entryNames(r.state.inv.titles), ["Charmer"]);
+    assert.match(invWarnings(r)[0].text, /needs an effect/);
+});
+test("a refused number warns and keeps the other effects", () => {
+    const r = run(emptyState(), "- title: X | +5 social: Emilia; proficiency: y");
+    assert.deepEqual(r.state.inv.titles[0].effects, [{ kind: "proficiency", skill: "y" }]);
+    assert.equal(invWarnings(r).length, 1);
+});
+test("status + with effects; semicolon recap still adds several without |", () => {
+    let r = run(emptyState(), "- status + Legs spent | -2 physical: running, swimming");
+    assert.deepEqual(r.state.inv.status[0].effects, [{ kind: "numeric", n: -2, category: "physical", focus: "running, swimming" }]);
+    r = run(r.state, "- status + Tired; Hungry");
+    assert.deepEqual(entryNames(r.state.inv.status), ["Legs spent", "Tired", "Hungry"]);
+});
+test("mods: changes nothing and explains why", () => {
+    const r = run(emptyState(), "- mods: +1 social");
+    assert.equal("mods" in r.state.inv, false);
+    assert.match(invWarnings(r)[0].text, /computed from title and condition effects/);
+});
+test("duplicate Condition rows merge on parse", () => {
+    const r = parseBlock(withRows("- <b>Condition:</b> Soaked\n- <b>Condition:</b> Soaked | -1 physical: running"), { config: C });
+    assert.deepEqual(r.state.inv.status, [{ name: "Soaked", effects: [{ kind: "numeric", n: -1, category: "physical", focus: "running" }], hint: "" }]);
+});
+test("an empty Title or Condition row is a silent no-op", () => {
+    const base = emptyState(); base.inv.items = ["key"]; base.inv.money = { USD: "5" };
+    const r = parseBlock(withRows("- <b>Item I1:</b> key\n- <b>Title:</b>\n- <b>Condition:</b> "), { config: C });
+    assert.deepEqual(r.errors, []);
+    assert.deepEqual(r.state.inv.titles, []);
+    assert.deepEqual(r.state.inv.status, []);
+});

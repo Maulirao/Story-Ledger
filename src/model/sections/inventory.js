@@ -24,11 +24,10 @@ const COMMANDS = [
     { id: "inv.supply", form: "supply: amount unit | item", example: "supply: 12 rounds | 9mm ammunition", keywords: ["supply"] },
     { id: "inv.quantity", form: "I# quantity: amount unit", example: "I1 quantity: 12 rounds", keywords: ["quantity"] },
     { id: "inv.adjust", form: "I# adjust: delta (why)", example: "I1 adjust: -3 (fired)", keywords: ["adjust"] },
-    { id: "inv.title-add", form: "title: name", example: "title: Harbour Friend", keywords: ["title"] },
+    { id: "inv.title-add", form: "title: name | effects", example: "title: Harbour Friend | +1 social: dockworkers", keywords: ["title"] },
     { id: "inv.title-remove", form: "title - name", example: "title - Harbour Friend", keywords: ["title"] },
-    { id: "inv.status-add", form: "status + condition", example: "status + Tired", keywords: ["status"] },
+    { id: "inv.status-add", form: "status + condition | effects", example: "status + Legs spent | -2 physical: running", keywords: ["status"] },
     { id: "inv.status-remove", form: "status - condition", example: "status - Tired", keywords: ["status"] },
-    { id: "inv.mods", form: "mods: text", example: "mods: +1 Stealth (soft boots)", keywords: ["mods"] },
 ];
 
 // Legacy list rows (still read); new blocks write one Title/Condition row per entry.
@@ -284,7 +283,8 @@ export default {
             else if (hit && hit[0] === "items") {
                 const items = readList(m[2]); value.items.push(...items); itemIds.push(...items.map(() => null));
             }
-            else if (entryKey && unesc(m[2])) value[entryKey].push(readEntry(m[2]));
+            else if (entryKey && !unesc(m[2])) { /* an empty Title/Condition row is nothing */ }
+            else if (entryKey) value[entryKey].push(readEntry(m[2]));
             else if (hit) value[hit[0]].push(...readLegacyRow(m[2]));
             else if (label === "mods") { /* computed from effects; never read back */ }
             else {
@@ -297,6 +297,7 @@ export default {
         }
         if (itemIds.length) value.itemIds = itemIds;
         value.titles = mergeEntries(value.titles);
+        value.status = mergeEntries(value.status);
         if (errors.length && prevValue) for (const k of ["items", "titles", "status"]) if (!value[k].length || (k === "items" && itemError)) {
             value[k] = k === "items" ? [...prevValue[k]] : (prevValue[k] || []).map(toEntry);
             if (k === "items") {
@@ -328,6 +329,27 @@ export default {
             return true;
         };
         const entry = name => ({ name: name.trim(), effects: [], hint: "" });
+        const warn = (line, text) => ctx?.warnings?.push({ section: "Inventory", line, text });
+        const find = (list, name, raw) => {
+            const names = entryNames(list);
+            return normalized ? (nameMatches(names, name, raw)[0] ?? -1) : names.findIndex(x => same(x, name));
+        };
+        // "Name | effects" → the name and its parsed effects; null without a usable "|" split
+        const withEffects = (text, rawText) => {
+            const bar = text.indexOf("|");
+            if (bar < 0 || !text.slice(bar + 1).trim() || !text.slice(0, bar).trim()) return null;
+            const rawBar = rawText === undefined ? -1 : rawText.indexOf("|");
+            return { name: text.slice(0, bar).trim(), rawName: rawBar < 0 ? undefined : rawText.slice(0, rawBar).trim(), ...parseEffects(text.slice(bar + 1)) };
+        };
+        const needsEffect = (line, name) => warn(line, `"${name}" needs an effect — give it one with title: ${name} | effects.`);
+        // add a new entry or replace an existing one's effects (clearing its hint)
+        const setEntry = (list, line, parsed, title) => {
+            for (const w of parsed.warnings) warn(line, `Effect ignored: ${w}.`);
+            const at = find(list, parsed.name, parsed.rawName);
+            if (at < 0) list.push({ name: parsed.name, effects: parsed.effects, hint: "" });
+            else { list[at].effects = parsed.effects; list[at].hint = ""; }
+            if (title && !parsed.effects.length) needsEffect(line, parsed.name);
+        };
         lines.forEach((text, i) => {
             const line = String(text).trim();   // parseChanges already removed the list bullet
             const rawLine = normalized && raws[i] !== undefined ? String(raws[i]).trim() : null;
@@ -372,10 +394,19 @@ export default {
                 if (at < 0) unparsed.push(line);
                 else removeEntry(inv, at);
             }
-            else if ((m = line.match(/^title\s*:\s*(.+)$/i))) { if (!inv.titles.some(t => same(t.name, m[1]))) inv.titles.push(entry(m[1])); }
+            else if ((m = line.match(/^title\s*:\s*(.+)$/i))) {
+                const parsed = withEffects(m[1], rawOf(/^title\s*:\s*(.+)$/i));
+                if (parsed) setEntry(inv.titles, line, parsed, true);
+                else if (find(inv.titles, m[1].trim(), undefined) < 0) {
+                    inv.titles.push(entry(m[1]));
+                    needsEffect(line, m[1].trim());
+                }
+            }
             else if ((m = line.match(/^title\s*-\s*(.+)$/i))) { if (!del(inv.titles, m[1], rawOf(/^title\s*-\s*(.+)$/i))) unparsed.push(line); }
             else if ((m = line.match(/^status\s*[:+]\s*(.+)$/i))) {
                 // A model's semicolon-separated status recap adds conditions; only status - removes one.
+                const parsed = withEffects(m[1], rawOf(/^status\s*[:+]\s*(.+)$/i));
+                if (parsed) { setEntry(inv.status, line, parsed, false); return; }
                 const conditions = readList(m[1]);
                 if (!conditions.length) unparsed.push(line);
                 for (const condition of conditions) if (!inv.status.some(t => same(t.name, condition))) inv.status.push(entry(condition));
@@ -394,7 +425,7 @@ export default {
                     if (!removeStatus(inv.status, condition, aligned ? rawConditions[j] : undefined, del, normalized)) unparsed.push(`status - ${condition}`);
                 });
             }
-            else if (/^mods\s*:/i.test(line)) { /* Mods are computed from effects; leaves state untouched */ }
+            else if (/^mods\s*:/i.test(line)) warn(line, "Mods are computed from title and condition effects; use title: or status + with | effects.");
             else if ((m = line.match(/^\+\s*(.+)$/))) {
                 inv.items.push(m[1].trim());
                 inv.itemIds = inv.itemIds || [];
