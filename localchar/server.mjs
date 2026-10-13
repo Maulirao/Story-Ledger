@@ -152,7 +152,7 @@ const rebuild = act(async (args, snapshot, ctx) => {
     // ↻ keeps the dice its block already shows; rule proposals are not collected again.
     const out = core.rebuildMessage({ chat: ctx.chat, index, settings: ctx.settings, chatData: ctx.doc, userName: ctx.userName, collect: false });
     if (!out) return answer({ ok: false });
-    return answer({ ok: true }, [editReply(ctx.history, index, out.mes), ...out.notices.map(n => notifyEffect(n, ctx.settings))]);
+    return answer({ ok: true }, [editReply(ctx.history, index, out.mes), ...(out.chatDataPatch ? [writeData({ ...ctx.doc, ...out.chatDataPatch }, snapshot.chat_data_revision ?? 0)] : []), ...out.notices.map(n => notifyEffect(n, ctx.settings))]);
 });
 
 const saveRules = act(async (args, snapshot, ctx) => {
@@ -230,6 +230,12 @@ const questsSend = act(async (args, snapshot, ctx) => {
     return answer(result, [quietNotice("warning", "🗺️ Story Ledger", why)]);
 });
 
+const relationshipsPrune = act(async (args, snapshot, ctx) => {
+    const out = core.setRelationshipPruned({ chat: ctx.chat, settings: ctx.settings, chatData: ctx.doc, userName: ctx.userName }, String(args.key || ""), Boolean(args.pruned));
+    if (!out.ok) return answer({ ok: false }, [quietNotice("warning", "💞 Story Ledger", "That relationship is no longer available. Reopen the Relationships tab.")]);
+    return answer({ ok: true }, [writeData({ ...ctx.doc, ...out.chatDataPatch }, snapshot.chat_data_revision ?? 0)]);
+});
+
 /** The engine-number form -> a sanitized settings.config. The host stores it as a global setting. */
 const saveConfig = act(async (args, snapshot, ctx) => answer({ config: configFromForm(ctx.settings.config, args.form || {}) }));
 
@@ -303,6 +309,7 @@ export const actions = {
     save_fudges: saveFudges,
     clear_fudges: clearFudges,
     quests_send: questsSend,
+    relationships_prune: relationshipsPrune,
     save_config: saveConfig,
     reset_config: resetConfig,
     set_notebook_enabled: setNotebookEnabled,
@@ -341,6 +348,11 @@ export async function importStChat({ chat_metadata, message_map, boundary_map })
   if (Array.isArray(doc.corrections)) {
     doc.corrections = doc.corrections.map(c => ({ ...c, atLength: boundaryAt(boundary_map, c.atLength) }));
   }
+  for (const entry of Object.values(doc.relationshipOverrides || {})) {
+    if (Number.isInteger(entry.atLength)) entry.atLength = boundaryAt(boundary_map, entry.atLength);
+    if (Number.isInteger(entry.savedAt)) entry.savedAt = messageAt(message_map, entry.savedAt).index;
+    if (entry.restoreSwipeId !== undefined) entry.restoreSwipeId = 0; // LocalChar imports one selected variant per message.
+  }
   if (doc.fudges && Number.isInteger(doc.fudges.appliedTo)) {
     doc.fudges = { ...doc.fudges, appliedTo: messageAt(message_map, doc.fudges.appliedTo).index };
   }
@@ -375,6 +387,17 @@ export async function onFork({ data, fork_boundary, kept_message_ids }) {
   const kept = new Set(kept_message_ids || []);
   if (doc.notebook.clockOverride && doc.notebook.clockOverride.atLength > fork_boundary + 1) delete doc.notebook.clockOverride;
   if (Array.isArray(doc.corrections)) doc.corrections = doc.corrections.filter(c => c.atLength <= fork_boundary + 1);
+  // Pruning is a reader preference and follows the branch. A restore whose block
+  // was dropped must seed the saved values again, at the new branch's boundary.
+  for (const entry of Object.values(doc.relationshipOverrides || {})) {
+    if (entry.pruned) continue;
+    entry.atLength = Math.min(entry.atLength, fork_boundary + 1);
+    if (entry.savedAt > fork_boundary) delete entry.savedAt;
+    if (fork_boundary === entry.atLength - 1) {
+      delete entry.restoreMessage;
+      delete entry.seenRelations;
+    }
+  }
   if (doc.fudges && Number.isInteger(doc.fudges.appliedTo) && doc.fudges.appliedTo > fork_boundary) doc.fudges = null;
   doc.notebook.inbox = (doc.notebook.inbox || []).filter(item => !/^msg_/.test(String(item.source || "")) || kept.has(item.source));
   return { data: doc };

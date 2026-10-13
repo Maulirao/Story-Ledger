@@ -219,6 +219,14 @@ apply once; ticks retain the cap for each original turn. Conversion and decay ru
 at the turn of initialization, without rewriting earlier turns. Swipes and rebuilds
 use their own preceding snapshot, so discarded alternatives do not add changes.
 
+In **Story Ledger → Relationships**, use **Prune** beside a tracker to remove a
+one-time NPC relationship from future prompts and stop updating it. Each direction
+is separate. Pruning also works for relationships awaiting a `NEW` baseline.
+The collapsed **Pruned relationships** list keeps the saved values; **Restore**
+resumes tracking from those values. Model commands cannot recreate a pruned tracker.
+These choices are saved per chat. Existing replies stay intact, and the next reply's
+block reflects the choice.
+
 Recognized `World EVENT landed as aftermath` reports save what happened in the
 story even when that label differs from the World Sim selection. They record residue
 without changing the dice, tier, source, tracked World entries or unrelated residue debt.

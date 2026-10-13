@@ -160,6 +160,7 @@ export function applyTurn(prev, events, present, config) {
 
     // STAGGERED CONVERSION, then GRAVITY WELL.
     for (const [k, p] of Object.entries(s.pairs)) {
+        if (config.skipSchedulePairs?.includes(k)) continue;
         for (const a of config.axes) {
             if (s.ct % a.period !== 0 || p.acc[a.key] < a.threshold) continue;
             if (isWalled(p, a.key, config)) { say("wall", k, `${a.key} held by WALL (${a.key} = ${a.mirror} = ${p.axes[a.key]}).`); continue; }
@@ -174,6 +175,7 @@ export function applyTurn(prev, events, present, config) {
     }
     if (s.ct % config.phi.period === 0) {
         for (const [who, self] of Object.entries(s.selves)) {
+            if (config.skipScheduleSelves?.includes(who)) continue;
             if (self.acc >= config.phi.threshold) { self.phi = clamp(self.phi + 1, config.phi.min, config.phi.max); self.acc = 0; say("convert", who, `Φ → ${self.phi}.`); }
             else if (self.acc <= -config.phi.threshold) { self.phi = clamp(self.phi - 1, config.phi.min, config.phi.max); self.acc = 0; say("convert", who, `Φ → ${self.phi}.`); }
         }
@@ -184,6 +186,7 @@ export function applyTurn(prev, events, present, config) {
         if (s.ct % rule.period !== 0) continue;
         const [xk, mk] = rule.pair;
         for (const [k, p] of Object.entries(s.pairs)) {
+            if (config.skipSchedulePairs?.includes(k)) continue;
             if (isWalled(p, xk, config)) continue;
             const x = p.axes[xk], m = p.axes[mk];
             if (Math.abs(x - m) < config.decayLead) continue;

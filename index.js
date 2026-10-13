@@ -493,6 +493,21 @@ export async function openLedgerPopup(startTab = "rules") {
     };
     $root.on("change", ".sl-send", e => sendQuests([String(e.currentTarget.dataset.id)], e.currentTarget.checked));
     $root.on("change", "#sl-send-all", e => sendQuests("all", e.currentTarget.checked));
+    $root.on("click", "[data-rel-prune], [data-rel-restore]", async e => {
+        const button = e.currentTarget;
+        button.disabled = true;
+        try {
+            const pruned = button.dataset.relPrune !== undefined;
+            const out = core.setRelationshipPruned({ chat: ctx().chat || [], settings: settings(), chatData: chatData(), userName: ctx().name1 }, pruned ? button.dataset.relPrune : button.dataset.relRestore, pruned);
+            if (out.ok) await saveChatData(d => Object.assign(d, out.chatDataPatch));
+            else toastr.warning("That relationship is no longer available. Reopen the Relationships tab.", "💞 Story Ledger");
+        } catch (error) {
+            toastr.error(error?.message || "The relationship choice could not be saved.", "💞 Story Ledger");
+        } finally {
+            button.disabled = false;
+            refresh();
+        }
+    });
     $root.on("click", "[data-sl-popup-tab]", () => setTimeout(setMixed, 0));
 
     setTimeout(setMixed, 0);   // the master checkbox's partial state when the popup opens on the Quests tab

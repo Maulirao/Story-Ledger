@@ -210,6 +210,45 @@ async function snapshotOf(blocks = golden.sixTurns.blocks, chatData = golden.six
 const act = async (name, args, snapshot) => server.actions[name]({ name, args, snapshot });
 const dataOf = out => setData(out.effects).at(-1)?.data;
 
+test("relationships_prune saves the choice atomically and restoration reaches the next prompt", async () => {
+    assert.equal(typeof server.actions.relationships_prune, "function");
+    const snap = await snapshotOf();
+    const pruned = await act("relationships_prune", { key: "Mara→Jan", pruned: true }, snap);
+    assert.equal(pruned.result.ok, true);
+    const data = dataOf(pruned);
+    assert.equal(data.relationshipOverrides["Mara→Jan"].pruned, true);
+    assert.equal(setData(pruned.effects)[0].expected_revision, snap.chat_data_revision);
+    const prepared = await server.prepare(prepareInput(snap.history, { chat_data: data }));
+    assert.doesNotMatch(prepared.in_chat[0].value, /Mara → Jan · Φ/);
+    const restored = await act("relationships_prune", { key: "Mara→Jan", pruned: false }, { ...snap, chat_data: data });
+    assert.equal(dataOf(restored).relationshipOverrides["Mara→Jan"].pruned, false);
+    const next = await server.prepare(prepareInput(snap.history, { chat_data: dataOf(restored) }));
+    assert.match(next.in_chat[0].value, /Mara → Jan · Φ/);
+});
+
+test("rebuild persists the block index that consumed a relationship restoration", async () => {
+    const snap = await snapshotOf();
+    const pruned = await act("relationships_prune", { key: "Mara→Jan", pruned: true }, snap);
+    const restored = await act("relationships_prune", { key: "Mara→Jan", pruned: false }, { ...snap, chat_data: dataOf(pruned) });
+    const out = await act("rebuild", { message_id: snap.history.at(-1).id }, { ...snap, chat_data: dataOf(restored) });
+    assert.equal(dataOf(out)?.relationshipOverrides["Mara→Jan"].savedAt, snap.history.length - 1);
+});
+
+test("chat import maps relationship restoration positions and a fork reseeds a dropped restored block", async () => {
+    const source = { relationshipOverrides: {
+        "Mara→Jan": { from: "Mara", to: "Jan", pruned: false, atLength: 4, savedAt: 3, restoreSwipeId: 2 },
+        "Boatman→Jan": { from: "Boatman", to: "Jan", pruned: true },
+    } };
+    const imported = await server.importStChat({ chat_metadata: { storyLedger: source }, boundary_map: { 4: 2 }, message_map: { 3: { index: 1 } } });
+    assert.equal(imported.data.relationshipOverrides["Mara→Jan"].atLength, 2);
+    assert.equal(imported.data.relationshipOverrides["Mara→Jan"].savedAt, 1);
+    assert.equal(imported.data.relationshipOverrides["Mara→Jan"].restoreSwipeId, 0);
+    const forked = await server.onFork({ data: source, fork_boundary: 1, kept_message_ids: [] });
+    assert.equal(forked.data.relationshipOverrides["Mara→Jan"].atLength, 2);
+    assert.equal(forked.data.relationshipOverrides["Mara→Jan"].savedAt, undefined);
+    assert.equal(forked.data.relationshipOverrides["Boatman→Jan"].pruned, true);
+});
+
 test("every popup handler and flow has an action", () => {
     for (const name of ["rebuild", "save_rules", "decide_proposal", "import_legacy_notebook", "save_threads", "set_clock", "clear_clock",
         "save_fudges", "clear_fudges", "quests_send", "save_config", "reset_config", "set_notebook_enabled", "preview_turn",

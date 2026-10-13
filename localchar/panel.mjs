@@ -116,6 +116,14 @@ export function mountLedger({ host, body, startTab = "rules", fixedTab = null, r
         const on = selector => t.closest?.(selector);
         let hit;
         if ((hit = on("[data-sl-popup-tab]"))) { tab = hit.dataset.slPopupTab; render(); return; }
+        if ((hit = on("[data-rel-prune], [data-rel-restore]"))) {
+            hit.disabled = true;
+            try {
+                const pruned = hit.dataset.relPrune !== undefined;
+                await run("relationships_prune", { key: pruned ? hit.dataset.relPrune : hit.dataset.relRestore, pruned });
+            } finally { hit.disabled = false; }
+            return;
+        }
         if (on("#sl-save-rules")) { await run("save_rules", { rules: lines(body.querySelector("#sl-rules").value) }, "Rules saved. The next reply's block shows them."); return; }
         if (on("#sl-save-threads")) { await run("save_threads", { threads: lines(body.querySelector("#sl-threads").value) }, "Starting threads saved."); return; }
         if (on("#sl-import")) {

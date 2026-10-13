@@ -3075,6 +3075,7 @@ function applyTurn(prev, events, present, config) {
     say("phi", t.who, `Φ_acc ${amt >= 0 ? "+" : ""}${amt}${t.reason ? ` (${t.reason})` : ""}.`);
   }
   for (const [k, p] of Object.entries(s.pairs)) {
+    if (config.skipSchedulePairs?.includes(k)) continue;
     for (const a of config.axes) {
       if (s.ct % a.period !== 0 || p.acc[a.key] < a.threshold) continue;
       if (isWalled(p, a.key, config)) {
@@ -3092,6 +3093,7 @@ function applyTurn(prev, events, present, config) {
   }
   if (s.ct % config.phi.period === 0) {
     for (const [who, self] of Object.entries(s.selves)) {
+      if (config.skipScheduleSelves?.includes(who)) continue;
       if (self.acc >= config.phi.threshold) {
         self.phi = clamp(self.phi + 1, config.phi.min, config.phi.max);
         self.acc = 0;
@@ -3107,6 +3109,7 @@ function applyTurn(prev, events, present, config) {
     if (s.ct % rule.period !== 0) continue;
     const [xk, mk] = rule.pair;
     for (const [k, p] of Object.entries(s.pairs)) {
+      if (config.skipSchedulePairs?.includes(k)) continue;
       if (isWalled(p, xk, config)) continue;
       const x = p.axes[xk], m = p.axes[mk];
       if (Math.abs(x - m) < config.decayLead) continue;
@@ -4396,6 +4399,44 @@ function needsFixup(mes, sections = {}) {
   return sections.thoughts !== false && !validThoughts(changes.sections.Thoughts).length ? "thoughts" : null;
 }
 
+// src/model/relationship-pruning.js
+var clone4 = (value2) => JSON.parse(JSON.stringify(value2));
+var identity = (name, config) => plain(/^\s*\{\{user\}\}\s*$/i.test(name) ? config.userName || name : name).normalize("NFKC").toLowerCase();
+var same2 = (a, b, config) => identity(a, config) === identity(b, config);
+var matches = (entry2, from, to, config) => same2(entry2.from, from, config) && same2(entry2.to, to, config);
+var prunedEntries = (overrides) => Object.values(overrides || {}).filter((e) => e.pruned);
+var blocked = (entries, event, config) => entries.some((e) => matches(e, event.from, event.to, config));
+var senders = (rel) => [...Object.values(rel.pairs).map((p) => p.from), ...Object.keys(rel.awaiting || {}).map((k) => k.split("→")[0])];
+function withRelationshipOverrides(state, overrides, blockIndex, config, rebuildIndex = null) {
+  if (!Object.keys(overrides || {}).length) return state;
+  const s = clone4(state), rel = s.rel;
+  for (const [key2, entry2] of Object.entries(overrides)) {
+    if (entry2.pruned || !((entry2.savedAt ?? entry2.atLength) > blockIndex)) continue;
+    if (rebuildIndex !== null && rebuildIndex < entry2.atLength - 1) continue;
+    if (entry2.pair) rel.pairs[key2] = clone4(entry2.pair);
+    if (entry2.awaiting !== void 0) (rel.awaiting ||= {})[key2] = entry2.awaiting;
+    if (entry2.pending?.length) {
+      rel.pending = [...(rel.pending || []).filter((p) => !matches(entry2, p.from, p.to, config)), ...clone4(entry2.pending)];
+    }
+    if (entry2.self && (entry2.restoreSelf || !rel.selves[entry2.from])) rel.selves[entry2.from] = clone4(entry2.self);
+  }
+  const pruned = prunedEntries(overrides);
+  for (const [key2, p] of Object.entries(rel.pairs)) if (blocked(pruned, p, config)) delete rel.pairs[key2];
+  for (const key2 of Object.keys(rel.awaiting || {})) {
+    const [from, to] = key2.split("→");
+    if (blocked(pruned, { from, to }, config)) delete rel.awaiting[key2];
+  }
+  if (rel.pending) {
+    rel.pending = rel.pending.filter((p) => !blocked(pruned, p, config));
+    if (!rel.pending.length) delete rel.pending;
+  }
+  const active = senders(rel);
+  for (const who of Object.keys(rel.selves)) {
+    if (pruned.some((e) => same2(e.from, who, config)) && !active.some((from) => same2(from, who, config))) delete rel.selves[who];
+  }
+  return s;
+}
+
 // src/host/core.js
 var DEFAULT_SECTIONS = { scene: true, relationships: true, notebook: true, ...Object.fromEntries(SECTIONS.map((sec) => [sec.key, true])) };
 var DEFAULT_SETTINGS = { enabled: true, stickyNotices: true, fixupMode: "full", fixupHistory: 4, depth: 1, role: 0, placement: "auto", theme: "frankenstein", checkStyle: "dnd", config: {} };
@@ -4431,13 +4472,13 @@ var engineConfig = (settings, userName, extra = {}) => ({
   checkStyle: settings.checkStyle,
   ...extra
 });
-function startOf(chat, index, config, chatData) {
+function startOf(chat, index, config, chatData, rebuilding = false) {
   const d = chatData;
   const found = latestState(chat, index, config);
-  if (found) return { state: withClockOverride(found.state, d.notebook.clockOverride, found.index), errors: found.errors };
+  if (found) return { state: withRelationshipOverrides(withClockOverride(found.state, d.notebook.clockOverride, found.index), d.relationshipOverrides, found.index, config, rebuilding ? index : null), errors: found.errors };
   const s = initialState(chat.slice(0, index), config, { ctOffset: d.ctOffset ?? null, corrections: d.corrections || [] });
   if (!s.threads.length && d.notebook.threads.length) s.threads = [...d.notebook.threads];
-  return { state: withClockOverride(s, d.notebook.clockOverride, -1), errors: [] };
+  return { state: withRelationshipOverrides(withClockOverride(s, d.notebook.clockOverride, -1), d.relationshipOverrides, -1, config, rebuilding ? index : null), errors: [] };
 }
 var stateBefore = (chat, index, config, chatData) => startOf(chat, index, config, chatData).state;
 function fixupCaseFor({ chat, index, settings, busy }) {
@@ -4477,7 +4518,7 @@ function pairCard(state, from, to, config) {
     ...d.walls.map((w) => `<span class="sl-chip sl-wall">WALL ${esc2(w)}</span>`),
     ...d.patterns.map((p) => `<span class="sl-chip sl-pattern" title="${esc2(PATTERN_GLOSS[p])}">${esc2(p)}</span>`)
   ].join("");
-  return `<div class="sl-pair"><div class="sl-pair-head"><b>${esc2(from)} → ${esc2(to)}</b></div>
+  return `<div class="sl-pair"><div class="sl-pair-head"><b>${esc2(from)} → ${esc2(to)}</b> <button class="menu_button" data-rel-prune="${esc2(`${from}→${to}`)}">Prune</button></div>
         <div class="sl-chips">${chips}</div>
         <div class="sl-mirror-head"><span>fondness</span><span>friction</span></div>${rows}</div>`;
 }
@@ -4563,9 +4604,13 @@ function popupHtml(tab, view, previewBaseDice = null) {
   } else if (tab === "rel") {
     const here = /* @__PURE__ */ new Set([...state.scene.present, config.userName]);
     const pairs = Object.values(state.rel.pairs).sort((a, b) => (here.has(b.from) || here.has(b.to)) - (here.has(a.from) || here.has(a.to)));
+    const awaiting = Object.entries(state.rel.awaiting || {}).map(([key2, note]) => `<div class="sl-item"><b>${esc2(key2.replace("→", " → "))}</b> · Awaiting NEW${note ? ` — ${esc2(note)}` : ""} <button class="menu_button" data-rel-prune="${esc2(key2)}">Prune</button></div>`).join("");
+    const pruned = Object.entries(chatData.relationshipOverrides || {}).filter(([, entry2]) => entry2.pruned);
+    const archived = pruned.length ? `<details class="sl-pruned"><summary>Pruned relationships (${pruned.length})</summary><p class="sl-meta">Saved for you; not sent or updated. Restore a tracker to resume it from its saved values.</p>${pruned.map(([key2, entry2]) => `<div class="sl-item"><b>${esc2(entry2.from)} → ${esc2(entry2.to)}</b> <button class="menu_button" data-rel-restore="${esc2(key2)}">Restore</button></div>`).join("")}</details>` : "";
     body = `<div class="sl-meta">Turn ${state.ct} · present: ${state.scene.present.map(esc2).join(", ") || "—"}</div>
             <p class="sl-meta">Edit the numbers in the newest reply's block to correct them; the next turn starts from your edit.</p>
-            ${pairs.map((p) => pairCard(state, p.from, p.to, config)).join("") || "<p><i>No relationships yet. The model creates them with NEW lines; on a chat that ran another preset, the first reply calibrates them from its old state.</i></p>"}`;
+            <p class="sl-meta">Prune a one-time relationship to stop sending and tracking it. Its saved values can be restored below. This applies only to the selected direction; the next reply's block reflects your choice.</p>
+            ${pairs.map((p) => pairCard(state, p.from, p.to, config)).join("") || (!awaiting ? "<p><i>No active relationships. The model creates them with NEW lines; on a chat that ran another preset, the first reply calibrates them from its old state.</i></p>" : "")}${awaiting}${archived}`;
   } else {
     const cf = config;
     const axisRows = cf.axes.map((a) => `<tr><td title="${esc2(a.meaning)}">${esc2(a.name)} (${a.key})</td><td><input type="number" class="text_pole sl-num" data-cfg-axis="${a.key}" data-field="period" value="${a.period}"></td><td><input type="number" class="text_pole sl-num" data-cfg-axis="${a.key}" data-field="threshold" value="${a.threshold}"></td></tr>`).join("");
@@ -5093,6 +5138,16 @@ function mountLedger({ host, body, startTab = "rules", fixedTab = null, ready = 
     if (hit = on("[data-sl-popup-tab]")) {
       tab = hit.dataset.slPopupTab;
       render();
+      return;
+    }
+    if (hit = on("[data-rel-prune], [data-rel-restore]")) {
+      hit.disabled = true;
+      try {
+        const pruned = hit.dataset.relPrune !== void 0;
+        await run("relationships_prune", { key: pruned ? hit.dataset.relPrune : hit.dataset.relRestore, pruned });
+      } finally {
+        hit.disabled = false;
+      }
       return;
     }
     if (on("#sl-save-rules")) {
