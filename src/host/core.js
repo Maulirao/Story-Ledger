@@ -490,6 +490,9 @@ export function popupHtml(tab, view, previewBaseDice = null) {
             <h4>🎲 Fate & World Sim</h4>
             <div class="sl-grid">${[["deferredExpire", "Deferred expiry"], ["worldKeep", "World entries kept"], ["reach1Drop", "Drop Reach 1 at age"], ["pursuitLimit", "Pursuit limit"], ["residueKeep", "Residue lines kept"]]
                 .map(([k, label]) => `<label>${label} <input type="number" min="1" class="text_pole sl-num" data-fate="${k}" value="${cf.sectionConfig.fate[k]}"></label>`).join("")}</div>
+            <h4>🎖️ Titles</h4>
+            <div class="sl-grid">${[["softCap", "Soft cap"], ["hardCap", "Hard cap"], ["situationalMax", "Situational max"], ["retrofitBatch", "Retrofit per turn"]]
+                .map(([k, label]) => `<label>${label} <input type="number" min="1" class="text_pole sl-num" data-titles="${k}" value="${cf.sectionConfig.titles[k]}"></label>`).join("")}</div>
             <div class="sl-btns"><button class="menu_button" id="sl-save-config">Save engine numbers</button><button class="menu_button" id="sl-reset-config">Reset to defaults</button></div>`;
     }
     return `<div class="sl-popup">

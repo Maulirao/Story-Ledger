@@ -37,6 +37,7 @@ function readConfigControls(root) {
         chekhov: all("[data-chk]").map(el => [el.dataset.chk, el.value]),
         firing: String(root.querySelector("[data-chk-firing]")?.value || "model"),
         fate: all("[data-fate]").map(el => [el.dataset.fate, el.value]),
+        titles: all("[data-titles]").map(el => [el.dataset.titles, el.value]),
     });
 }
 

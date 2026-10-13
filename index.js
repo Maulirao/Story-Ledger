@@ -12,7 +12,7 @@
 
 import { setSend } from "./src/model/sections/quests.js";
 import { applyDecision, importFromLegacyNotebook, storyTime } from "./src/model/notebook.js";
-import { resolveConfig, sanitizeChekhov, sanitizeFate } from "./src/model/config.js";
+import { resolveConfig, sanitizeChekhov, sanitizeFate, sanitizeTitles } from "./src/model/config.js";
 import { latestState, stripBlocks, rewriteNewestSection } from "./src/model/turn.js";
 import { stripForPrompt, stripPromptText, renderTurnFacts } from "./src/model/prompt.js";
 import { buildLeanPrompt } from "./src/model/lean-prompt.js";
@@ -474,6 +474,9 @@ export async function openLedgerPopup(startTab = "rules") {
         const fateForm = {};
         $root.find("[data-fate]").each((_, el) => { fateForm[el.dataset.fate] = el.value; });
         c.sectionConfig.fate = sanitizeFate(fateForm, c.sectionConfig.fate);
+        const titlesForm = {};
+        $root.find("[data-titles]").each((_, el) => { titlesForm[el.dataset.titles] = el.value; });
+        c.sectionConfig.titles = sanitizeTitles(titlesForm, c.sectionConfig.titles);
         settings().config = c;
         saveSettings();
         done("Engine numbers saved. They apply from the next reply on.");

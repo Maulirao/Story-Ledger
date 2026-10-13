@@ -4574,6 +4574,8 @@ function popupHtml(tab, view, previewBaseDice = null) {
             </div>
             <h4>🎲 Fate & World Sim</h4>
             <div class="sl-grid">${[["deferredExpire", "Deferred expiry"], ["worldKeep", "World entries kept"], ["reach1Drop", "Drop Reach 1 at age"], ["pursuitLimit", "Pursuit limit"], ["residueKeep", "Residue lines kept"]].map(([k, label]) => `<label>${label} <input type="number" min="1" class="text_pole sl-num" data-fate="${k}" value="${cf.sectionConfig.fate[k]}"></label>`).join("")}</div>
+            <h4>🎖️ Titles</h4>
+            <div class="sl-grid">${[["softCap", "Soft cap"], ["hardCap", "Hard cap"], ["situationalMax", "Situational max"], ["retrofitBatch", "Retrofit per turn"]].map(([k, label]) => `<label>${label} <input type="number" min="1" class="text_pole sl-num" data-titles="${k}" value="${cf.sectionConfig.titles[k]}"></label>`).join("")}</div>
             <div class="sl-btns"><button class="menu_button" id="sl-save-config">Save engine numbers</button><button class="menu_button" id="sl-reset-config">Reset to defaults</button></div>`;
   }
   return `<div class="sl-popup">
@@ -4918,7 +4920,7 @@ function fudgeFromControls({ dice = {}, checks = { locked: false, values: [] }, 
   if (fire) fudge.fire = fire;
   return fudge;
 }
-function configFormFromControls({ cfg = [], gate = [], phi = [], axes = [], decay = [], skip = void 0, chekhov: chekhov2 = [], firing = "model", fate: fate2 = [] } = {}) {
+function configFormFromControls({ cfg = [], gate = [], phi = [], axes = [], decay = [], skip = void 0, chekhov: chekhov2 = [], firing = "model", fate: fate2 = [], titles = [] } = {}) {
   const pairs = (list) => Object.fromEntries(list);
   const nested = {};
   for (const [key2, field3, value2] of axes) (nested[key2] ||= {})[field3] = value2;
@@ -4929,7 +4931,8 @@ function configFormFromControls({ cfg = [], gate = [], phi = [], axes = [], deca
     axes: nested,
     decay: pairs(decay),
     chekhov: { ...pairs(chekhov2), firing },
-    fate: pairs(fate2)
+    fate: pairs(fate2),
+    titles: pairs(titles)
   };
   if (skip !== void 0) form.skip = skip;
   return form;
@@ -4950,6 +4953,7 @@ function configFromForm(current, form = {}) {
   if (form.skip !== void 0) c.offstageSkip = String(form.skip || "").split(/[,\s]+/).map(Number).filter(Number.isFinite);
   c.sectionConfig.chekhov = sanitizeChekhov(form.chekhov || {}, c.sectionConfig.chekhov);
   c.sectionConfig.fate = sanitizeFate(form.fate || {}, c.sectionConfig.fate);
+  c.sectionConfig.titles = sanitizeTitles(form.titles || {}, c.sectionConfig.titles);
   return c;
 }
 
@@ -4983,7 +4987,8 @@ function readConfigControls(root) {
     skip: root.querySelector("[data-cfg-skip]")?.value,
     chekhov: all("[data-chk]").map((el) => [el.dataset.chk, el.value]),
     firing: String(root.querySelector("[data-chk-firing]")?.value || "model"),
-    fate: all("[data-fate]").map((el) => [el.dataset.fate, el.value])
+    fate: all("[data-fate]").map((el) => [el.dataset.fate, el.value]),
+    titles: all("[data-titles]").map((el) => [el.dataset.titles, el.value])
   });
 }
 function mountLedger({ host, body, startTab = "rules", fixedTab = null, getSettings, setSettings }) {

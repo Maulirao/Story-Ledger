@@ -193,3 +193,12 @@ test("configFormFromControls gathers the engine numbers form", () => {
     assert.deepEqual(form.chekhov, { cap: "3", firing: "fate" });
     assert.deepEqual(form.fate, { worldKeep: "4" });
 });
+
+test("configFromForm sanitises title caps", () => {
+    const c = configFromForm(undefined, { titles: { softCap: "4", hardCap: "2" } });
+    assert.deepEqual(c.sectionConfig.titles, { softCap: 2, hardCap: 2, situationalMax: 2, retrofitBatch: 10 });
+});
+
+test("configFormFromControls carries the title caps", () => {
+    assert.deepEqual(configFormFromControls({ titles: [["softCap", "4"]] }).titles, { softCap: "4" });
+});
