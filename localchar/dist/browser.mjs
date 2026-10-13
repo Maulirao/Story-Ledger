@@ -547,13 +547,13 @@ function decimal(value2) {
   return integer + (tail ? `.${tail}` : "");
 }
 function adjustDecimal(balance, change) {
-  const signed = String(change).trim();
-  if (!/^[+-]/.test(signed)) return null;
-  const current = decimal(balance), delta = decimal(signed.slice(1));
+  const signed3 = String(change).trim();
+  if (!/^[+-]/.test(signed3)) return null;
+  const current = decimal(balance), delta = decimal(signed3.slice(1));
   if (current === null || delta === null) return null;
   const [a, af = ""] = current.split("."), [b, bf = ""] = delta.split(".");
   const scale = Math.max(af.length, bf.length);
-  const sum = BigInt(a + af.padEnd(scale, "0")) + (signed[0] === "-" ? -1n : 1n) * BigInt(b + bf.padEnd(scale, "0"));
+  const sum = BigInt(a + af.padEnd(scale, "0")) + (signed3[0] === "-" ? -1n : 1n) * BigInt(b + bf.padEnd(scale, "0"));
   if (sum < 0n) return null;
   const digits = sum.toString().padStart(scale + 1, "0");
   return decimal(scale ? `${digits.slice(0, -scale)}.${digits.slice(-scale)}` : digits);
@@ -701,6 +701,12 @@ function readLegacyList(text) {
     entries.push({ name: c.text, effects: [], hint: "" });
   }
   return { entries: mergeEntries(entries), dropped };
+}
+function capBonus(raw, { softCap, hardCap }) {
+  if (raw <= softCap) return { value: raw, cap: "" };
+  const reduced = softCap + Math.floor((raw - softCap) / 2);
+  if (reduced > hardCap) return { value: hardCap, cap: "hard cap" };
+  return { value: reduced, cap: "soft cap" };
 }
 
 // src/model/config.js
@@ -2350,16 +2356,188 @@ var thoughts_default = {
   template: (ctx) => commandTemplate("Thoughts", COMMANDS9, ctx)
 };
 
+// src/model/check-line.js
+var CATEGORIES2 = ["physical", "social", "mental"];
+var SIGNED = "[+-]\\d+";
+var SITUATIONAL = new RegExp(`\\+\\s*situational\\s+(${SIGNED})\\s*(?:\\(([^)]*)\\))?`, "gi");
+var SOURCE = new RegExp(`\\+\\s*(.+?)\\s+(${SIGNED})(?=\\s*(?:\\+\\s|=|$))`, "g");
+var SUM = new RegExp(`^(${SIGNED}|0)\\s*(?:(?:→|->)\\s*(${SIGNED}|0)\\s*(?:\\((soft cap|hard cap)\\))?)?$`, "i");
+var fold2 = (s) => String(s ?? "").replace(/[−–]/g, "-");
+var signed = (n) => n < 0 ? `-${-n}` : `+${n}`;
+function outcomeBand(d20, delta) {
+  if (d20 === 20) return "crit success";
+  if (d20 === 1) return "crit failure";
+  if (delta >= 8) return "crit success";
+  if (delta <= -8) return "crit failure";
+  if (delta >= 0) return "success";
+  if (delta >= -3) return "near miss";
+  return "failure";
+}
+function parseRoll(rest) {
+  const text = fold2(rest).trim();
+  const out = { sources: [], situational: null, legacyMod: null, raw: null, capped: null };
+  if (!text) return out;
+  const legacy = text.match(new RegExp(`^(${SIGNED})$`));
+  if (legacy) return { ...out, legacyMod: Number(legacy[1]) };
+  const eq = text.indexOf("=");
+  let body = eq < 0 ? text : text.slice(0, eq);
+  if (eq >= 0) {
+    const sum = text.slice(eq + 1).trim().match(SUM);
+    if (!sum) return null;
+    out.raw = Number(sum[1]);
+    out.capped = sum[2] === void 0 ? null : Number(sum[2]);
+  }
+  body = body.replace(SITUATIONAL, (_, n, why) => {
+    if (out.situational) out.sources.push({ name: "situational", n: Number(n) });
+    else out.situational = { n: Number(n), why: String(why ?? "").trim() };
+    return " ";
+  });
+  body = body.replace(SOURCE, (_, name, n) => {
+    out.sources.push({ name: name.trim(), n: Number(n) });
+    return " ";
+  });
+  return body.trim() ? null : out;
+}
+function parseCheckLine(line) {
+  const fields = String(line ?? "").split(/\s+·\s+/).map((f) => f.trim());
+  if (fields.length < 4) return null;
+  const head = fields[0];
+  const comma = head.indexOf(",");
+  const actor = (comma < 0 ? head : head.slice(0, comma)).trim();
+  const action = comma < 0 ? "" : head.slice(comma + 1).trim();
+  let i = 1, category = "";
+  if (!/^DC\s+\d+$/i.test(fields[i])) category = fields[i++].toLowerCase();
+  const dc = (fields[i++] || "").match(/^DC\s+(\d+)$/i);
+  const roll = (fields[i++] || "").match(/^d20\s+(\d+)(.*)$/i);
+  if (!actor || !dc || !roll) return null;
+  let total = null;
+  const t = fold2(fields[i] || "").match(/^total\s+(-?\d+)$/i);
+  if (t) {
+    total = Number(t[1]);
+    i++;
+  }
+  if (i !== fields.length - 1 || !fields[i]) return null;
+  const r = parseRoll(roll[2]);
+  if (!r) return null;
+  return {
+    actor,
+    action,
+    category,
+    dc: Number(dc[1]),
+    d20: Number(roll[1]),
+    sources: r.sources,
+    situational: r.situational,
+    legacyMod: r.legacyMod,
+    raw: r.raw,
+    capped: r.capped,
+    total,
+    outcome: fields[i]
+  };
+}
+var normOutcome = (s) => String(s ?? "").toLowerCase().replace(/[-_]/g, " ").replace(/\bcritical\b/g, "crit").replace(/\s+/g, " ").trim();
+var outcomeIs = (written, band) => {
+  const w = normOutcome(written);
+  return w.startsWith(band) && !/[a-z]/.test(w.charAt(band.length));
+};
+function checkSource(source, inv, category) {
+  const entries = [...inv?.titles || [], ...inv?.status || []];
+  const hits = nameMatches(entries.map((e) => e.name), source.name);
+  if (!hits.length) return { n: 0, problem: `"${source.name}" is not a title or condition` };
+  const entry2 = entries[hits[0]];
+  const numeric = (entry2.effects || []).filter((e) => e.kind === "numeric" && (!CATEGORIES2.includes(category) || e.category === category));
+  if (numeric.some((e) => e.n === source.n)) return { n: source.n, name: entry2.name };
+  if (!numeric.length) return { n: 0, name: entry2.name, problem: `${entry2.name} has no bonus in the ${category || "any"} category` };
+  return { n: numeric[0].n, name: entry2.name, problem: `${entry2.name} is ${numeric.map((e) => signed(e.n)).join(" or ")} ${category}, not ${signed(source.n)}` };
+}
+function verifyCheck(parsed, { die, inv, user, caps }) {
+  const problems = [];
+  const { softCap = 3, hardCap = 6, situationalMax = 2 } = caps || {};
+  const isUser = parsed.actor === "{{user}}" || Boolean(user) && parsed.actor.toLowerCase() === String(user).toLowerCase();
+  if (die === void 0) problems.push("no die left for this check");
+  else if (die !== parsed.d20) problems.push(`die is ${die}, not ${parsed.d20}`);
+  const d20 = die === void 0 ? parsed.d20 : die;
+  const situational = parsed.situational ? parsed.situational.n : 0;
+  const legacy = parsed.sources.length ? 0 : parsed.legacyMod || 0;
+  const ownRaw = parsed.sources.reduce((a, s) => a + s.n, 0) + situational + legacy;
+  let ownBonus = ownRaw, bonus, ledgerSources, ledgerSituational = parsed.situational, ledgerCap = "";
+  if (isUser) {
+    if (!parsed.category) problems.push("no category (physical, social or mental)");
+    else if (!CATEGORIES2.includes(parsed.category)) problems.push(`category "${parsed.category}" is not physical, social or mental`);
+    if (legacy) problems.push(`bonus ${signed(legacy)} has no named source`);
+    const seen = /* @__PURE__ */ new Set();
+    ledgerSources = [];
+    for (const s of parsed.sources) {
+      if (s.name.toLowerCase() === "situational") {
+        problems.push("only one situational per check");
+        continue;
+      }
+      const c = checkSource(s, inv, parsed.category);
+      if (c.problem) problems.push(c.problem);
+      const key2 = (c.name || s.name).toLowerCase();
+      if (c.name && seen.has(key2)) {
+        problems.push(`${c.name} is named twice`);
+        continue;
+      }
+      seen.add(key2);
+      if (c.n) ledgerSources.push({ name: c.name, n: c.n });
+    }
+    if (Math.abs(situational) > situationalMax) {
+      problems.push(`situational ${signed(situational)} is over ±${situationalMax}`);
+      ledgerSituational = { ...parsed.situational, n: Math.sign(situational) * situationalMax };
+    }
+    const sitN = ledgerSituational ? ledgerSituational.n : 0;
+    const split = (list) => ({ pos: list.filter((s) => s.n > 0).reduce((a, s) => a + s.n, 0), neg: list.filter((s) => s.n < 0).reduce((a, s) => a + s.n, 0) });
+    const own = split(parsed.sources), mine = split(ledgerSources);
+    ownBonus = capBonus(own.pos, { softCap, hardCap }).value + own.neg + situational + legacy;
+    const capped = capBonus(mine.pos, { softCap, hardCap });
+    ledgerCap = capped.cap;
+    bonus = capped.value + mine.neg + sitN + legacy;
+    if (parsed.raw !== null && parsed.capped === null && ownBonus !== ownRaw) problems.push(`bonus ${signed(ownRaw)} is capped: → ${signed(ownBonus)}`);
+  } else {
+    ledgerSources = parsed.sources;
+    bonus = ownRaw;
+  }
+  if (parsed.raw !== null && parsed.raw !== ownRaw) problems.push(`= ${signed(parsed.raw)} should be ${signed(ownRaw)}`);
+  if (parsed.capped !== null && parsed.capped !== ownBonus) problems.push(`→ ${signed(parsed.capped)} should be ${signed(ownBonus)}${isUser ? "" : " (no cap applies)"}`);
+  const effective = parsed.capped ?? parsed.raw ?? ownBonus;
+  if (parsed.total !== null && parsed.total !== parsed.d20 + effective) problems.push(`total ${parsed.total} should be ${parsed.d20 + effective}`);
+  if (parsed.total === null && parsed.legacyMod === null && (parsed.sources.length || parsed.situational)) problems.push("no total");
+  const total = d20 + bonus;
+  const band = outcomeBand(d20, total - parsed.dc);
+  if (!outcomeIs(parsed.outcome, band)) problems.push(`outcome "${parsed.outcome}" should be ${band}`);
+  if (!problems.length) return { ok: true, problems: [], ledgerLine: "" };
+  const parts = ledgerSources.map((s) => ` + ${s.name} ${signed(s.n)}`);
+  if (ledgerSituational) parts.push(` + situational ${signed(ledgerSituational.n)}${ledgerSituational.why ? ` (${ledgerSituational.why})` : ""}`);
+  let roll = `d20 ${d20}${parts.join("")}`;
+  if (parts.length) {
+    const raw = ledgerSources.reduce((a, s) => a + s.n, 0) + (ledgerSituational ? ledgerSituational.n : 0);
+    roll += ` = ${signed(raw)}${raw !== bonus ? ` → ${signed(bonus)} (${ledgerCap})` : ""}`;
+  } else if (legacy) roll += ` ${signed(legacy)}`;
+  return { ok: false, problems, ledgerLine: `↳ ledger: ${roll} · total ${total} · ${band}` };
+}
+
 // src/model/sections/checks.js
 var arrow = (ctx) => ctx && ctx.checkStyle === "arrow";
+var signed2 = (n) => n < 0 ? `-${-n}` : `+${n}`;
+var capsOf = (ctx) => ctx?.config?.sectionConfig?.titles || DEFAULT_SECTION_CONFIG.titles;
 var COMMANDS10 = [
   {
     id: "checks.check",
-    form: (ctx) => arrow(ctx) ? "Actor, gamble · d20 n ±m · Trajectory · the price" : "Actor, action · DC n · d20 n +m · Outcome",
-    example: (ctx) => arrow(ctx) ? "Mara, leaps the gap · d20 11 +1 · Grazing Shot · she drops her lantern" : "Mara, picks the lock · DC 12 · d20 14 +2 · success",
+    form: (ctx) => arrow(ctx) ? "Actor, gamble · d20 n ±m · Trajectory · the price" : "Actor, action · category · DC n · d20 n + Title ±n … = ±sum · total t · Outcome",
+    example: (ctx) => arrow(ctx) ? "Mara, leaps the gap · d20 11 +1 · Grazing Shot · she drops her lantern" : "Jan, makes Emilia laugh · social · DC 8 · d20 11 + Got Your Nose +1 + Mon Ancre +2 + Love of Her Life +2 = +5 → +4 (soft cap) · total 15 · success",
     keywords: []
   }
 ];
+var dndRules = ({ softCap, hardCap, situationalMax }) => [
+  "Checks (DnD): only a skilled action that can actually fail rolls; trivial tasks auto-pass.",
+  "Lock the DC first, from the task's difficulty and {{user}}'s proficiencies (Easy 1–5, Moderate 5–10, Hard 10–15, Impossible 15–20); titles and conditions go on the roll, by name, never into the DC.",
+  "Every check names its category: physical, social or mental.",
+  "On {{user}}'s roll, name every title and condition whose effect applies in that category, each with its number: `+ Mon Ancre +2`. Penalties always count, in full.",
+  `Positive title and condition bonuses on one roll are capped: up to ${signed2(softCap)} counts in full, half of anything beyond (rounded down), never more than ${signed2(hardCap)}; naming more titles past the cap adds nothing. Write \`= ±sum\` for the plain sum of every number, then \`→ ±capped (soft cap)\` (or hard cap) only when the cap changes it.`,
+  `Help or tools that are not titles go in at most one \`situational ±n (why)\`, at most ±${situationalMax}, not capped.`,
+  "Delta = total − DC: Nat 20 or +8 crit success · 0 to +7 success · −1 to −3 near miss · −4 to −7 failure · Nat 1 or −8 crit failure. Dice are law; never fudge. Never name DCs, dice or stats in prose.",
+  "Under `Check:`, one line per roll used: `Actor, action · category · DC n · d20 n + Title ±n … [+ situational ±n (why)] = ±sum [→ ±capped (soft cap)] · total t · Outcome`. Use the dice in order, one per line. With no bonus: `d20 14 · total 14`. The ledger checks the die, every name and number, the cap, the total and the outcome, and adds its own line when they disagree."
+].join(" ");
 var checks_default = {
   key: "checks",
   title: (ctx) => arrow(ctx) ? "🏹 WIND'S ARROW" : "🎲 DND TASK SIM",
@@ -2377,7 +2555,19 @@ var checks_default = {
   apply(state, lines2, ctx) {
     state.perTurn.checks.rolls = Array.isArray(ctx.rolls) ? [...ctx.rolls] : [];
     state.perTurn.checks.fudged = ctx.fudgedDice.includes("checks");
-    for (const l of lines2) if (String(l).trim()) state.perTurn.checks.lines.push(String(l).trim());
+    const out = state.perTurn.checks.lines;
+    let n = 0;
+    for (const l of lines2) {
+      const line = String(l).trim();
+      if (!line) continue;
+      const parsed = arrow(ctx) ? null : parseCheckLine(line);
+      out.push(parsed ? line.replace(/->/g, "→") : line);
+      if (!parsed) continue;
+      const r = verifyCheck(parsed, { die: state.perTurn.checks.rolls[n++], inv: state.inv, user: ctx.userName, caps: capsOf(ctx) });
+      if (r.ok) continue;
+      out.push(r.ledgerLine);
+      ctx.warnings.push({ section: "Check", text: `${parsed.actor}: ${r.problems.join("; ")}` });
+    }
     return [];
   },
   facts(state, ctx) {
@@ -2386,7 +2576,7 @@ var checks_default = {
     return [arrow(ctx) ? `Wind Rolls: ${r.join(", ")} — one per kinetic gamble, in order, ±1–3 for context; 1–7 Wind Drift, 8–14 Grazing Shot, 15–20 Bullseye.` : `Dice for skill checks: d20s ${r.join(", ")} — use them in order, one per check; lock the DC first.`];
   },
   prompt: () => "",
-  rules: (ctx) => arrow(ctx) ? "Checks (Wind's Arrow): only uncertain, high-stakes kinetic gambles roll; mundane or conversational actions auto-pass. Commit to the outcome before writing: Wind Drift fails or is intercepted with a real setback, Grazing Shot succeeds at an immediate physical or tactical cost, Bullseye is clean. Under `Check:`, one line per roll used: `Actor, gamble · d20 n ±m · Trajectory · the price`." : "Checks (DnD): only a skilled action that can actually fail rolls; trivial tasks auto-pass. Lock the DC first from proficiency, items and titles (Easy 1–5, Moderate 5–10, Hard 10–15, Impossible 15–20), then Delta = d20 + mods − DC: Nat 20 or +8 crit success · 0 to +7 success · −1 to −3 near miss · −4 to −7 failure · Nat 1 or −8 crit failure. Dice are law; never fudge. Never name DCs, dice or stats in prose. Under `Check:`, one line per roll used: `Actor, action · DC n · d20 n +m · Outcome`.",
+  rules: (ctx) => arrow(ctx) ? "Checks (Wind's Arrow): only uncertain, high-stakes kinetic gambles roll; mundane or conversational actions auto-pass. Commit to the outcome before writing: Wind Drift fails or is intercepted with a real setback, Grazing Shot succeeds at an immediate physical or tactical cost, Bullseye is clean. Under `Check:`, one line per roll used: `Actor, gamble · d20 n ±m · Trajectory · the price`." : dndRules(capsOf(ctx)),
   commands: COMMANDS10,
   template: (ctx) => commandTemplate("Check", COMMANDS10, ctx)
 };

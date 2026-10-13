@@ -718,13 +718,18 @@ export const FIXTURES = {
         },
         malformed: [],
     },
+    // the DnD example verifies against these titles and this die, so it adds no ledger line
     "checks.check": {
         heading: "Check",
+        config: { dice: { fate: { a: 10, b: 1, c: 5 }, checks: [11] } },
+        seed: s => {
+            s.inv.titles = ["Got Your Nose", "Mon Ancre", "Love of Her Life"].map((name, i) => ({ name, effects: [{ kind: "numeric", n: i ? 2 : 1, category: "social", focus: "Emilia" }], hint: "" }));
+        },
         expect(r, before, { style }) {
             clean(r);
             assert.deepEqual(r.state.perTurn.checks.lines, [style === "arrow"
                 ? "Mara, leaps the gap · d20 11 +1 · Grazing Shot · she drops her lantern"
-                : "Mara, picks the lock · DC 12 · d20 14 +2 · success"]);
+                : "Jan, makes Emilia laugh · social · DC 8 · d20 11 + Got Your Nose +1 + Mon Ancre +2 + Love of Her Life +2 = +5 → +4 (soft cap) · total 15 · success"]);
         },
         malformed: [],
     },
