@@ -90,6 +90,7 @@ test("the relationship notice names each refused line and why", () => {
 // ── second live turn ──
 import { renderTurnFacts } from "../src/model/prompt.js";
 import { renderBlock, parseBlock } from "../src/model/block.js";
+const E = (...names) => names.map(name => ({ name, effects: [], hint: "" }));
 
 const NEW_LINE = "NEW Mara → Jan: E 3, M 4, L 3, Er 3, Ph 4, Ec 5, Pr 3, St 4, Sg 3, Ad 3, Ag 3, Pt 4 | Φ 2 (old friends)";
 
@@ -141,26 +142,26 @@ test("an update naming an unknown quest id stays unread", () => {
 
 test("the screenshot's status list is stored as separate conditions", () => {
     const r = run(emptyState(), "Inventory:\n- status: fed (crêpes); legs spent (-2 for Buoy Race); awaiting one warm-up lap");
-    assert.deepEqual(r.state.inv.status, ["fed (crêpes)", "legs spent (-2 for Buoy Race)", "awaiting one warm-up lap"]);
-    assert.equal(r.state.inv.mods, "");
+    assert.deepEqual(r.state.inv.status, E("fed (crêpes)", "legs spent (-2 for Buoy Race)", "awaiting one warm-up lap"));
+    assert.equal("mods" in r.state.inv, false);
     assert.deepEqual(r.unparsed, []);
     assert.deepEqual(parseBlock(renderBlock(r.state, { rules: [], config: C, sections: {} }), { config: C }).state.inv, r.state.inv);
 });
 
 test("status shorthand preserves existing conditions and avoids duplicates", () => {
     const s = emptyState();
-    s.inv.status = ["Tired", "Injured"];
+    s.inv.status = E("Tired", "Injured");
     const r = run(s, "Inventory:\n- STATUS: tired; fed; fed; rope&#59; burn\n- status - tired");
-    assert.deepEqual(r.state.inv.status, ["Injured", "fed", "rope; burn"]);
+    assert.deepEqual(r.state.inv.status, E("Injured", "fed", "rope; burn"));
     assert.deepEqual(r.unparsed, []);
-    assert.deepEqual(s.inv.status, ["Tired", "Injured"]);
+    assert.deepEqual(s.inv.status, E("Tired", "Injured"));
 });
 
 test("an empty status shorthand cannot clear carried conditions", () => {
     const s = emptyState();
-    s.inv.status = ["Tired"];
+    s.inv.status = E("Tired");
     const r = run(s, "Inventory:\n- status: —\n- status:");
-    assert.deepEqual(r.state.inv.status, ["Tired"]);
+    assert.deepEqual(r.state.inv.status, E("Tired"));
     assert.equal(r.unparsed.length, 2);
 });
 
@@ -374,31 +375,31 @@ test("an unknown item qualifier is not mistaken for a removal explanation", () =
 
 test("the screenshot's status removal clears each named condition", () => {
     const s = emptyState();
-    s.inv.status = ["fed", "warm-up lap complete", "legs spent (-2 stands, race penalty live)"];
+    s.inv.status = E("fed", "warm-up lap complete", "legs spent (-2 stands, race penalty live)");
     const r = run(s, "Inventory:\n- status - warm-up lap complete; legs spent (-2 stands, race penalty live)");
-    assert.deepEqual(r.state.inv.status, ["fed"]);
+    assert.deepEqual(r.state.inv.status, E("fed"));
     assert.deepEqual(r.unparsed, []);
 });
 
 test("status plus lists store conditions separately, including an escaped semicolon", () => {
     const r = run(emptyState(), "Inventory:\n- status + Tired; Inspired; rope&#59; burn\n- status - tired; rope&#59; burn");
-    assert.deepEqual(r.state.inv.status, ["Inspired"]);
+    assert.deepEqual(r.state.inv.status, E("Inspired"));
     assert.deepEqual(r.unparsed, []);
 });
 
 test("status list removals clear known conditions and ignore absent conditions", () => {
     const s = emptyState();
-    s.inv.status = ["Tired", "Injured"];
+    s.inv.status = E("Tired", "Injured");
     const r = run(s, "Inventory:\n- status - tired; Unknown");
-    assert.deepEqual(r.state.inv.status, ["Injured"]);
+    assert.deepEqual(r.state.inv.status, E("Injured"));
     assert.deepEqual(r.unparsed, []);
 });
 
 test("a literal carried status containing a semicolon is removed exactly first", () => {
     const s = emptyState();
-    s.inv.status = ["Tired; Inspired", "Tired", "Inspired"];
+    s.inv.status = E("Tired; Inspired", "Tired", "Inspired");
     const r = run(s, "Inventory:\n- status - Tired; Inspired");
-    assert.deepEqual(r.state.inv.status, ["Tired", "Inspired"]);
+    assert.deepEqual(r.state.inv.status, E("Tired", "Inspired"));
     assert.deepEqual(r.unparsed, []);
 });
 
@@ -557,11 +558,11 @@ test("recognized landed reports save narrative aftermath independently of World 
 
 test("a status conversion explanation removes only the named old condition", () => {
     const s = emptyState();
-    s.inv.status = ["warm-up fatigue", "Inspired"];
+    s.inv.status = E("warm-up fatigue", "Inspired");
     const r = run(s, "Inventory:\n- status - warm-up fatigue converted to full arm/shoulder spend (race spent)");
     assert.deepEqual(r.unparsed, []);
-    assert.deepEqual(r.state.inv.status, ["Inspired"]);
-    assert.deepEqual(s.inv.status, ["warm-up fatigue", "Inspired"]);
+    assert.deepEqual(r.state.inv.status, E("Inspired"));
+    assert.deepEqual(s.inv.status, E("warm-up fatigue", "Inspired"));
     const legacy = parseChanges('<Story_Ledger>\nInventory:\n- status - warm-up fatigue converted to full arm/shoulder spend (race spent)\n</Story_Ledger>');
     const tagged = postTurn(s, legacy, C);
     assert.deepEqual(tagged.state.inv.status, s.inv.status);
@@ -570,23 +571,23 @@ test("a status conversion explanation removes only the named old condition", () 
 
 test("status conversion removals prefer exact names, ignore absent names and refuse ambiguous names", () => {
     const s = emptyState();
-    s.inv.status = ["Tired", "Tired converted to rested", '“race fatigue”', '„race fatigue‟'];
+    s.inv.status = E("Tired", "Tired converted to rested", '“race fatigue”', '„race fatigue‟');
     const r = run(s, 'Inventory:\n- status - Tired converted to rested\n- status - Unknown converted to rested\n- status - "race fatigue" converted to rested');
-    assert.deepEqual(r.state.inv.status, ["Tired", '“race fatigue”', '„race fatigue‟']);
+    assert.deepEqual(r.state.inv.status, E("Tired", '“race fatigue”', '„race fatigue‟'));
     assert.deepEqual(r.unparsed.map(x => x.line), ['status - "race fatigue" converted to rested']);
 });
 
 test("status conversion explanations cannot swallow another list member", () => {
     const s = emptyState();
-    s.inv.status = ["Tired", "Inspired"];
+    s.inv.status = E("Tired", "Inspired");
     const r = run(s, "Inventory:\n- status - Tired converted to rested; Inspired; Unknown");
-    assert.deepEqual(r.state.inv.status, []);
+    assert.deepEqual(r.state.inv.status, E());
     assert.deepEqual(r.unparsed, []);
 });
 
 test("ambiguous full status names never fall back to a shorter conversion prefix", () => {
     const s = emptyState();
-    s.inv.status = ["Tired converted to “rested”", "Tired converted to „rested‟", "Tired"];
+    s.inv.status = E("Tired converted to “rested”", "Tired converted to „rested‟", "Tired");
     const line = 'status - Tired converted to "rested"';
     const r = run(s, `Inventory:\n- ${line}`);
     assert.deepEqual(r.state.inv.status, s.inv.status);

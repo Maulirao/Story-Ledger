@@ -1,14 +1,17 @@
 // ──────────────────────────────────────────────────────────────────────────────
 // 🎒 INV & SKILLS — {{user}}'s items, titles, conditions and roll modifiers.
-// Tracked for {{user}} only. Items have I# rows; titles and conditions remain
-// "; "-separated, with a literal ";" escaped as &#59;. Old item lists still read. Pure.
+// Tracked for {{user}} only. Items have I# rows; titles and conditions are entries
+// with effects, one Title/Condition row each. The Mods row is computed from those
+// effects and never read back. Old item, Titles/Skills and Status lists still read. Pure.
 // ──────────────────────────────────────────────────────────────────────────────
 
-import { esc, unesc, ROW, removeByName, nameMatches, closedForm } from "../text.js";
+import { esc, unesc, ROW, nameMatches, closedForm } from "../text.js";
 import { commandTemplate } from "../commands.js";
 import { foldQuotes } from "../normalize.js";
 import { nextId } from "../state.js";
 import { decimal, adjustDecimal } from "../decimal.js";
+import { parseEffects, formatEffects, readLegacyList, mergeEntries } from "../effects.js";
+import { resolveConfig } from "../config.js";
 
 const COMMANDS = [
     { id: "inv.add", form: "+ item", example: "+ brass key", keywords: [] },
@@ -28,8 +31,9 @@ const COMMANDS = [
     { id: "inv.mods", form: "mods: text", example: "mods: +1 Stealth (soft boots)", keywords: ["mods"] },
 ];
 
+// Legacy list rows (still read); new blocks write one Title/Condition row per entry.
 const ROWS = [["items", "Inv"], ["titles", "Titles/Skills"], ["status", "Status"]];
-const writeList = list => list.map(v => esc(v).replace(/;/g, "&#59;")).join("; ") || "—";
+const ENTRY_ROWS = { title: "titles", condition: "status" };
 // split on ";" that is not the end of an entity such as &amp; or &#124;
 const readList = text => {
     const t = String(text || "").trim();
@@ -37,7 +41,55 @@ const readList = text => {
     return t.split(/(?<!&(?:amp|lt|gt|#\d+));\s*/).map(v => unesc(v.replace(/&#59;/g, ";"))).filter(Boolean);
 };
 const same = (a, b) => a.trim().toLowerCase() === b.trim().toLowerCase();
-const remove = (list, v) => { const i = list.findIndex(x => same(x, v)); if (i < 0) return false; list.splice(i, 1); return true; };
+
+const nameOf = e => (typeof e === "string" ? e : e.name);
+const toEntry = e => (typeof e === "string" ? { name: e, effects: [], hint: "" } : { name: e.name, effects: structuredClone(e.effects || []), hint: e.hint || "" });
+/** The names of a title or condition list. */
+export const entryNames = list => (list || []).map(nameOf);
+
+/** Older in-memory inventories: string titles/status become entries, `mods` is dropped. Mutates. */
+export function normalizeInv(inv) {
+    if (!inv) return inv;
+    for (const k of ["titles", "status"]) inv[k] = (inv[k] || []).map(toEntry);
+    delete inv.mods;
+    return inv;
+}
+
+/** `Name | effects`, `Name | needs effect — old: hint`, or a condition's bare name. */
+function writeEntry(e, title) {
+    const effects = e.effects.length ? esc(formatEffects(e.effects)).replace(/&amp;#59;/g, "&#59;") : "";
+    if (effects) return `${esc(e.name)} | ${effects}`;
+    return title || e.hint ? `${esc(e.name)} | needs effect${e.hint ? ` — old: ${esc(e.hint)}` : ""}` : esc(e.name);
+}
+
+/** A Title/Condition row value back to an entry. Splits on the last " | " that is followed by effects or the marker. */
+function readEntry(raw) {
+    const text = String(raw || "");
+    for (let at = text.lastIndexOf(" | "); at >= 0; at = text.lastIndexOf(" | ", at - 1)) {
+        const name = unesc(text.slice(0, at)), right = unesc(text.slice(at + 3));
+        if (!name) break;
+        const marker = right.match(/^needs effect\b(?:\s*—\s*old:\s*([\s\S]*))?/i);
+        if (marker) return { name, effects: [], hint: (marker[1] || "").trim() };
+        const { effects } = parseEffects(right);
+        if (effects.length) return { name, effects, hint: "" };
+    }
+    return { name: unesc(text), effects: [], hint: "" };
+}
+
+/** An older Titles/Skills or Status list row → entries (escaped pipes and semicolons stay inside names). */
+function readLegacyRow(raw) {
+    const decoded = String(raw || "").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;(?!#(?:59|124);)/g, "&");
+    const back = s => s.replace(/&#124;/g, "|").replace(/&#59;/g, ";").replace(/&amp;/g, "&");
+    return readLegacyList(decoded).entries.map(e => ({ ...e, name: back(e.name), hint: back(e.hint) }));
+}
+
+/** Positive numeric effects summed per category; a sum over the hard cap notes the cap. */
+function modsRow(value) {
+    const { hardCap } = resolveConfig().sectionConfig.titles;
+    const sums = { physical: 0, social: 0, mental: 0 };
+    for (const e of [...value.titles, ...value.status]) for (const f of e.effects) if (f.kind === "numeric" && f.n > 0) sums[f.category] += f.n;
+    return Object.entries(sums).map(([k, n]) => (n ? `${k} +${n}${n > hardCap ? ` raw (capped +${hardCap} per roll)` : ""}` : `${k} —`)).join(" · ");
+}
 
 // Legacy tagged replies recognize removal explanations; other qualifiers stay literal.
 const EXPLAINED = /\s+\((?:dropped|lost|used|left|given|consumed|discarded|spent|handed)\b[^()]*\)\s*$/i;
@@ -46,7 +98,7 @@ const validId = id => /^I[1-9]\d*$/i.test(String(id)) && Number.isSafeInteger(Nu
 
 /** Add persistent identities alongside the string list, including older/imported inventories. Mutates. */
 export function ensureItemIds(state, prevInv) {
-    const inv = state.inv;
+    const inv = normalizeInv(state.inv);
     if (!inv || (!inv.items.length && !inv.itemIds)) return;
     const rawIds = inv.itemIds || [];
     const claimed = new Set(rawIds.filter(validId).map(id => id.toUpperCase()));
@@ -164,7 +216,7 @@ function itemIndex(list, text, rawText, normalized) {
 }
 
 // A conversion annotation describes why the old condition ended; it does not add the new one.
-const hasFoldedName = (list, text) => list.some(value => same(foldQuotes(value), foldQuotes(text)));
+const hasFoldedName = (list, text) => list.some(value => same(foldQuotes(nameOf(value)), foldQuotes(text)));
 function removeStatus(list, text, rawText, del, normalized) {
     if (del(list, text, rawText)) return true;
     // A failed removal with quote-equivalent candidates is ambiguous, not an annotation.
@@ -187,24 +239,26 @@ export default {
     change: "Inventory",
     aliases: ["Inv", "Inv & Skills"],
     carried: true,
-    empty: () => ({ items: [], titles: [], status: [], mods: "" }),
+    empty: () => ({ items: [], titles: [], status: [] }),
     render: value => [
         ...Object.entries(value.money || {}).map(([currency, amount]) => `- <b>Money${currency ? ` ${esc(currency)}` : ""}:</b> ${amount}`),
         ...(value.items.length ? value.items.map((item, i) => {
             const id = value.itemIds[i], supply = value.supplies?.[id];
             return supply ? `- <b>Supply ${id}:</b> amount: ${supply.amount} | unit: ${esc(supply.unit)} | item: ${esc(item)}` : `- <b>Item ${id}:</b> ${esc(item)}`;
         }) : ["- <b>Inv:</b> —"]),
-        ...ROWS.filter(([k]) => k !== "items").map(([k, label]) => `- <b>${label}:</b> ${writeList(value[k])}`),
-        `- <b>Mods:</b> ${value.mods ? esc(value.mods) : "—"}`,
+        ...value.titles.map(e => `- <b>Title:</b> ${writeEntry(e, true)}`),
+        ...value.status.map(e => `- <b>Condition:</b> ${writeEntry(e, false)}`),
+        `- <b>Mods:</b> ${modsRow(value)}`,
     ],
     parse(rows, prevValue) {
-        const value = { items: [], titles: [], status: [], mods: "" }, errors = [];
+        const value = { items: [], titles: [], status: [] }, errors = [];
         const itemIds = [], seen = new Set();
         let itemError = false, moneyError = false;
         for (const row of rows) {
             const m = row.match(ROW);
             const label = m && m[1].replace(/:\s*$/, "").trim().toLowerCase();
             const hit = m && ROWS.find(([, l]) => l.toLowerCase() === label);
+            const entryKey = m && Object.hasOwn(ENTRY_ROWS, label) && ENTRY_ROWS[label];
             const item = m && m[1].match(/^Item\s+(I\d+)\s*:?\s*$/i);
             const money = m && m[1].match(/^Money(?:\s+([^:]+))?\s*:?\s*$/i);
             const supply = m && m[1].match(/^Supply\s+(I\d+)\s*:?\s*$/i);
@@ -230,8 +284,9 @@ export default {
             else if (hit && hit[0] === "items") {
                 const items = readList(m[2]); value.items.push(...items); itemIds.push(...items.map(() => null));
             }
-            else if (hit) value[hit[0]] = readList(m[2]);
-            else if (label === "mods") { const t = unesc(m[2]); value.mods = t === "—" ? "" : t; }
+            else if (entryKey && unesc(m[2])) value[entryKey].push(readEntry(m[2]));
+            else if (hit) value[hit[0]].push(...readLegacyRow(m[2]));
+            else if (label === "mods") { /* computed from effects; never read back */ }
             else {
                 errors.push(row);
                 // Unknown labels may be damaged money or supply rows. Preserve
@@ -241,8 +296,9 @@ export default {
             }
         }
         if (itemIds.length) value.itemIds = itemIds;
+        value.titles = mergeEntries(value.titles);
         if (errors.length && prevValue) for (const k of ["items", "titles", "status"]) if (!value[k].length || (k === "items" && itemError)) {
-            value[k] = [...prevValue[k]];
+            value[k] = k === "items" ? [...prevValue[k]] : (prevValue[k] || []).map(toEntry);
             if (k === "items") {
                 if (prevValue.itemIds) value.itemIds = [...prevValue.itemIds];
                 else delete value.itemIds;
@@ -263,7 +319,15 @@ export default {
         // the comment path removes by raw name with a quote fallback; tagged replies stay exact
         const normalized = Boolean(ctx && ctx.normalizedChanges);
         const raws = normalized ? ctx.rawLinesUnder("Inventory") : [];
-        const del = normalized ? removeByName : (list, v) => remove(list, v);
+        // titles and conditions are entries: match by name
+        const del = (list, v, raw) => {
+            const names = entryNames(list);
+            const at = normalized ? (nameMatches(names, v, raw)[0] ?? -1) : names.findIndex(x => same(x, v));
+            if (at < 0) return false;
+            list.splice(at, 1);
+            return true;
+        };
+        const entry = name => ({ name: name.trim(), effects: [], hint: "" });
         lines.forEach((text, i) => {
             const line = String(text).trim();   // parseChanges already removed the list bullet
             const rawLine = normalized && raws[i] !== undefined ? String(raws[i]).trim() : null;
@@ -308,13 +372,13 @@ export default {
                 if (at < 0) unparsed.push(line);
                 else removeEntry(inv, at);
             }
-            else if ((m = line.match(/^title\s*:\s*(.+)$/i))) { if (!inv.titles.some(t => same(t, m[1]))) inv.titles.push(m[1].trim()); }
+            else if ((m = line.match(/^title\s*:\s*(.+)$/i))) { if (!inv.titles.some(t => same(t.name, m[1]))) inv.titles.push(entry(m[1])); }
             else if ((m = line.match(/^title\s*-\s*(.+)$/i))) { if (!del(inv.titles, m[1], rawOf(/^title\s*-\s*(.+)$/i))) unparsed.push(line); }
             else if ((m = line.match(/^status\s*[:+]\s*(.+)$/i))) {
                 // A model's semicolon-separated status recap adds conditions; only status - removes one.
                 const conditions = readList(m[1]);
                 if (!conditions.length) unparsed.push(line);
-                for (const condition of conditions) if (!inv.status.some(t => same(t, condition))) inv.status.push(condition);
+                for (const condition of conditions) if (!inv.status.some(t => same(t.name, condition))) inv.status.push(entry(condition));
             }
             else if ((m = line.match(/^status\s*-\s*(.+)$/i))) {
                 // Keep literal legacy values containing semicolons removable by their exact name.
@@ -330,7 +394,7 @@ export default {
                     if (!removeStatus(inv.status, condition, aligned ? rawConditions[j] : undefined, del, normalized)) unparsed.push(`status - ${condition}`);
                 });
             }
-            else if ((m = line.match(/^mods\s*:\s*(.*)$/i))) inv.mods = m[1].trim();
+            else if (/^mods\s*:/i.test(line)) { /* Mods are computed from effects; leaves state untouched */ }
             else if ((m = line.match(/^\+\s*(.+)$/))) {
                 inv.items.push(m[1].trim());
                 inv.itemIds = inv.itemIds || [];
@@ -359,9 +423,8 @@ export default {
         if (money.length) parts.push(`Money: ${money.join("; ")}`);
         if (supplies.length) parts.push(`Supplies: ${supplies.join("; ")}`);
         if (items.length) parts.push(`carries ${items.join("; ")}`);
-        if (value.titles.length) parts.push(`titles ${value.titles.join("; ")}`);
-        if (value.status.length) parts.push(`status ${value.status.join("; ")}`);
-        if (value.mods) parts.push(`mods ${value.mods}`);
+        if (value.titles.length) parts.push(`titles ${entryNames(value.titles).join("; ")}`);
+        if (value.status.length) parts.push(`status ${entryNames(value.status).join("; ")}`);
         return parts.length ? `{{user}}: ${parts.join(" · ")}` : "";
     },
     rules: () => [

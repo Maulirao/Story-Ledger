@@ -66,12 +66,6 @@ function nameMatches(list, value2, rawValue) {
   hits = list.flatMap((x, i) => nameKey(foldQuotes(x)) === folded ? [i] : []);
   return hits.length === 1 ? hits : [];
 }
-function removeByName(list, value2, rawValue) {
-  const hits = nameMatches(list, value2, rawValue);
-  if (!hits.length) return false;
-  list.splice(hits[0], 1);
-  return true;
-}
 
 // src/model/sections/people.js
 function findName(names, name) {
@@ -565,6 +559,363 @@ function adjustDecimal(balance, change) {
   return decimal(scale ? `${digits.slice(0, -scale)}.${digits.slice(-scale)}` : digits);
 }
 
+// src/model/effects.js
+var CATEGORIES = ["physical", "social", "mental"];
+var NUMERIC = /^([+-])(\d+)\s+(physical|social|mental)\b\s*:?\s*(.*)$/i;
+var SIGNED_WORD = /^[+-]\d+\s+([^\s:;,()]+)/;
+var PROFICIENCY = /^proficiency\s*:\s*(.+)$/i;
+var JUNK = /^(all prior|all previous|—)$/i;
+var HAS_SIGNED_NUMBER = /(?<!\w)[+-]\d/;
+var fold = (s) => String(s ?? "").replace(/[−–]/g, "-");
+var unescSemi = (s) => s.replace(/&#59;/g, ";");
+var escSemi = (s) => s.replace(/;/g, "&#59;");
+function splitTop(text, seps) {
+  const out = [];
+  let depth = 0, cur = "";
+  for (const ch of String(text ?? "")) {
+    if (ch === "(") depth++;
+    else if (ch === ")") depth = Math.max(0, depth - 1);
+    if (depth === 0 && seps.includes(ch) && !(ch === ";" && cur.endsWith("&#59"))) {
+      out.push(cur);
+      cur = "";
+    } else cur += ch;
+  }
+  out.push(cur);
+  return out;
+}
+function parsePiece(piece) {
+  const text = fold(piece).trim();
+  const prof = text.match(PROFICIENCY);
+  if (prof) return { effect: { kind: "proficiency", skill: unescSemi(prof[1].trim()) } };
+  const num = text.match(NUMERIC);
+  if (num) {
+    const n = Number(num[2]) * (num[1] === "-" ? -1 : 1);
+    if (n === 0 || Math.abs(n) > 2) return { effect: null, warning: `"${text}" is out of range (use ±1 or ±2)` };
+    return { effect: { kind: "numeric", n, category: num[3].toLowerCase(), focus: unescSemi(num[4].trim()) } };
+  }
+  const odd = text.match(SIGNED_WORD);
+  const narrative = { kind: "narrative", text: unescSemi(String(piece).trim()) };
+  return odd && !CATEGORIES.includes(odd[1].toLowerCase()) ? { effect: narrative, warning: `unknown category "${odd[1]}"` } : { effect: narrative };
+}
+var isStructured = (r) => r.effect && r.effect.kind !== "narrative";
+function parseEffects(text, { legacy = false } = {}) {
+  const effects = [], warnings = [];
+  let complete = true, any = false;
+  for (const raw of splitTop(text, ";")) {
+    if (!raw.trim()) continue;
+    let pieces = [raw];
+    if (legacy) {
+      const commas = splitTop(raw, ",").filter((p) => p.trim());
+      if (commas.length > 1 && commas.every((p) => isStructured(parsePiece(p)))) pieces = commas;
+    }
+    for (const p of pieces) {
+      any = true;
+      const r = parsePiece(p);
+      if (r.warning) warnings.push(r.warning);
+      if (r.effect) effects.push(r.effect);
+      if (!isStructured(r)) complete = false;
+    }
+  }
+  return { effects, warnings, complete: any && complete };
+}
+function formatEffects(effects) {
+  return (effects || []).map((e) => {
+    if (e.kind === "numeric") {
+      return `${e.n < 0 ? "-" : "+"}${Math.abs(e.n)} ${e.category}${e.focus ? `: ${escSemi(e.focus)}` : ""}`;
+    }
+    if (e.kind === "proficiency") return `proficiency: ${escSemi(e.skill)}`;
+    return escSemi(e.text);
+  }).join("; ");
+}
+function trailingParen(piece) {
+  if (!piece.endsWith(")")) return null;
+  let depth = 0;
+  for (let i = piece.length - 1; i >= 0; i--) {
+    if (piece[i] === ")") depth++;
+    else if (piece[i] === "(" && --depth === 0) {
+      const name = piece.slice(0, i).trim();
+      return name ? { name, inner: piece.slice(i + 1, -1).trim() } : null;
+    }
+  }
+  return null;
+}
+var baseName = (name) => trailingParen(name)?.name ?? name;
+function cleanPiece(raw) {
+  let text = raw.trim();
+  const dropped = [];
+  if (/^(status|mods)\s*:/i.test(text)) return { text: "", dropped: [text] };
+  const prior = text.match(/^(all prior|all previous)\s*\+\s*/i);
+  if (prior) {
+    dropped.push(prior[1]);
+    text = text.slice(prior[0].length);
+  }
+  for (let prev = ""; prev !== text; ) {
+    prev = text;
+    text = text.replace(/^\+\s*/, "").replace(/^NEW\s*:\s*/i, "").trim();
+  }
+  if (!text || JUNK.test(text)) {
+    if (text) dropped.push(text);
+    return { text: "", dropped };
+  }
+  return { text, dropped };
+}
+function mergeEntries(list) {
+  const out = [], byKey = /* @__PURE__ */ new Map();
+  for (const e of list || []) {
+    const key2 = baseName(e.name).toLowerCase();
+    const have = byKey.get(key2);
+    if (!have) {
+      const copy = { name: e.name, effects: [...e.effects || []], hint: e.hint || "" };
+      byKey.set(key2, copy);
+      out.push(copy);
+      continue;
+    }
+    if (have.name !== e.name) have.name = baseName(have.name);
+    if (!have.effects.length && e.effects?.length) {
+      have.effects = [...e.effects];
+      have.hint = "";
+    } else if (!have.effects.length && !have.hint && e.hint) have.hint = e.hint;
+  }
+  return out;
+}
+function readLegacyList(text) {
+  const flat = String(text ?? "");
+  const seps = splitTop(flat, ";").length > 1 ? ";|" : ",|";
+  const entries = [], dropped = [];
+  for (const raw of splitTop(flat, seps)) {
+    const c = cleanPiece(raw);
+    dropped.push(...c.dropped);
+    if (!c.text) continue;
+    const paren = trailingParen(c.text);
+    if (paren) {
+      const parsed = parseEffects(paren.inner, { legacy: true });
+      if (parsed.complete && parsed.effects.length) {
+        entries.push({ name: paren.name, effects: parsed.effects, hint: "" });
+        continue;
+      }
+      if (HAS_SIGNED_NUMBER.test(fold(paren.inner))) {
+        entries.push({ name: paren.name, effects: [], hint: paren.inner });
+        continue;
+      }
+    }
+    entries.push({ name: c.text, effects: [], hint: "" });
+  }
+  return { entries: mergeEntries(entries), dropped };
+}
+
+// src/model/config.js
+var DEFAULT_AXES = [
+  { key: "E", name: "Eros", kind: "fond", mirror: "M", period: 5, threshold: 10, meaning: "romantic fondness" },
+  { key: "M", name: "Misos", kind: "friction", mirror: "E", period: 5, threshold: 10, meaning: "romantic friction" },
+  { key: "L", name: "Ludus", kind: "fond", mirror: "Er", period: 3, threshold: 8, meaning: "playful fondness" },
+  { key: "Er", name: "Eris", kind: "friction", mirror: "L", period: 3, threshold: 8, meaning: "playful friction" },
+  { key: "Ph", name: "Philia", kind: "fond", mirror: "Ec", period: 5, threshold: 10, meaning: "friendship fondness" },
+  { key: "Ec", name: "Echthros", kind: "friction", mirror: "Ph", period: 5, threshold: 10, meaning: "friendship friction" },
+  { key: "Pr", name: "Pragma", kind: "fond", mirror: "St", period: 7, threshold: 12, meaning: "practical fondness" },
+  { key: "St", name: "Stasis", kind: "friction", mirror: "Pr", period: 7, threshold: 12, meaning: "practical friction" },
+  { key: "Sg", name: "Storge", kind: "fond", mirror: "Ad", period: 11, threshold: 12, meaning: "familial fondness" },
+  { key: "Ad", name: "Adiaphora", kind: "friction", mirror: "Sg", period: 11, threshold: 12, meaning: "familial friction" },
+  { key: "Ag", name: "Agape", kind: "fond", mirror: "Pt", period: 7, threshold: 10, meaning: "selfless fondness" },
+  { key: "Pt", name: "Phthonos", kind: "friction", mirror: "Ag", period: 7, threshold: 10, meaning: "giving friction / resentment" }
+];
+var DEFAULT_RELATION_CONFIG = {
+  axes: DEFAULT_AXES,
+  axisMin: 1,
+  // "NEVER 0"
+  axisMax: 20,
+  tickCap: 2,
+  // +2 per accumulator per turn
+  directMax: 2,
+  // DIRECT_SHIFT is +1 or +2
+  phi: { min: -20, max: 20, accCap: 30, period: 23, threshold: 12 },
+  // MIRROR DECAY: on each period, if the gap between a pair is ≥ lead, the trailing
+  // axis loses 1, never below floor = min(floorMax, max(1, ⌈leading / floorDivisor⌉)).
+  decay: [
+    { pair: ["L", "Er"], period: 6 },
+    { pair: ["E", "M"], period: 10 },
+    { pair: ["Ph", "Ec"], period: 10 },
+    { pair: ["Ag", "Pt"], period: 14 },
+    { pair: ["Pr", "St"], period: 14 },
+    { pair: ["Sg", "Ad"], period: 22 }
+  ],
+  decayLead: 5,
+  floorDivisor: 4,
+  floorMax: 4,
+  offstageSkip: [4, 8, 12, 15],
+  // trailing value at which an offstage pair does not decay
+  wallMin: 5,
+  // WALL: tied pair, both ≥ this → conversion and decay freeze
+  gravityMin: 6,
+  // GRAVITY WELL: fondness converts while its mirror ≥ this → mirror acc +1
+  romanceGate: { E: 6, L: 6 },
+  // romantic/sexual initiation allowed when E or L reaches these
+  tiers: [
+    { min: 1, max: 5, fond: "Fond", friction: "Distant" },
+    { min: 6, max: 10, fond: "Affectionate", friction: "Cold" },
+    { min: 11, max: 15, fond: "Devoted", friction: "Hostile" },
+    { min: 16, max: 20, fond: "Ultimate", friction: "Murderous" }
+  ]
+};
+var DEFAULT_SECTION_CONFIG = {
+  lastBeats: 3,
+  // 🧾 LAST keeps this many newest beats
+  chekhov: {
+    eligibleAge: 6,
+    // a bullet may fire from this age
+    pruneAge: 12,
+    // unfired bullets this old are pruned to Fired
+    cap: 20,
+    // at most this many active bullets
+    maxLoadsPerTurn: 1,
+    // more loads in one reply are kept but warned about
+    firedKeep: 10,
+    // Fired keeps this many newest; 0 = all
+    firing: "fate"
+    // Fate's pick; "model" keeps the reader-selected timing.
+  },
+  fate: {
+    modifiers: { recentMajor: -3, deferred3: 4, deferred12: 2, public: 2 },
+    ladder: [{ q: 0, minor: 16, major: 20 }, { q: 3, minor: 12, major: 19 }, { q: 7, minor: 8, major: 17 }],
+    newsMax: 6,
+    trueFloor: 3,
+    hpLadder: [{ hp: 1, weighted: 14 }, { hp: 3, weighted: 9 }, { hp: 5, weighted: 5 }],
+    collision: { minorDefer: 12, majorComplicate: 10 },
+    dangerC: 20,
+    deferredExpire: 6,
+    worldKeep: 5,
+    reach1Drop: 15,
+    minorWorld: { reach: 2, age: 4 },
+    majorWorld: { reach: 3, age: 8 },
+    ripe: { reach: 3, age: 12 },
+    pursuitLimit: 8,
+    residueKeep: 12
+  },
+  titles: {
+    softCap: 3,
+    // title bonuses above this are soft-capped
+    hardCap: 6,
+    // no title bonus may exceed this
+    situationalMax: 2,
+    // situational titles applied at most this often
+    retrofitBatch: 10
+    // titles retrofitted per batch
+  },
+  worldsim: {
+    standard: [
+      { from: 1, to: 2, name: "CALM", text: "The wider world goes on without a notable interruption" },
+      { from: 3, to: 4, name: "GOOD NEWS", text: "A community gets a small relief or useful opening" },
+      { from: 5, to: 6, name: "BAD NEWS", text: "A shortage, closure, or loss adds ordinary pressure somewhere nearby" },
+      { from: 7, to: 8, name: "RUMOUR", text: "A rumor spreads, mixing one true detail with speculation" },
+      { from: 9, to: 10, name: "OPPORTUNITY", text: "A trade, job, or request offers a practical chance" },
+      { from: 11, to: 12, name: "DISRUPTION", text: "Weather, transit, or a service interrupts someone's plans" },
+      { from: 13, to: 14, name: "CONFLICT", text: "A dispute between groups becomes public" },
+      { from: 15, to: 16, name: "ARRIVAL", text: "A newcomer or convoy brings unfamiliar needs or news" },
+      { from: 17, to: 18, name: "CRISIS", text: "A regional incident calls for an immediate response" },
+      { from: 19, to: 20, name: "CALM", text: "The wider world goes on without a notable interruption" }
+    ],
+    duo: [
+      { from: 1, to: 2, name: "CALM", text: "Nothing outside the moment demands their attention" },
+      { from: 3, to: 4, name: "GOOD NEWS", text: "A small kindness or success eases their day" },
+      { from: 5, to: 6, name: "MISUNDERSTANDING", text: "A comment lands badly and needs clarification" },
+      { from: 7, to: 8, name: "INTERRUPTION", text: "A personal errand or small need complicates the moment" },
+      { from: 9, to: 10, name: "OPENING", text: "A shared interest or offer creates a chance to connect" },
+      { from: 11, to: 12, name: "TENSION", text: "A private worry or unmet need surfaces between them" },
+      { from: 13, to: 14, name: "COMPLICATION", text: "Something they planned goes wrong and needs coordination" },
+      { from: 15, to: 16, name: "REVELATION", text: "Someone shares a small personal detail they may keep private" },
+      { from: 17, to: 18, name: "PRESSURE", text: "A difficult personal choice or boundary lands in the moment" },
+      { from: 19, to: 20, name: "CALM", text: "Nothing outside the moment demands their attention" }
+    ]
+  }
+};
+function resolveConfig(overrides) {
+  const base = JSON.parse(JSON.stringify(DEFAULT_RELATION_CONFIG));
+  base.sectionConfig = JSON.parse(JSON.stringify(DEFAULT_SECTION_CONFIG));
+  const sc = overrides && typeof overrides === "object" ? overrides.sectionConfig : null;
+  if (sc && typeof sc === "object") {
+    for (const [k, v] of Object.entries(sc)) {
+      if (k === "chekhov" && v && typeof v === "object") base.sectionConfig.chekhov = validChekhov(v, base.sectionConfig.chekhov);
+      else if (k === "fate" && v && typeof v === "object") base.sectionConfig.fate = mergeKnown(base.sectionConfig.fate, v);
+      else if (k === "worldsim" && v && typeof v === "object") base.sectionConfig.worldsim = mergeKnown(base.sectionConfig.worldsim, v);
+      else if (k === "titles" && v && typeof v === "object") base.sectionConfig.titles = sanitizeTitles(v, base.sectionConfig.titles);
+      else if (k in base.sectionConfig && typeof v === typeof base.sectionConfig[k]) base.sectionConfig[k] = v;
+    }
+  }
+  if (!overrides || typeof overrides !== "object") return base;
+  for (const [k, v] of Object.entries(overrides)) {
+    if (!(k in base)) continue;
+    if (k === "sectionConfig") continue;
+    if (Array.isArray(base[k])) base[k] = Array.isArray(v) ? JSON.parse(JSON.stringify(v)) : base[k];
+    else if (base[k] && typeof base[k] === "object") base[k] = { ...base[k], ...v || {} };
+    else if (typeof v === typeof base[k]) base[k] = v;
+  }
+  return base;
+}
+var axisByKey = (config, key2) => config.axes.find((a) => a.key === key2);
+function mergeKnown(defaults, input) {
+  const out = JSON.parse(JSON.stringify(defaults));
+  for (const [key2, value2] of Object.entries(input || {})) {
+    if (!(key2 in defaults)) continue;
+    const initial = defaults[key2];
+    if (Array.isArray(initial)) {
+      if (Array.isArray(value2)) out[key2] = JSON.parse(JSON.stringify(value2));
+    } else if (initial && typeof initial === "object") {
+      if (value2 && typeof value2 === "object" && !Array.isArray(value2)) out[key2] = mergeKnown(initial, value2);
+    } else if (typeof value2 === typeof initial && (typeof value2 !== "number" || Number.isFinite(value2))) out[key2] = value2;
+  }
+  return out;
+}
+function validChekhov(v, defaults) {
+  const out = { ...defaults };
+  const MIN = { eligibleAge: 0, pruneAge: 1, cap: 1, maxLoadsPerTurn: 1, firedKeep: 0 };
+  for (const [k, min] of Object.entries(MIN)) {
+    const n = v[k];
+    if (typeof n === "number" && Number.isInteger(n) && n >= min) out[k] = n;
+  }
+  if (v.firing === "model" || v.firing === "fate") out.firing = v.firing;
+  if (out.pruneAge <= out.eligibleAge) out.pruneAge = defaults.pruneAge > out.eligibleAge ? defaults.pruneAge : out.eligibleAge + 1;
+  return out;
+}
+function sanitizeChekhov(input, prev) {
+  const num = (k, min) => {
+    const raw = input[k];
+    if (raw === void 0 || raw === null || String(raw).trim() === "" || !Number.isFinite(Number(raw))) return prev[k];
+    return Math.max(min, Math.round(Number(raw)));
+  };
+  const out = {
+    eligibleAge: num("eligibleAge", 0),
+    pruneAge: num("pruneAge", 1),
+    cap: num("cap", 1),
+    maxLoadsPerTurn: num("maxLoadsPerTurn", 1),
+    firedKeep: num("firedKeep", 0),
+    firing: input.firing === "fate" ? "fate" : "model"
+  };
+  if (out.pruneAge <= out.eligibleAge) out.pruneAge = out.eligibleAge + 1;
+  return out;
+}
+function sanitizeTitles(input = {}, prev = DEFAULT_SECTION_CONFIG.titles) {
+  const num = (k, min, max) => {
+    const raw = input[k];
+    if (raw === void 0 || raw === null || String(raw).trim() === "" || !Number.isFinite(Number(raw))) return prev[k];
+    return Math.min(max, Math.max(min, Math.round(Number(raw))));
+  };
+  const hardCap = num("hardCap", 0, 20);
+  return {
+    softCap: Math.min(num("softCap", 0, 20), hardCap),
+    hardCap,
+    situationalMax: num("situationalMax", 0, 5),
+    retrofitBatch: num("retrofitBatch", 1, 30)
+  };
+}
+function sanitizeFate(input = {}, prev = DEFAULT_SECTION_CONFIG.fate) {
+  const out = JSON.parse(JSON.stringify(prev));
+  for (const key2 of ["deferredExpire", "worldKeep", "reach1Drop", "pursuitLimit", "residueKeep"]) {
+    const raw = input[key2];
+    if (raw === void 0 || raw === null || String(raw).trim() === "" || !Number.isFinite(Number(raw))) continue;
+    out[key2] = Math.max(1, Math.round(Number(raw)));
+  }
+  return out;
+}
+
 // src/model/sections/inventory.js
 var COMMANDS6 = [
   { id: "inv.add", form: "+ item", example: "+ brass key", keywords: [] },
@@ -584,24 +935,55 @@ var COMMANDS6 = [
   { id: "inv.mods", form: "mods: text", example: "mods: +1 Stealth (soft boots)", keywords: ["mods"] }
 ];
 var ROWS = [["items", "Inv"], ["titles", "Titles/Skills"], ["status", "Status"]];
-var writeList = (list) => list.map((v) => esc(v).replace(/;/g, "&#59;")).join("; ") || "—";
+var ENTRY_ROWS = { title: "titles", condition: "status" };
 var readList = (text) => {
   const t = String(text || "").trim();
   if (!t || t === "—") return [];
   return t.split(/(?<!&(?:amp|lt|gt|#\d+));\s*/).map((v) => unesc(v.replace(/&#59;/g, ";"))).filter(Boolean);
 };
 var same = (a, b) => a.trim().toLowerCase() === b.trim().toLowerCase();
-var remove = (list, v) => {
-  const i = list.findIndex((x) => same(x, v));
-  if (i < 0) return false;
-  list.splice(i, 1);
-  return true;
-};
+var nameOf = (e) => typeof e === "string" ? e : e.name;
+var toEntry = (e) => typeof e === "string" ? { name: e, effects: [], hint: "" } : { name: e.name, effects: structuredClone(e.effects || []), hint: e.hint || "" };
+var entryNames = (list) => (list || []).map(nameOf);
+function normalizeInv(inv) {
+  if (!inv) return inv;
+  for (const k of ["titles", "status"]) inv[k] = (inv[k] || []).map(toEntry);
+  delete inv.mods;
+  return inv;
+}
+function writeEntry(e, title) {
+  const effects = e.effects.length ? esc(formatEffects(e.effects)).replace(/&amp;#59;/g, "&#59;") : "";
+  if (effects) return `${esc(e.name)} | ${effects}`;
+  return title || e.hint ? `${esc(e.name)} | needs effect${e.hint ? ` — old: ${esc(e.hint)}` : ""}` : esc(e.name);
+}
+function readEntry(raw) {
+  const text = String(raw || "");
+  for (let at = text.lastIndexOf(" | "); at >= 0; at = text.lastIndexOf(" | ", at - 1)) {
+    const name = unesc(text.slice(0, at)), right = unesc(text.slice(at + 3));
+    if (!name) break;
+    const marker = right.match(/^needs effect\b(?:\s*—\s*old:\s*([\s\S]*))?/i);
+    if (marker) return { name, effects: [], hint: (marker[1] || "").trim() };
+    const { effects } = parseEffects(right);
+    if (effects.length) return { name, effects, hint: "" };
+  }
+  return { name: unesc(text), effects: [], hint: "" };
+}
+function readLegacyRow(raw) {
+  const decoded = String(raw || "").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;(?!#(?:59|124);)/g, "&");
+  const back = (s) => s.replace(/&#124;/g, "|").replace(/&#59;/g, ";").replace(/&amp;/g, "&");
+  return readLegacyList(decoded).entries.map((e) => ({ ...e, name: back(e.name), hint: back(e.hint) }));
+}
+function modsRow(value2) {
+  const { hardCap } = resolveConfig().sectionConfig.titles;
+  const sums = { physical: 0, social: 0, mental: 0 };
+  for (const e of [...value2.titles, ...value2.status]) for (const f of e.effects) if (f.kind === "numeric" && f.n > 0) sums[f.category] += f.n;
+  return Object.entries(sums).map(([k, n]) => n ? `${k} +${n}${n > hardCap ? ` raw (capped +${hardCap} per roll)` : ""}` : `${k} —`).join(" · ");
+}
 var EXPLAINED = /\s+\((?:dropped|lost|used|left|given|consumed|discarded|spent|handed)\b[^()]*\)\s*$/i;
 var itemKey = (text) => foldQuotes(text).trim().replace(/^1\s+/, "").toLowerCase();
 var validId = (id) => /^I[1-9]\d*$/i.test(String(id)) && Number.isSafeInteger(Number(String(id).slice(1)));
 function ensureItemIds(state, prevInv) {
-  const inv = state.inv;
+  const inv = normalizeInv(state.inv);
   if (!inv || !inv.items.length && !inv.itemIds) return;
   const rawIds = inv.itemIds || [];
   const claimed = new Set(rawIds.filter(validId).map((id) => id.toUpperCase()));
@@ -715,7 +1097,7 @@ function itemIndex(list, text, rawText, normalized) {
   const single = item.match(/^1\s+(.+)$/);
   return single ? list.findIndex((value2) => same(value2, single[1])) : -1;
 }
-var hasFoldedName = (list, text) => list.some((value2) => same(foldQuotes(value2), foldQuotes(text)));
+var hasFoldedName = (list, text) => list.some((value2) => same(foldQuotes(nameOf(value2)), foldQuotes(text)));
 function removeStatus(list, text, rawText, del, normalized) {
   if (del(list, text, rawText)) return true;
   if (!normalized || hasFoldedName(list, text)) return false;
@@ -735,24 +1117,26 @@ var inventory_default = {
   change: "Inventory",
   aliases: ["Inv", "Inv & Skills"],
   carried: true,
-  empty: () => ({ items: [], titles: [], status: [], mods: "" }),
+  empty: () => ({ items: [], titles: [], status: [] }),
   render: (value2) => [
     ...Object.entries(value2.money || {}).map(([currency, amount]) => `- <b>Money${currency ? ` ${esc(currency)}` : ""}:</b> ${amount}`),
     ...value2.items.length ? value2.items.map((item, i) => {
       const id = value2.itemIds[i], supply = value2.supplies?.[id];
       return supply ? `- <b>Supply ${id}:</b> amount: ${supply.amount} | unit: ${esc(supply.unit)} | item: ${esc(item)}` : `- <b>Item ${id}:</b> ${esc(item)}`;
     }) : ["- <b>Inv:</b> —"],
-    ...ROWS.filter(([k]) => k !== "items").map(([k, label]) => `- <b>${label}:</b> ${writeList(value2[k])}`),
-    `- <b>Mods:</b> ${value2.mods ? esc(value2.mods) : "—"}`
+    ...value2.titles.map((e) => `- <b>Title:</b> ${writeEntry(e, true)}`),
+    ...value2.status.map((e) => `- <b>Condition:</b> ${writeEntry(e, false)}`),
+    `- <b>Mods:</b> ${modsRow(value2)}`
   ],
   parse(rows, prevValue) {
-    const value2 = { items: [], titles: [], status: [], mods: "" }, errors = [];
+    const value2 = { items: [], titles: [], status: [] }, errors = [];
     const itemIds = [], seen = /* @__PURE__ */ new Set();
     let itemError = false, moneyError = false;
     for (const row of rows) {
       const m = row.match(ROW);
       const label = m && m[1].replace(/:\s*$/, "").trim().toLowerCase();
       const hit = m && ROWS.find(([, l]) => l.toLowerCase() === label);
+      const entryKey = m && Object.hasOwn(ENTRY_ROWS, label) && ENTRY_ROWS[label];
       const item = m && m[1].match(/^Item\s+(I\d+)\s*:?\s*$/i);
       const money = m && m[1].match(/^Money(?:\s+([^:]+))?\s*:?\s*$/i);
       const supply = m && m[1].match(/^Supply\s+(I\d+)\s*:?\s*$/i);
@@ -786,10 +1170,9 @@ var inventory_default = {
         const items = readList(m[2]);
         value2.items.push(...items);
         itemIds.push(...items.map(() => null));
-      } else if (hit) value2[hit[0]] = readList(m[2]);
+      } else if (entryKey && unesc(m[2])) value2[entryKey].push(readEntry(m[2]));
+      else if (hit) value2[hit[0]].push(...readLegacyRow(m[2]));
       else if (label === "mods") {
-        const t = unesc(m[2]);
-        value2.mods = t === "—" ? "" : t;
       } else {
         errors.push(row);
         itemError = true;
@@ -797,9 +1180,10 @@ var inventory_default = {
       }
     }
     if (itemIds.length) value2.itemIds = itemIds;
+    value2.titles = mergeEntries(value2.titles);
     if (errors.length && prevValue) {
       for (const k of ["items", "titles", "status"]) if (!value2[k].length || k === "items" && itemError) {
-        value2[k] = [...prevValue[k]];
+        value2[k] = k === "items" ? [...prevValue[k]] : (prevValue[k] || []).map(toEntry);
         if (k === "items") {
           if (prevValue.itemIds) value2.itemIds = [...prevValue.itemIds];
           else delete value2.itemIds;
@@ -820,7 +1204,14 @@ var inventory_default = {
     const unparsed = [];
     const normalized = Boolean(ctx && ctx.normalizedChanges);
     const raws = normalized ? ctx.rawLinesUnder("Inventory") : [];
-    const del = normalized ? removeByName : (list, v) => remove(list, v);
+    const del = (list, v, raw) => {
+      const names = entryNames(list);
+      const at = normalized ? nameMatches(names, v, raw)[0] ?? -1 : names.findIndex((x) => same(x, v));
+      if (at < 0) return false;
+      list.splice(at, 1);
+      return true;
+    };
+    const entry2 = (name) => ({ name: name.trim(), effects: [], hint: "" });
     lines2.forEach((text, i) => {
       const line = String(text).trim();
       const rawLine = normalized && raws[i] !== void 0 ? String(raws[i]).trim() : null;
@@ -865,13 +1256,13 @@ var inventory_default = {
         if (at < 0) unparsed.push(line);
         else removeEntry(inv, at);
       } else if (m = line.match(/^title\s*:\s*(.+)$/i)) {
-        if (!inv.titles.some((t) => same(t, m[1]))) inv.titles.push(m[1].trim());
+        if (!inv.titles.some((t) => same(t.name, m[1]))) inv.titles.push(entry2(m[1]));
       } else if (m = line.match(/^title\s*-\s*(.+)$/i)) {
         if (!del(inv.titles, m[1], rawOf(/^title\s*-\s*(.+)$/i))) unparsed.push(line);
       } else if (m = line.match(/^status\s*[:+]\s*(.+)$/i)) {
         const conditions = readList(m[1]);
         if (!conditions.length) unparsed.push(line);
-        for (const condition of conditions) if (!inv.status.some((t) => same(t, condition))) inv.status.push(condition);
+        for (const condition of conditions) if (!inv.status.some((t) => same(t.name, condition))) inv.status.push(entry2(condition));
       } else if (m = line.match(/^status\s*-\s*(.+)$/i)) {
         const rawValue = rawOf(/^status\s*-\s*(.+)$/i);
         if (del(inv.status, m[1], rawValue)) return;
@@ -886,8 +1277,8 @@ var inventory_default = {
         conditions.forEach((condition, j) => {
           if (!removeStatus(inv.status, condition, aligned ? rawConditions[j] : void 0, del, normalized)) unparsed.push(`status - ${condition}`);
         });
-      } else if (m = line.match(/^mods\s*:\s*(.*)$/i)) inv.mods = m[1].trim();
-      else if (m = line.match(/^\+\s*(.+)$/)) {
+      } else if (/^mods\s*:/i.test(line)) {
+      } else if (m = line.match(/^\+\s*(.+)$/)) {
         inv.items.push(m[1].trim());
         inv.itemIds = inv.itemIds || [];
         inv.itemIds.push(nextId(state, "I", inv.itemIds));
@@ -913,9 +1304,8 @@ var inventory_default = {
     if (money.length) parts.push(`Money: ${money.join("; ")}`);
     if (supplies.length) parts.push(`Supplies: ${supplies.join("; ")}`);
     if (items.length) parts.push(`carries ${items.join("; ")}`);
-    if (value2.titles.length) parts.push(`titles ${value2.titles.join("; ")}`);
-    if (value2.status.length) parts.push(`status ${value2.status.join("; ")}`);
-    if (value2.mods) parts.push(`mods ${value2.mods}`);
+    if (value2.titles.length) parts.push(`titles ${entryNames(value2.titles).join("; ")}`);
+    if (value2.status.length) parts.push(`status ${entryNames(value2.status).join("; ")}`);
     return parts.length ? `{{user}}: ${parts.join(" · ")}` : "";
   },
   rules: () => [
@@ -1224,219 +1614,6 @@ var chekhov_default = {
   commands: COMMANDS8,
   template: (ctx) => commandTemplate("Chekhov", COMMANDS8, ctx)
 };
-
-// src/model/config.js
-var DEFAULT_AXES = [
-  { key: "E", name: "Eros", kind: "fond", mirror: "M", period: 5, threshold: 10, meaning: "romantic fondness" },
-  { key: "M", name: "Misos", kind: "friction", mirror: "E", period: 5, threshold: 10, meaning: "romantic friction" },
-  { key: "L", name: "Ludus", kind: "fond", mirror: "Er", period: 3, threshold: 8, meaning: "playful fondness" },
-  { key: "Er", name: "Eris", kind: "friction", mirror: "L", period: 3, threshold: 8, meaning: "playful friction" },
-  { key: "Ph", name: "Philia", kind: "fond", mirror: "Ec", period: 5, threshold: 10, meaning: "friendship fondness" },
-  { key: "Ec", name: "Echthros", kind: "friction", mirror: "Ph", period: 5, threshold: 10, meaning: "friendship friction" },
-  { key: "Pr", name: "Pragma", kind: "fond", mirror: "St", period: 7, threshold: 12, meaning: "practical fondness" },
-  { key: "St", name: "Stasis", kind: "friction", mirror: "Pr", period: 7, threshold: 12, meaning: "practical friction" },
-  { key: "Sg", name: "Storge", kind: "fond", mirror: "Ad", period: 11, threshold: 12, meaning: "familial fondness" },
-  { key: "Ad", name: "Adiaphora", kind: "friction", mirror: "Sg", period: 11, threshold: 12, meaning: "familial friction" },
-  { key: "Ag", name: "Agape", kind: "fond", mirror: "Pt", period: 7, threshold: 10, meaning: "selfless fondness" },
-  { key: "Pt", name: "Phthonos", kind: "friction", mirror: "Ag", period: 7, threshold: 10, meaning: "giving friction / resentment" }
-];
-var DEFAULT_RELATION_CONFIG = {
-  axes: DEFAULT_AXES,
-  axisMin: 1,
-  // "NEVER 0"
-  axisMax: 20,
-  tickCap: 2,
-  // +2 per accumulator per turn
-  directMax: 2,
-  // DIRECT_SHIFT is +1 or +2
-  phi: { min: -20, max: 20, accCap: 30, period: 23, threshold: 12 },
-  // MIRROR DECAY: on each period, if the gap between a pair is ≥ lead, the trailing
-  // axis loses 1, never below floor = min(floorMax, max(1, ⌈leading / floorDivisor⌉)).
-  decay: [
-    { pair: ["L", "Er"], period: 6 },
-    { pair: ["E", "M"], period: 10 },
-    { pair: ["Ph", "Ec"], period: 10 },
-    { pair: ["Ag", "Pt"], period: 14 },
-    { pair: ["Pr", "St"], period: 14 },
-    { pair: ["Sg", "Ad"], period: 22 }
-  ],
-  decayLead: 5,
-  floorDivisor: 4,
-  floorMax: 4,
-  offstageSkip: [4, 8, 12, 15],
-  // trailing value at which an offstage pair does not decay
-  wallMin: 5,
-  // WALL: tied pair, both ≥ this → conversion and decay freeze
-  gravityMin: 6,
-  // GRAVITY WELL: fondness converts while its mirror ≥ this → mirror acc +1
-  romanceGate: { E: 6, L: 6 },
-  // romantic/sexual initiation allowed when E or L reaches these
-  tiers: [
-    { min: 1, max: 5, fond: "Fond", friction: "Distant" },
-    { min: 6, max: 10, fond: "Affectionate", friction: "Cold" },
-    { min: 11, max: 15, fond: "Devoted", friction: "Hostile" },
-    { min: 16, max: 20, fond: "Ultimate", friction: "Murderous" }
-  ]
-};
-var DEFAULT_SECTION_CONFIG = {
-  lastBeats: 3,
-  // 🧾 LAST keeps this many newest beats
-  chekhov: {
-    eligibleAge: 6,
-    // a bullet may fire from this age
-    pruneAge: 12,
-    // unfired bullets this old are pruned to Fired
-    cap: 20,
-    // at most this many active bullets
-    maxLoadsPerTurn: 1,
-    // more loads in one reply are kept but warned about
-    firedKeep: 10,
-    // Fired keeps this many newest; 0 = all
-    firing: "fate"
-    // Fate's pick; "model" keeps the reader-selected timing.
-  },
-  fate: {
-    modifiers: { recentMajor: -3, deferred3: 4, deferred12: 2, public: 2 },
-    ladder: [{ q: 0, minor: 16, major: 20 }, { q: 3, minor: 12, major: 19 }, { q: 7, minor: 8, major: 17 }],
-    newsMax: 6,
-    trueFloor: 3,
-    hpLadder: [{ hp: 1, weighted: 14 }, { hp: 3, weighted: 9 }, { hp: 5, weighted: 5 }],
-    collision: { minorDefer: 12, majorComplicate: 10 },
-    dangerC: 20,
-    deferredExpire: 6,
-    worldKeep: 5,
-    reach1Drop: 15,
-    minorWorld: { reach: 2, age: 4 },
-    majorWorld: { reach: 3, age: 8 },
-    ripe: { reach: 3, age: 12 },
-    pursuitLimit: 8,
-    residueKeep: 12
-  },
-  titles: {
-    softCap: 3,
-    // title bonuses above this are soft-capped
-    hardCap: 6,
-    // no title bonus may exceed this
-    situationalMax: 2,
-    // situational titles applied at most this often
-    retrofitBatch: 10
-    // titles retrofitted per batch
-  },
-  worldsim: {
-    standard: [
-      { from: 1, to: 2, name: "CALM", text: "The wider world goes on without a notable interruption" },
-      { from: 3, to: 4, name: "GOOD NEWS", text: "A community gets a small relief or useful opening" },
-      { from: 5, to: 6, name: "BAD NEWS", text: "A shortage, closure, or loss adds ordinary pressure somewhere nearby" },
-      { from: 7, to: 8, name: "RUMOUR", text: "A rumor spreads, mixing one true detail with speculation" },
-      { from: 9, to: 10, name: "OPPORTUNITY", text: "A trade, job, or request offers a practical chance" },
-      { from: 11, to: 12, name: "DISRUPTION", text: "Weather, transit, or a service interrupts someone's plans" },
-      { from: 13, to: 14, name: "CONFLICT", text: "A dispute between groups becomes public" },
-      { from: 15, to: 16, name: "ARRIVAL", text: "A newcomer or convoy brings unfamiliar needs or news" },
-      { from: 17, to: 18, name: "CRISIS", text: "A regional incident calls for an immediate response" },
-      { from: 19, to: 20, name: "CALM", text: "The wider world goes on without a notable interruption" }
-    ],
-    duo: [
-      { from: 1, to: 2, name: "CALM", text: "Nothing outside the moment demands their attention" },
-      { from: 3, to: 4, name: "GOOD NEWS", text: "A small kindness or success eases their day" },
-      { from: 5, to: 6, name: "MISUNDERSTANDING", text: "A comment lands badly and needs clarification" },
-      { from: 7, to: 8, name: "INTERRUPTION", text: "A personal errand or small need complicates the moment" },
-      { from: 9, to: 10, name: "OPENING", text: "A shared interest or offer creates a chance to connect" },
-      { from: 11, to: 12, name: "TENSION", text: "A private worry or unmet need surfaces between them" },
-      { from: 13, to: 14, name: "COMPLICATION", text: "Something they planned goes wrong and needs coordination" },
-      { from: 15, to: 16, name: "REVELATION", text: "Someone shares a small personal detail they may keep private" },
-      { from: 17, to: 18, name: "PRESSURE", text: "A difficult personal choice or boundary lands in the moment" },
-      { from: 19, to: 20, name: "CALM", text: "Nothing outside the moment demands their attention" }
-    ]
-  }
-};
-function resolveConfig(overrides) {
-  const base = JSON.parse(JSON.stringify(DEFAULT_RELATION_CONFIG));
-  base.sectionConfig = JSON.parse(JSON.stringify(DEFAULT_SECTION_CONFIG));
-  const sc = overrides && typeof overrides === "object" ? overrides.sectionConfig : null;
-  if (sc && typeof sc === "object") {
-    for (const [k, v] of Object.entries(sc)) {
-      if (k === "chekhov" && v && typeof v === "object") base.sectionConfig.chekhov = validChekhov(v, base.sectionConfig.chekhov);
-      else if (k === "fate" && v && typeof v === "object") base.sectionConfig.fate = mergeKnown(base.sectionConfig.fate, v);
-      else if (k === "worldsim" && v && typeof v === "object") base.sectionConfig.worldsim = mergeKnown(base.sectionConfig.worldsim, v);
-      else if (k === "titles" && v && typeof v === "object") base.sectionConfig.titles = sanitizeTitles(v, base.sectionConfig.titles);
-      else if (k in base.sectionConfig && typeof v === typeof base.sectionConfig[k]) base.sectionConfig[k] = v;
-    }
-  }
-  if (!overrides || typeof overrides !== "object") return base;
-  for (const [k, v] of Object.entries(overrides)) {
-    if (!(k in base)) continue;
-    if (k === "sectionConfig") continue;
-    if (Array.isArray(base[k])) base[k] = Array.isArray(v) ? JSON.parse(JSON.stringify(v)) : base[k];
-    else if (base[k] && typeof base[k] === "object") base[k] = { ...base[k], ...v || {} };
-    else if (typeof v === typeof base[k]) base[k] = v;
-  }
-  return base;
-}
-var axisByKey = (config, key2) => config.axes.find((a) => a.key === key2);
-function mergeKnown(defaults, input) {
-  const out = JSON.parse(JSON.stringify(defaults));
-  for (const [key2, value2] of Object.entries(input || {})) {
-    if (!(key2 in defaults)) continue;
-    const initial = defaults[key2];
-    if (Array.isArray(initial)) {
-      if (Array.isArray(value2)) out[key2] = JSON.parse(JSON.stringify(value2));
-    } else if (initial && typeof initial === "object") {
-      if (value2 && typeof value2 === "object" && !Array.isArray(value2)) out[key2] = mergeKnown(initial, value2);
-    } else if (typeof value2 === typeof initial && (typeof value2 !== "number" || Number.isFinite(value2))) out[key2] = value2;
-  }
-  return out;
-}
-function validChekhov(v, defaults) {
-  const out = { ...defaults };
-  const MIN = { eligibleAge: 0, pruneAge: 1, cap: 1, maxLoadsPerTurn: 1, firedKeep: 0 };
-  for (const [k, min] of Object.entries(MIN)) {
-    const n = v[k];
-    if (typeof n === "number" && Number.isInteger(n) && n >= min) out[k] = n;
-  }
-  if (v.firing === "model" || v.firing === "fate") out.firing = v.firing;
-  if (out.pruneAge <= out.eligibleAge) out.pruneAge = defaults.pruneAge > out.eligibleAge ? defaults.pruneAge : out.eligibleAge + 1;
-  return out;
-}
-function sanitizeChekhov(input, prev) {
-  const num = (k, min) => {
-    const raw = input[k];
-    if (raw === void 0 || raw === null || String(raw).trim() === "" || !Number.isFinite(Number(raw))) return prev[k];
-    return Math.max(min, Math.round(Number(raw)));
-  };
-  const out = {
-    eligibleAge: num("eligibleAge", 0),
-    pruneAge: num("pruneAge", 1),
-    cap: num("cap", 1),
-    maxLoadsPerTurn: num("maxLoadsPerTurn", 1),
-    firedKeep: num("firedKeep", 0),
-    firing: input.firing === "fate" ? "fate" : "model"
-  };
-  if (out.pruneAge <= out.eligibleAge) out.pruneAge = out.eligibleAge + 1;
-  return out;
-}
-function sanitizeTitles(input = {}, prev = DEFAULT_SECTION_CONFIG.titles) {
-  const num = (k, min, max) => {
-    const raw = input[k];
-    if (raw === void 0 || raw === null || String(raw).trim() === "" || !Number.isFinite(Number(raw))) return prev[k];
-    return Math.min(max, Math.max(min, Math.round(Number(raw))));
-  };
-  const hardCap = num("hardCap", 0, 20);
-  return {
-    softCap: Math.min(num("softCap", 0, 20), hardCap),
-    hardCap,
-    situationalMax: num("situationalMax", 0, 5),
-    retrofitBatch: num("retrofitBatch", 1, 30)
-  };
-}
-function sanitizeFate(input = {}, prev = DEFAULT_SECTION_CONFIG.fate) {
-  const out = JSON.parse(JSON.stringify(prev));
-  for (const key2 of ["deferredExpire", "worldKeep", "reach1Drop", "pursuitLimit", "residueKeep"]) {
-    const raw = input[key2];
-    if (raw === void 0 || raw === null || String(raw).trim() === "" || !Number.isFinite(Number(raw))) continue;
-    out[key2] = Math.max(1, Math.round(Number(raw)));
-  }
-  return out;
-}
 
 // src/model/fate-engine.js
 var REACH = {

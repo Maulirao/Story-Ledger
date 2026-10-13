@@ -5,6 +5,7 @@ import { resolveConfig } from "../src/model/config.js";
 import { emptyState } from "../src/model/state.js";
 import { parseChanges } from "../src/model/changes.js";
 import { postTurn } from "../src/model/turn.js";
+const E = (...names) => names.map(name => ({ name, effects: [], hint: "" }));
 
 const C = { ...resolveConfig(), userName: "Jan", sections: {} };
 const DICE = { fate: { a: 10, b: 1, c: 5 } };
@@ -81,15 +82,15 @@ test("ambition +1 with no matching ambition stays unparsed", () => {
 test("unknown item and title removals stay unparsed; absent status removals are harmless", () => {
     const s = emptyState();
     s.inv.items = ["key"];
-    s.inv.titles = ["Captain"];
-    s.inv.status = ["Tired", "Injured"];
+    s.inv.titles = E("Captain");
+    s.inv.status = E("Tired", "Injured");
     const lines = ["- lantern", "title - Duke", "status - Unknown"];
     const r = run(s, list("Inventory", lines));
     assert.deepEqual(r.unparsed, unread("Inventory", lines.slice(0, 2)));
     assert.deepEqual(r.state.inv, { ...s.inv, itemIds: ["I1"] });
     assert.deepEqual(r.state, run(s, "").state);
     const partial = run(s, list("Inventory", ["status - Tired; Unknown"]));
-    assert.deepEqual(partial.state.inv.status, ["Injured"]);
+    assert.deepEqual(partial.state.inv.status, E("Injured"));
     assert.deepEqual(partial.unparsed, []);
 });
 

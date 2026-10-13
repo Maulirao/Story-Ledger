@@ -9,6 +9,7 @@ import { postTurn } from "../src/model/turn.js";
 import { renderStatePrompt } from "../src/model/prompt.js";
 import { emptyNotebook } from "../src/model/notebook.js";
 import { setSend } from "../src/model/sections/quests.js";
+const E = (...names) => names.map(name => ({ name, effects: [], hint: "" }));
 
 const C = { ...resolveConfig(), userName: "Jan", sections: {} };
 const ch = body => parseChanges(`<!-- Story_Ledger\n${body}\n-->`);
@@ -128,8 +129,8 @@ test("raw precedence survives code, bold and a filtered skeleton", () => {
     assert.deepEqual(annotated.state.inv.items, both);
     assert.equal(annotated.unparsed.length, 1);
     const s = emptyState();
-    s.inv.titles = ['"Ace"', "“Ace”"];
-    assert.deepEqual(postTurn(s, ch("Inventory:\n- [title - X]\n- title - “Ace”"), C).state.inv.titles, ['"Ace"']);
+    s.inv.titles = E('"Ace"', "“Ace”");
+    assert.deepEqual(postTurn(s, ch("Inventory:\n- [title - X]\n- title - “Ace”"), C).state.inv.titles, E('"Ace"'));
 });
 
 test("a unique quote-equivalent item is removed", () => {
@@ -146,13 +147,13 @@ test("an ambiguous quote-equivalent removal is reported", () => {
 
 test("status members retain raw-precedence and partial success", () => {
     const s = emptyState();
-    s.inv.status = ['"rope; burn"', "“rope; burn”", '"x"', "“x”"];
+    s.inv.status = E('"rope; burn"', "“rope; burn”", '"x"', "“x”");
     const r = postTurn(s, ch("Inventory:\n- status - “x”; “rope&#59; burn”; Unknown"), C);
-    assert.deepEqual(r.state.inv.status, ['"rope; burn"', '"x"']);
+    assert.deepEqual(r.state.inv.status, E('"rope; burn"', '"x"'));
     assert.deepEqual(r.unparsed, []);
     const t = emptyState();
-    t.inv.status = ["“Tired; Inspired”", "Tired", "Inspired"];
-    assert.deepEqual(postTurn(t, ch("Inventory:\n- status - “Tired; Inspired”"), C).state.inv.status, ["Tired", "Inspired"]);
+    t.inv.status = E("“Tired; Inspired”", "Tired", "Inspired");
+    assert.deepEqual(postTurn(t, ch("Inventory:\n- status - “Tired; Inspired”"), C).state.inv.status, E("Tired", "Inspired"));
 });
 
 test("item names keep terminal punctuation", () => {

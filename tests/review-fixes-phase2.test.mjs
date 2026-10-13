@@ -33,7 +33,7 @@ test("echoed template placeholders are unparsed, never stored", () => {
         assert.deepEqual(r.state.locations, {});
         assert.deepEqual(r.state.agendas, {});
         assert.deepEqual(r.state.factions, {});
-        assert.deepEqual(r.state.inv, { items: [], titles: [], status: [], mods: "" });
+        assert.deepEqual(r.state.inv, { items: [], titles: [], status: [] });
         assert.deepEqual(r.state.rel, { pairs: {}, selves: {}, awaiting: {} });
         assert.deepEqual(r.state.threads, []);
         assert.deepEqual(r.state.last, []);

@@ -97,6 +97,9 @@ const worldSeed = (s, id = same) => {
     if (!s.fate.world.some(w => w.id === id("W1"))) s.fate.world.push({ id: id("W1"), desc: "a war breaks out across the sea", prox: "ELSEWHERE", reach: 1, age: 2 });
 };
 const items = (key, ...values) => s => { for (const v of values) if (!s.inv[key].includes(v)) s.inv[key].push(v); };
+// titles and conditions are entries: { name, effects, hint }
+const E = (...names) => names.map(name => ({ name, effects: [], hint: "" }));
+const entries = (key, ...names) => s => { for (const e of E(...names)) if (!s.inv[key].some(x => x.name === e.name)) s.inv[key].push(e); };
 
 // ── fixture builders for one-field families ─────────────────────────────────
 
@@ -408,7 +411,7 @@ export const FIXTURES = {
         heading: "Inventory",
         expect(r) {
             clean(r);
-            assert.deepEqual(r.state.inv, { items: ["brass key"], itemIds: ["I1"], titles: [], status: [], mods: "" });
+            assert.deepEqual(r.state.inv, { items: ["brass key"], itemIds: ["I1"], titles: [], status: [] });
         },
         malformed: ["+", "brass key"],
     },
@@ -474,13 +477,13 @@ export const FIXTURES = {
         heading: "Inventory",
         expect(r) {
             clean(r);
-            assert.deepEqual(r.state.inv.titles, ["Harbour Friend"]);
+            assert.deepEqual(r.state.inv.titles, E("Harbour Friend"));
         },
         malformed: ["title:", "titel: Harbour Friend", "title Harbour Friend"],
     },
     "inv.title-remove": {
         heading: "Inventory",
-        seed: items("titles", "Harbour Friend"),
+        seed: entries("titles", "Harbour Friend"),
         expect(r) {
             clean(r);
             assert.deepEqual(r.state.inv.titles, []);
@@ -491,13 +494,13 @@ export const FIXTURES = {
         heading: "Inventory",
         expect(r) {
             clean(r);
-            assert.deepEqual(r.state.inv.status, ["Tired"]);
+            assert.deepEqual(r.state.inv.status, E("Tired"));
         },
         malformed: ["status +", "stauts + Tired", "status Tired"],
     },
     "inv.status-remove": {
         heading: "Inventory",
-        seed: items("status", "Tired"),
+        seed: entries("status", "Tired"),
         expect(r) {
             clean(r);
             assert.deepEqual(r.state.inv.status, []);
@@ -505,13 +508,14 @@ export const FIXTURES = {
         valid: ["status - Unknown"],
         malformed: ["status -", "stauts - Tired"],
     },
-    // "mods:" clears the modifiers: a valid form, not an empty-value rejection
+    // Mods are computed from title and condition effects: "mods:" leaves state untouched
+    // (Task 4 adds a notice for it). "mods:" alone is still a valid form.
     "inv.mods": {
         heading: "Inventory",
-        seed: s => { s.inv.mods = s.inv.mods || "+1 Climb (rope)"; },
-        expect(r) {
+        expect(r, base) {
             clean(r);
-            assert.equal(r.state.inv.mods, "+1 Stealth (soft boots)");
+            assert.equal("mods" in r.state.inv, false);
+            assert.deepEqual(r.state.inv, base.inv);
         },
         malformed: ["mosd: +1 Stealth (soft boots)", "mods +1 Stealth (soft boots)"],
         valid: ["mods:"],
