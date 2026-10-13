@@ -83,7 +83,7 @@ export const DEFAULT_SECTION_CONFIG = {
     titles: {
         softCap: 3,         // title bonuses above this are soft-capped
         hardCap: 6,         // no title bonus may exceed this
-        situationalMax: 2,  // situational titles applied at most this often
+        situationalMax: 2,  // max |n| of the one situational bonus on a check line
         retrofitBatch: 10,  // titles retrofitted per batch
     },
     worldsim: {

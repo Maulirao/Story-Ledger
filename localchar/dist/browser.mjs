@@ -643,7 +643,6 @@ var baseName = (name) => trailingParen(name)?.name ?? name;
 function cleanPiece(raw) {
   let text = raw.trim();
   const dropped = [];
-  if (/^(status|mods)\s*:/i.test(text)) return { text: "", dropped: [text] };
   const prior = text.match(/^(all prior|all previous)\s*\+\s*/i);
   if (prior) {
     dropped.push(prior[1]);
@@ -653,24 +652,31 @@ function cleanPiece(raw) {
     prev = text;
     text = text.replace(/^\+\s*/, "").replace(/^NEW\s*:\s*/i, "").trim();
   }
+  if (/^(status|mods)\s*:/i.test(text)) return { text: "", dropped: [...dropped, text], label: true };
   if (!text || JUNK.test(text)) {
     if (text) dropped.push(text);
     return { text: "", dropped };
   }
   return { text, dropped };
 }
-function mergeEntries(list) {
-  const out = [], byKey = /* @__PURE__ */ new Map();
+function mergeEntries(list, { loose = () => false } = {}) {
+  const out = [], looseOut = /* @__PURE__ */ new Set();
+  const lower = (s) => String(s).toLowerCase();
   for (const e of list || []) {
-    const key2 = baseName(e.name).toLowerCase();
-    const have = byKey.get(key2);
+    const name = lower(e.name), base = lower(baseName(e.name)), isLoose = loose(e);
+    let have = out.find((h) => lower(h.name) === name);
+    if (!have) {
+      const near = out.filter((h) => (isLoose || looseOut.has(h)) && lower(baseName(h.name)) === base && (name === base || lower(h.name) === base));
+      if (near.length === 1) have = near[0];
+    }
     if (!have) {
       const copy = { name: e.name, effects: [...e.effects || []], hint: e.hint || "" };
-      byKey.set(key2, copy);
+      if (isLoose) looseOut.add(copy);
       out.push(copy);
       continue;
     }
-    if (have.name !== e.name) have.name = baseName(have.name);
+    if (isLoose) looseOut.add(have);
+    if (lower(have.name) !== name) have.name = baseName(have.name);
     if (!have.effects.length && e.effects?.length) {
       have.effects = [...e.effects];
       have.hint = "";
@@ -682,8 +688,14 @@ function readLegacyList(text) {
   const flat = String(text ?? "");
   const seps = splitTop(flat, ";").length > 1 ? ";|" : ",|";
   const entries = [], dropped = [];
+  let leaked = false;
   for (const raw of splitTop(flat, seps)) {
+    if (leaked) {
+      if (raw.trim()) dropped.push(raw.trim());
+      continue;
+    }
     const c = cleanPiece(raw);
+    leaked = Boolean(c.label);
     dropped.push(...c.dropped);
     if (!c.text) continue;
     const paren = trailingParen(c.text);
@@ -700,7 +712,7 @@ function readLegacyList(text) {
     }
     entries.push({ name: c.text, effects: [], hint: "" });
   }
-  return { entries: mergeEntries(entries), dropped };
+  return { entries: mergeEntries(entries, { loose: () => true }), dropped };
 }
 function capBonus(raw, { softCap, hardCap }) {
   if (raw <= softCap) return { value: raw, cap: "" };
@@ -802,7 +814,7 @@ var DEFAULT_SECTION_CONFIG = {
     hardCap: 6,
     // no title bonus may exceed this
     situationalMax: 2,
-    // situational titles applied at most this often
+    // max |n| of the one situational bonus on a check line
     retrofitBatch: 10
     // titles retrofitted per batch
   },
@@ -996,7 +1008,7 @@ function readEntry(raw) {
   return { name: unesc(text), effects: [], hint: "" };
 }
 function readLegacyRow(raw) {
-  const decoded = String(raw || "").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;(?!#(?:59|124);)/g, "&");
+  const decoded = String(raw || "").replace(/&#124&#59;/g, "|;").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;(?!#(?:59|124);)/g, "&");
   const back = (s) => s.replace(/&#124;/g, "|").replace(/&#59;/g, ";").replace(/&amp;/g, "&");
   return readLegacyList(decoded).entries.map((e) => ({ ...e, name: back(e.name), hint: back(e.hint) }));
 }
@@ -1004,7 +1016,7 @@ function modsRow(value2) {
   const { hardCap } = resolveConfig().sectionConfig.titles;
   const sums = { physical: 0, social: 0, mental: 0 };
   for (const e of [...value2.titles, ...value2.status]) for (const f of e.effects) if (f.kind === "numeric" && f.n > 0) sums[f.category] += f.n;
-  return Object.entries(sums).map(([k, n]) => n ? `${k} +${n}${n > hardCap ? ` raw (capped +${hardCap} per roll)` : ""}` : `${k} —`).join(" · ");
+  return Object.entries(sums).map(([k, n]) => n ? `${k} +${n}${n > hardCap ? " raw (capped per roll)" : ""}` : `${k} —`).join(" · ");
 }
 var EXPLAINED = /\s+\((?:dropped|lost|used|left|given|consumed|discarded|spent|handed)\b[^()]*\)\s*$/i;
 var itemKey = (text) => foldQuotes(text).trim().replace(/^1\s+/, "").toLowerCase();
@@ -1158,6 +1170,11 @@ var inventory_default = {
   parse(rows, prevValue) {
     const value2 = { items: [], titles: [], status: [] }, errors = [];
     const itemIds = [], seen = /* @__PURE__ */ new Set();
+    const legacy = /* @__PURE__ */ new Set();
+    const fromLegacy = (list) => {
+      list.forEach((e) => legacy.add(e));
+      return list;
+    };
     let itemError = false, moneyError = false;
     for (const row of rows) {
       const m = row.match(ROW);
@@ -1199,7 +1216,7 @@ var inventory_default = {
         itemIds.push(...items.map(() => null));
       } else if (entryKey && !unesc(m[2])) {
       } else if (entryKey) value2[entryKey].push(readEntry(m[2]));
-      else if (hit) value2[hit[0]].push(...readLegacyRow(m[2]));
+      else if (hit) value2[hit[0]].push(...fromLegacy(readLegacyRow(m[2])));
       else if (label === "mods") {
       } else {
         errors.push(row);
@@ -1208,8 +1225,9 @@ var inventory_default = {
       }
     }
     if (itemIds.length) value2.itemIds = itemIds;
-    value2.titles = mergeEntries(value2.titles);
-    value2.status = mergeEntries(value2.status);
+    const loose = (e) => legacy.has(e);
+    value2.titles = mergeEntries(value2.titles, { loose });
+    value2.status = mergeEntries(value2.status, { loose });
     if (errors.length && prevValue) {
       for (const k of ["items", "titles", "status"]) if (!value2[k].length || k === "items" && itemError) {
         value2[k] = k === "items" ? [...prevValue[k]] : (prevValue[k] || []).map(toEntry);
@@ -2407,7 +2425,11 @@ function parseCheckLine(line) {
   const actor = (comma < 0 ? head : head.slice(0, comma)).trim();
   const action = comma < 0 ? "" : head.slice(comma + 1).trim();
   let i = 1, category = "";
-  if (!/^DC\s+\d+$/i.test(fields[i])) category = fields[i++].toLowerCase();
+  if (!/^DC\s+\d+$/i.test(fields[i])) {
+    category = fields[i++].toLowerCase();
+    const noted = category.match(/^(\w+)\s*\([^()]*\)$/);
+    if (noted && CATEGORIES2.includes(noted[1])) category = noted[1];
+  }
   const dc = (fields[i++] || "").match(/^DC\s+(\d+)$/i);
   const roll = (fields[i++] || "").match(/^d20\s+(\d+)(.*)$/i);
   if (!actor || !dc || !roll) return null;
@@ -2436,7 +2458,9 @@ function parseCheckLine(line) {
   };
 }
 var normOutcome = (s) => String(s ?? "").toLowerCase().replace(/[-_—–]/g, " ").replace(/\s+/g, " ").trim().replace(/^nat(?:ural)?\s*\d+\s*[,:]?\s*/, "").replace(/\bcritical\b/g, "crit").replace(/\b(?:fail|fails|failed)\b/g, "failure").replace(/\bsuccessful\b/g, "success");
-var outcomeIs = (written, band) => {
+var outcomeIs = (written, band, d20) => {
+  const bare = String(written ?? "").trim().match(/^nat(?:ural)?\s*(\d+)$/i);
+  if (bare) return Number(bare[1]) === d20 && (d20 === 20 && band === "crit success" || d20 === 1 && band === "crit failure");
   const w = normOutcome(written);
   return w.startsWith(band) && !/[a-z]/.test(w.charAt(band.length));
 };
@@ -2508,7 +2532,7 @@ function verifyCheck(parsed, { die, inv, user, caps }) {
   if (parsed.total === null && parsed.legacyMod === null && (parsed.sources.length || parsed.situational)) problems.push("no total");
   const total = d20 + bonus;
   const band = outcomeBand(d20, total - parsed.dc);
-  if (!outcomeIs(parsed.outcome, band)) problems.push(`outcome "${parsed.outcome}" should be ${band}`);
+  if (!outcomeIs(parsed.outcome, band, d20)) problems.push(`outcome "${parsed.outcome}" should be ${band}`);
   if (!problems.length) return { ok: true, problems: [], ledgerLine: "" };
   const parts = ledgerSources.map((s) => ` + ${s.name} ${signed(s.n)}`);
   if (ledgerSituational) parts.push(` + situational ${signed(ledgerSituational.n)}${ledgerSituational.why ? ` (${ledgerSituational.why})` : ""}`);
@@ -2570,7 +2594,14 @@ var checks_default = {
       const rolls = state.perTurn.checks.rolls;
       const die = rolls.length ? rolls[n] : null;
       n++;
-      if (!parsed) continue;
+      if (!parsed) {
+        const fields = line.split(/\s+·\s+/);
+        if (fields.some((f) => /^DC\s+\d+$/i.test(f.trim())) && fields.some((f) => /^d20\s+\d+/i.test(f.trim()))) {
+          const who = fields[0].split(",")[0].trim();
+          ctx.warnings.push({ section: "Check", text: `${who}: check line not read — name each bonus as + Title ±n` });
+        }
+        continue;
+      }
       const r = verifyCheck(parsed, { die, inv: state.inv, user: ctx.userName, caps: capsOf(ctx) });
       if (r.ok) continue;
       out.push(r.ledgerLine);
@@ -4575,7 +4606,7 @@ function popupHtml(tab, view, previewBaseDice = null) {
             <h4>🎲 Fate & World Sim</h4>
             <div class="sl-grid">${[["deferredExpire", "Deferred expiry"], ["worldKeep", "World entries kept"], ["reach1Drop", "Drop Reach 1 at age"], ["pursuitLimit", "Pursuit limit"], ["residueKeep", "Residue lines kept"]].map(([k, label]) => `<label>${label} <input type="number" min="1" class="text_pole sl-num" data-fate="${k}" value="${cf.sectionConfig.fate[k]}"></label>`).join("")}</div>
             <h4>🎖️ Titles</h4>
-            <div class="sl-grid">${[["softCap", "Soft cap"], ["hardCap", "Hard cap"], ["situationalMax", "Situational max"], ["retrofitBatch", "Retrofit per turn"]].map(([k, label]) => `<label>${label} <input type="number" min="1" class="text_pole sl-num" data-titles="${k}" value="${cf.sectionConfig.titles[k]}"></label>`).join("")}</div>
+            <div class="sl-grid">${[["softCap", "Soft cap", 0, 20], ["hardCap", "Hard cap", 0, 20], ["situationalMax", "Situational max", 0, 5], ["retrofitBatch", "Retrofit per turn", 1, 30]].map(([k, label, min, max]) => `<label>${label} <input type="number" min="${min}" max="${max}" class="text_pole sl-num" data-titles="${k}" value="${cf.sectionConfig.titles[k]}"></label>`).join("")}</div>
             <div class="sl-btns"><button class="menu_button" id="sl-save-config">Save engine numbers</button><button class="menu_button" id="sl-reset-config">Reset to defaults</button></div>`;
   }
   return `<div class="sl-popup">

@@ -333,6 +333,16 @@ test("popupHtml renders every tab from a plain view", () => {
     assert.match(core.popupHtml("rules", view, null), /Keep chapters short\./, "the proposal waiting in the inbox is listed");
 });
 
+test("the titles settings inputs carry the sanitiser's bounds", () => {
+    const host = miniHost();
+    const html = core.popupHtml("settings", { chat: host.chat, settings: host.settings, chatData: host.chatData, userName: "Jan" });
+    const bounds = k => html.match(new RegExp(`min="(\\d+)" max="(\\d+)"[^>]*data-titles="${k}"`))?.slice(1);
+    assert.deepEqual(bounds("softCap"), ["0", "20"]);
+    assert.deepEqual(bounds("hardCap"), ["0", "20"]);
+    assert.deepEqual(bounds("situationalMax"), ["0", "5"]);
+    assert.deepEqual(bounds("retrofitBatch"), ["1", "30"]);
+});
+
 test("the core imports no host: no SillyTavern, no DOM, no jQuery, no toastr", () => {
     const text = readFileSync(new URL("../src/host/core.js", import.meta.url), "utf8");
     const code = text.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
