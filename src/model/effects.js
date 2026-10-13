@@ -100,17 +100,17 @@ function trailingParen(piece) {
 
 const baseName = name => trailingParen(name)?.name ?? name;
 
-/** Strip list noise from one piece → { text, dropped }. */
+/** Strip list noise from one piece → { text, dropped, label } (label: it was a Status:/Mods: piece). */
 function cleanPiece(raw) {
     let text = raw.trim();
     const dropped = [];
-    if (/^(status|mods)\s*:/i.test(text)) return { text: "", dropped: [text] };
     const prior = text.match(/^(all prior|all previous)\s*\+\s*/i);
     if (prior) { dropped.push(prior[1]); text = text.slice(prior[0].length); }
     for (let prev = ""; prev !== text;) {
         prev = text;
         text = text.replace(/^\+\s*/, "").replace(/^NEW\s*:\s*/i, "").trim();
     }
+    if (/^(status|mods)\s*:/i.test(text)) return { text: "", dropped: [...dropped, text], label: true };
     if (!text || JUNK.test(text)) {
         if (text) dropped.push(text);
         return { text: "", dropped };
@@ -118,19 +118,31 @@ function cleanPiece(raw) {
     return { text, dropped };
 }
 
-/** Merge entries whose names match once a trailing non-effect parenthetical is ignored. */
-export function mergeEntries(list) {
-    const out = [], byKey = new Map();
+/**
+ * Merge duplicate entries. Names equal ignoring case always merge. When `loose(entry)` holds for
+ * either side (entries from the legacy reader), two names also merge when they share a base name
+ * (a trailing parenthetical ignored) and one of them IS that base name: "Casino Architect" absorbs
+ * "Casino Architect (earned …)", but "Bitten (First)" and "Bitten (Second)" stay apart. The merged
+ * entry keeps effects, or else a hint, from whichever side has them.
+ */
+export function mergeEntries(list, { loose = () => false } = {}) {
+    const out = [], looseOut = new Set();
+    const lower = s => String(s).toLowerCase();
     for (const e of list || []) {
-        const key = baseName(e.name).toLowerCase();
-        const have = byKey.get(key);
+        const name = lower(e.name), base = lower(baseName(e.name)), isLoose = loose(e);
+        let have = out.find(h => lower(h.name) === name);
+        if (!have) {
+            const near = out.filter(h => (isLoose || looseOut.has(h)) && lower(baseName(h.name)) === base && (name === base || lower(h.name) === base));
+            if (near.length === 1) have = near[0];
+        }
         if (!have) {
             const copy = { name: e.name, effects: [...(e.effects || [])], hint: e.hint || "" };
-            byKey.set(key, copy);
+            if (isLoose) looseOut.add(copy);
             out.push(copy);
             continue;
         }
-        if (have.name !== e.name) have.name = baseName(have.name);
+        if (isLoose) looseOut.add(have);
+        if (lower(have.name) !== name) have.name = baseName(have.name);
         if (!have.effects.length && e.effects?.length) { have.effects = [...e.effects]; have.hint = ""; }
         else if (!have.effects.length && !have.hint && e.hint) have.hint = e.hint;
     }
@@ -146,8 +158,11 @@ export function readLegacyList(text) {
     const flat = String(text ?? "");
     const seps = splitTop(flat, ";").length > 1 ? ";|" : ",|";
     const entries = [], dropped = [];
+    let leaked = false;   // after a Status:/Mods: piece, the rest of the row is status, not titles
     for (const raw of splitTop(flat, seps)) {
+        if (leaked) { if (raw.trim()) dropped.push(raw.trim()); continue; }
         const c = cleanPiece(raw);
+        leaked = Boolean(c.label);
         dropped.push(...c.dropped);
         if (!c.text) continue;
         const paren = trailingParen(c.text);
@@ -164,7 +179,7 @@ export function readLegacyList(text) {
         }
         entries.push({ name: c.text, effects: [], hint: "" });
     }
-    return { entries: mergeEntries(entries), dropped };
+    return { entries: mergeEntries(entries, { loose: () => true }), dropped };
 }
 
 /** A raw bonus under the soft cap (half the excess, rounded down) and the hard cap. */

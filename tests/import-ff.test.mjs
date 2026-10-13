@@ -75,10 +75,12 @@ test("FF titles row: effects, hints, junk notice, mods not carried", () => {
     ])], C);
     const titles = r.state.inv.titles;
     assert.ok(!entryNames(titles).includes("all prior"));
-    assert.deepEqual(entryNames(titles), ["Casino Architect", "legs spent", "bite marks thumb+shoulder"]);
-    assert.equal(titles[1].hint, "-2 for Buoy Race");
+    // everything after the leaked Status: piece is status, not titles
+    assert.deepEqual(entryNames(titles), ["Casino Architect"]);
     assert.ok(r.unread.some(u => /"all prior"/.test(u)));
     assert.ok(r.unread.some(u => /Status: Fed/.test(u)));
+    assert.ok(r.unread.some(u => /"legs spent \(-2 for Buoy Race\)"/.test(u)));
+    assert.ok(r.unread.some(u => /"bite marks thumb\+shoulder"/.test(u)));
     assert.ok(r.unread.some(u => /Mods row not carried over/.test(u)));
     assert.ok(!("mods" in r.state.inv));
 });

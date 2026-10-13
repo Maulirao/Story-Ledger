@@ -36,7 +36,7 @@ test("effects with semicolons and markup round-trip", () => {
 test("a sum over the hard cap notes the cap", () => {
     const s = emptyState();
     s.inv.titles = ["A", "B", "C", "D"].map(name => ({ name, effects: [{ kind: "numeric", n: 2, category: "social", focus: "" }], hint: "" }));
-    assert.match(block(s), /<b>Mods:<\/b> physical — · social \+8 raw \(capped \+6 per roll\) · mental —/);
+    assert.match(block(s), /<b>Mods:<\/b> physical — · social \+8 raw \(capped per roll\) · mental —/);
 });
 test("legacy Titles/Skills and Status rows still read; Mods row ignored", () => {
     const inv = parseBlock(withRows("- <b>Titles/Skills:</b> Charmer; Harbour Friend\n- <b>Status:</b> Tired\n- <b>Mods:</b> +30 Emilia (capped)"), { config: C }).state.inv;
@@ -175,4 +175,27 @@ test("an effect-less condition does not count as needing an effect", () => {
     assert.doesNotMatch(p, /needs effect/);
     assert.match(p, /status: Soaked/);
     assert.doesNotMatch(p, /titles /);
+});
+
+// ── final review fixes ──
+test("sibling titles and conditions survive render → parse", async () => {
+    const { parseChanges } = await import("../src/model/changes.js");
+    const { postTurn } = await import("../src/model/turn.js");
+    const body = "Inventory:\n- title: Champion (Riverside) | +1 physical: racing\n- title: Champion (Mountain) | +2 mental: chess\n"
+        + "- title: Bitten (First) | +1 physical\n- title: Bitten (Second) | +1 social: vampires\n"
+        + "- status + Bruised (left) | -1 physical\n- status + Bruised (right) | -2 physical";
+    const s = postTurn(emptyState(), parseChanges(`<!-- Story_Ledger\n${body}\n-->`), C).state;
+    assert.equal(s.inv.titles.length, 4);
+    assert.equal(s.inv.status.length, 2);
+    const back = parseBlock(block(s), { config: C }).state.inv;
+    assert.deepEqual(back.titles, s.inv.titles);
+    assert.deepEqual(back.status, s.inv.status);
+});
+test("a new Title row and a legacy row with a parenthetical sibling", () => {
+    const r = parseBlock(withRows("- <b>Title:</b> Casino Architect | +1 mental\n- <b>Title:</b> Bitten (First) | needs effect\n- <b>Titles/Skills:</b> Casino Architect (earned — x), Bitten (Second)"), { config: C });
+    assert.deepEqual(entryNames(r.state.inv.titles), ["Casino Architect", "Bitten (First)", "Bitten (Second)"]);
+});
+test("a malformed &#124&#59; in a pasted legacy row splits off the status", () => {
+    const inv = parseBlock(withRows("- <b>Titles/Skills:</b> all prior + Casino Architect &#124&#59; Status: Fed and sleepy"), { config: C }).state.inv;
+    assert.deepEqual(entryNames(inv.titles), ["Casino Architect"]);
 });

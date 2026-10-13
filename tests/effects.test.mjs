@@ -80,3 +80,27 @@ test("zero bonuses are refused with a warning", () => {
     assert.equal(r.warnings.length, 1);
     assert.equal(parseEffects("-0 mental").effects.length, 0);
 });
+
+// ── final review fixes ──
+import { mergeEntries } from "../src/model/effects.js";
+const E = (name, extra = {}) => ({ name, effects: [], hint: "", ...extra });
+const ONE = [{ kind: "numeric", n: 1, category: "physical", focus: "" }];
+test("mergeEntries: exact names merge; base names only when loose and one side is the base", () => {
+    assert.deepEqual(mergeEntries([E("The Forklift"), E("the forklift")]).map(e => e.name), ["The Forklift"]);
+    assert.deepEqual(mergeEntries([E("Casino Architect"), E("Casino Architect (earned)")]).map(e => e.name), ["Casino Architect", "Casino Architect (earned)"]);
+    assert.deepEqual(mergeEntries([E("Casino Architect"), E("Casino Architect (earned)")], { loose: () => true }).map(e => e.name), ["Casino Architect"]);
+    assert.deepEqual(mergeEntries([E("Casino Architect (earned)"), E("Casino Architect", { effects: ONE })], { loose: () => true }),
+        [{ name: "Casino Architect", effects: ONE, hint: "" }]);
+    assert.deepEqual(mergeEntries([E("Bitten (First)"), E("Bitten (Second)", { effects: ONE })], { loose: () => true }).map(e => e.name), ["Bitten (First)", "Bitten (Second)"]);
+});
+test("legacy list: parenthetical-only siblings stay apart", () => {
+    assert.deepEqual(readLegacyList("Bitten (First), Bitten (Second), Bitten (First)").entries.map(e => e.name), ["Bitten (First)", "Bitten (Second)"]);
+});
+test("legacy list: everything after a Status: or Mods: piece is dropped", () => {
+    const r = readLegacyList("Casino Architect | Status: Fed; legs spent (-2 for Buoy Race); bite marks");
+    assert.deepEqual(r.entries.map(e => e.name), ["Casino Architect"]);
+    assert.deepEqual(r.dropped, ["Status: Fed", "legs spent (-2 for Buoy Race)", "bite marks"]);
+    const p = readLegacyList("A, + Status: x, B");
+    assert.deepEqual(p.entries.map(e => e.name), ["A"]);
+    assert.deepEqual(p.dropped, ["Status: x", "B"]);
+});

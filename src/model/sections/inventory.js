@@ -98,17 +98,19 @@ function readEntry(raw) {
 
 /** An older Titles/Skills or Status list row → entries (escaped pipes and semicolons stay inside names). */
 function readLegacyRow(raw) {
-    const decoded = String(raw || "").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;(?!#(?:59|124);)/g, "&");
+    // a malformed `&#124&#59;` (a pipe then a semicolon) is a separator, as in the importers
+    const decoded = String(raw || "").replace(/&#124&#59;/g, "|;").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;(?!#(?:59|124);)/g, "&");
     const back = s => s.replace(/&#124;/g, "|").replace(/&#59;/g, ";").replace(/&amp;/g, "&");
     return readLegacyList(decoded).entries.map(e => ({ ...e, name: back(e.name), hint: back(e.hint) }));
 }
 
-/** Positive numeric effects summed per category; a sum over the hard cap notes the cap. */
+/** Positive numeric effects summed per category; a sum over the default hard cap notes that rolls cap it. */
 function modsRow(value) {
+    // render has no config, so the note names no number (the configured cap may differ)
     const { hardCap } = resolveConfig().sectionConfig.titles;
     const sums = { physical: 0, social: 0, mental: 0 };
     for (const e of [...value.titles, ...value.status]) for (const f of e.effects) if (f.kind === "numeric" && f.n > 0) sums[f.category] += f.n;
-    return Object.entries(sums).map(([k, n]) => (n ? `${k} +${n}${n > hardCap ? ` raw (capped +${hardCap} per roll)` : ""}` : `${k} —`)).join(" · ");
+    return Object.entries(sums).map(([k, n]) => (n ? `${k} +${n}${n > hardCap ? " raw (capped per roll)" : ""}` : `${k} —`)).join(" · ");
 }
 
 // Legacy tagged replies recognize removal explanations; other qualifiers stay literal.
@@ -273,6 +275,8 @@ export default {
     parse(rows, prevValue) {
         const value = { items: [], titles: [], status: [] }, errors = [];
         const itemIds = [], seen = new Set();
+        const legacy = new Set();   // entries read from an old list row may merge on base names
+        const fromLegacy = list => { list.forEach(e => legacy.add(e)); return list; };
         let itemError = false, moneyError = false;
         for (const row of rows) {
             const m = row.match(ROW);
@@ -306,7 +310,7 @@ export default {
             }
             else if (entryKey && !unesc(m[2])) { /* an empty Title/Condition row is nothing */ }
             else if (entryKey) value[entryKey].push(readEntry(m[2]));
-            else if (hit) value[hit[0]].push(...readLegacyRow(m[2]));
+            else if (hit) value[hit[0]].push(...fromLegacy(readLegacyRow(m[2])));
             else if (label === "mods") { /* computed from effects; never read back */ }
             else {
                 errors.push(row);
@@ -317,8 +321,10 @@ export default {
             }
         }
         if (itemIds.length) value.itemIds = itemIds;
-        value.titles = mergeEntries(value.titles);
-        value.status = mergeEntries(value.status);
+        // Title/Condition rows merge only on the exact name; legacy list entries also on base names
+        const loose = e => legacy.has(e);
+        value.titles = mergeEntries(value.titles, { loose });
+        value.status = mergeEntries(value.status, { loose });
         if (errors.length && prevValue) for (const k of ["items", "titles", "status"]) if (!value[k].length || (k === "items" && itemError)) {
             value[k] = k === "items" ? [...prevValue[k]] : (prevValue[k] || []).map(toEntry);
             if (k === "items") {
