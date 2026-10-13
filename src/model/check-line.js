@@ -68,7 +68,12 @@ export function parseCheckLine(line) {
     const actor = (comma < 0 ? head : head.slice(0, comma)).trim();
     const action = comma < 0 ? "" : head.slice(comma + 1).trim();
     let i = 1, category = "";
-    if (!/^DC\s+\d+$/i.test(fields[i])) category = fields[i++].toLowerCase();
+    if (!/^DC\s+\d+$/i.test(fields[i])) {
+        category = fields[i++].toLowerCase();
+        // `Social (charm)`: a category with a note is read by its leading word
+        const noted = category.match(/^(\w+)\s*\([^()]*\)$/);
+        if (noted && CATEGORIES.includes(noted[1])) category = noted[1];
+    }
     const dc = (fields[i++] || "").match(/^DC\s+(\d+)$/i);
     const roll = (fields[i++] || "").match(/^d20\s+(\d+)(.*)$/i);
     if (!actor || !dc || !roll) return null;
@@ -91,8 +96,10 @@ const normOutcome = s => String(s ?? "").toLowerCase().replace(/[-_—–]/g, " 
     .replace(/\bcritical\b/g, "crit")
     .replace(/\b(?:fail|fails|failed)\b/g, "failure")
     .replace(/\bsuccessful\b/g, "success");
-/** The written outcome names `band` (anything after the band's words is ignored). */
-const outcomeIs = (written, band) => {
+/** The written outcome names `band` (anything after the band's words is ignored); a bare `Nat 20` / `Nat 1` names the crit band when the die agrees. */
+const outcomeIs = (written, band, d20) => {
+    const bare = String(written ?? "").trim().match(/^nat(?:ural)?\s*(\d+)$/i);
+    if (bare) return Number(bare[1]) === d20 && ((d20 === 20 && band === "crit success") || (d20 === 1 && band === "crit failure"));
     const w = normOutcome(written);
     return w.startsWith(band) && !/[a-z]/.test(w.charAt(band.length));
 };
@@ -174,7 +181,7 @@ export function verifyCheck(parsed, { die, inv, user, caps }) {
 
     const total = d20 + bonus;
     const band = outcomeBand(d20, total - parsed.dc);
-    if (!outcomeIs(parsed.outcome, band)) problems.push(`outcome "${parsed.outcome}" should be ${band}`);
+    if (!outcomeIs(parsed.outcome, band, d20))problems.push(`outcome "${parsed.outcome}" should be ${band}`);
 
     if (!problems.length) return { ok: true, problems: [], ledgerLine: "" };
     const parts = ledgerSources.map(s => ` + ${s.name} ${signed(s.n)}`);

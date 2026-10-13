@@ -64,7 +64,15 @@ export default {
             const rolls = state.perTurn.checks.rolls;
             const die = rolls.length ? rolls[n] : null;
             n++;
-            if (!parsed) continue;
+            if (!parsed) {
+                // a line with a DC and a d20 is meant as a check: say it was not read
+                const fields = line.split(/\s+·\s+/);
+                if (fields.some(f => /^DC\s+\d+$/i.test(f.trim())) && fields.some(f => /^d20\s+\d+/i.test(f.trim()))) {
+                    const who = fields[0].split(",")[0].trim();
+                    ctx.warnings.push({ section: "Check", text: `${who}: check line not read — name each bonus as + Title ±n` });
+                }
+                continue;
+            }
             const r = verifyCheck(parsed, { die, inv: state.inv, user: ctx.userName, caps: capsOf(ctx) });
             if (r.ok) continue;
             out.push(r.ledgerLine);

@@ -170,3 +170,29 @@ test("the cap rule names {{user}}'s rolls", async () => {
     const { renderRules } = await import("../src/model/prompt.js");
     assert.match(renderRules(resolveConfig()), /bonuses on \{\{user\}\}'s roll are capped/);
 });
+
+// ── final review fixes ──
+test("a DnD-shaped line the parser can't read warns once, with no ledger line", () => {
+    for (const bad of ["Jan, x · social · DC 8 · d20 11 +2 (Mon Ancre) · total 13 · success", "Jan, x · social · DC 8 · d20 11 + Mon Ancre (+2) · total 13 · success"]) {
+        assert.equal(parseCheckLine(bad), null, bad);
+        const r = postTurn(emptyState(), ch(`Check:\n- ${bad}\n- Emilia, b · DC 5 · d20 7 · total 7 · success`), { ...C, dice: { checks: [11, 7] } });
+        const w = r.warnings.filter(x => x.section === "Check");
+        assert.equal(w.length, 1, bad);
+        assert.match(w[0].text, /^Jan: check line not read/);
+        assert.match(w[0].text, /\+ Title ±n/);
+        assert.deepEqual(r.state.perTurn.checks.lines, [bad, "Emilia, b · DC 5 · d20 7 · total 7 · success"]);
+    }
+});
+test("a category with a note is read by its leading word", () => {
+    assert.equal(parseCheckLine("Jan, x · Social (charm) · DC 8 · d20 11 + Mon Ancre +2 = +2 · total 13 · success").category, "social");
+    assert.deepEqual(v("Jan, x · Social (charm) · DC 8 · d20 11 + Mon Ancre +2 = +2 · total 13 · success", 11).problems, []);
+    assert.equal(parseCheckLine("Jan, x · stealth (quiet) · DC 8 · d20 11 · total 11 · success").category, "stealth (quiet)");
+});
+test("a bare natural 20 or 1 names the crit band when the die agrees", () => {
+    const ok = (line, die) => assert.deepEqual(v(line, die).problems, [], line);
+    ok("Emilia, a · DC 10 · d20 20 · total 20 · Nat 20", 20);
+    ok("Emilia, a · DC 10 · d20 20 · total 20 · Natural 20", 20);
+    ok("Emilia, a · DC 10 · d20 1 · total 1 · Nat 1", 1);
+    assert.equal(v("Emilia, a · DC 10 · d20 15 · total 15 · Nat 20", 15).ok, false);
+    assert.equal(v("Emilia, a · DC 10 · d20 20 · total 20 · Nat 1", 20).ok, false);
+});
