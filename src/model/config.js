@@ -80,6 +80,12 @@ export const DEFAULT_SECTION_CONFIG = {
         pursuitLimit: 8,
         residueKeep: 12,
     },
+    titles: {
+        softCap: 3,         // title bonuses above this are soft-capped
+        hardCap: 6,         // no title bonus may exceed this
+        situationalMax: 2,  // situational titles applied at most this often
+        retrofitBatch: 10,  // titles retrofitted per batch
+    },
     worldsim: {
         standard: [
             { from: 1, to: 2, name: "CALM", text: "The wider world goes on without a notable interruption" },
@@ -118,6 +124,7 @@ export function resolveConfig(overrides) {
             if (k === "chekhov" && v && typeof v === "object") base.sectionConfig.chekhov = validChekhov(v, base.sectionConfig.chekhov);
             else if (k === "fate" && v && typeof v === "object") base.sectionConfig.fate = mergeKnown(base.sectionConfig.fate, v);
             else if (k === "worldsim" && v && typeof v === "object") base.sectionConfig.worldsim = mergeKnown(base.sectionConfig.worldsim, v);
+            else if (k === "titles" && v && typeof v === "object") base.sectionConfig.titles = sanitizeTitles(v, base.sectionConfig.titles);
             else if (k in base.sectionConfig && typeof v === typeof base.sectionConfig[k]) base.sectionConfig[k] = v;
         }
     }
@@ -182,6 +189,26 @@ export function sanitizeChekhov(input, prev) {
     };
     if (out.pruneAge <= out.eligibleAge) out.pruneAge = out.eligibleAge + 1;
     return out;
+}
+
+/**
+ * Title-bonus caps from the Settings form: a blank or non-number keeps the previous value;
+ * values are integers clamped to 0..20 (caps), 0..5 (situational), 1..30 (retrofit batch).
+ * Soft cap never exceeds hard cap, so when it would, it drops to the hard cap.
+ */
+export function sanitizeTitles(input = {}, prev = DEFAULT_SECTION_CONFIG.titles) {
+    const num = (k, min, max) => {
+        const raw = input[k];
+        if (raw === undefined || raw === null || String(raw).trim() === "" || !Number.isFinite(Number(raw))) return prev[k];
+        return Math.min(max, Math.max(min, Math.round(Number(raw))));
+    };
+    const hardCap = num("hardCap", 0, 20);
+    return {
+        softCap: Math.min(num("softCap", 0, 20), hardCap),
+        hardCap,
+        situationalMax: num("situationalMax", 0, 5),
+        retrofitBatch: num("retrofitBatch", 1, 30),
+    };
 }
 
 /** Fate settings shown in the popup: blanks preserve saved values and every scalar stays ≥ 1. */
