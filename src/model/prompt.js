@@ -162,7 +162,7 @@ const HANDOVER_ASKS = [
     ["locations", "Locations: a `Name @ place` line for everyone it placed."],
     ["factions", "Factions: field lines for every faction it held."],
     ["quests", "Quests: a `+ Main:` or `+ Side:` line for every quest it held."],
-    ["inv", "Inventory: a `+ item` line for every item {{user}} carried, plus titles and status."],
+    ["inv", "Inventory: a `+ item` line for every item {{user}} carried, plus `title: Name | effects` and `status + Condition` lines."],
     ["cast", "Cast: field lines for everyone present — position, wearing, holding, condition."],
     ["chekhov", "Chekhov: a `load:` line for every planted setup it held (weight, hot, time lock)."],
     ["fate", "Fate/World: an open pursuit, deferred items and world happenings it held."],

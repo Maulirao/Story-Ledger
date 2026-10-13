@@ -917,6 +917,23 @@ function sanitizeFate(input = {}, prev = DEFAULT_SECTION_CONFIG.fate) {
 }
 
 // src/model/sections/inventory.js
+function effectLines(entries) {
+  const by = { physical: [], social: [], mental: [] }, skills = [], notes = [];
+  let needs = 0;
+  for (const e of entries.map(toEntry)) {
+    if (!e.effects.length) needs++;
+    for (const f of e.effects) {
+      if (f.kind === "numeric") (by[f.category] ||= []).push(`${e.name} ${f.n < 0 ? "-" : "+"}${Math.abs(f.n)}${f.focus ? ` (${f.focus})` : ""}`);
+      else if (f.kind === "proficiency") skills.push(`${f.skill} (${e.name})`);
+      else notes.push(`${e.name} — ${f.text}`);
+    }
+  }
+  const lines2 = Object.entries(by).filter(([, v]) => v.length).map(([k, v]) => `${k}: ${v.join(", ")}`);
+  if (skills.length) lines2.push(`proficiency: ${skills.join(", ")}`);
+  if (notes.length) lines2.push(`narrative: ${notes.join(", ")}`);
+  if (needs) lines2.push(`needs effect: ${needs}`);
+  return lines2;
+}
 var COMMANDS6 = [
   { id: "inv.add", form: "+ item", example: "+ brass key", keywords: [] },
   { id: "inv.remove", form: "- item", example: "- brass key", keywords: [] },
@@ -1342,12 +1359,21 @@ var inventory_default = {
     if (items.length) parts.push(`carries ${items.join("; ")}`);
     if (value2.titles.length) parts.push(`titles ${entryNames(value2.titles).join("; ")}`);
     if (value2.status.length) parts.push(`status ${entryNames(value2.status).join("; ")}`);
+    const effects = effectLines([...value2.titles, ...value2.status]);
+    if (effects.length) parts.push(`effects ${effects.join(" · ")}`);
     return parts.length ? `{{user}}: ${parts.join(" · ")}` : "";
+  },
+  facts(state, ctx) {
+    const batch = ctx?.config?.sectionConfig?.titles?.retrofitBatch ?? resolveConfig().sectionConfig.titles.retrofitBatch;
+    const need = (state.inv.titles || []).map(toEntry).filter((t) => !t.effects.length);
+    if (!need.length) return [];
+    const list = need.slice(0, batch).map((t) => t.hint ? `${t.name} (old: ${t.hint})` : t.name).join("; ");
+    return [`Titles that need an effect (give each one this turn, from what happened in the story, with title: Name | effects): ${list}`];
   },
   rules: () => [
     "Money is a balance per currency, without item IDs. Initialize or explicitly correct it with `money: amount currency`; report actual income with `money + amount currency (why)` and spending with `money - amount currency (why)`. Before the FIRST income or expense in a currency, initialize its known PRE-TRANSACTION balance with a `money:` line in the same comment, BEFORE the delta. Cash carried over as an ordinary item does not initialize Money. Use the actual known total and currency from the story; if the total is unknown, do not invent it or emit a delta against an uninitialized balance. Report the amount actually handed over after any returned change, not just the price. Keep explanations inside parentheses after the amount and currency; explanations do not affect arithmetic. The ledger calculates balances; never restate a balance every turn. Copy the currency from Money; omit it only when there is one unambiguous balance. Do not infer a balance from a bill's denomination. Noteworthy bills remain ordinary items or counted supplies, and do not automatically alter Money. Removing a spent cash item is independent of reporting its money expense; never debit Money twice for the item removal.",
     "Supplies are counted or measured stacks (ammo, food, batteries, water), each with an I# ID. Create a new stack with `supply: amount unit | item`; convert an existing item or explicitly correct its count with `I# quantity: amount unit`. For partial use or replenishment, write a signed delta such as `I# adjust: -3 (used)` or `I# adjust: +5 (restocked)`; the ledger does the arithmetic. Reuse an existing ID rather than creating a new stack every turn. Keep ammo types, units and other distinct supplies separate. Quantity metadata is authoritative; a number in an item's description does not set its count. Zero balances and stacks retain identity for replenishment; adjustments cannot overdraw known amounts. A `- I#` line removes the whole entry.",
-    "Inventory is {{user}}'s alone: add items with `+ item` when found; the ledger assigns their I# IDs. Prefer `- I# (why)` when lost or used, and `I# update: description` when an item's description or holder changes; copy an existing ID from the inventory, never invent one. Name removals also work: full name first, otherwise a unique base name ignoring trailing parenthetical notes; ambiguous items need an ID. IDs are not unit counts. Award a title for a real accomplishment; track temporary conditions (Injured, Tired, Inspired) and clear them with time or action. Active conditions are in Status; condition text inside items or titles does not create a Status entry. For status removals, copy the existing condition name exactly, without explanations; clearing an already-absent condition is harmless. A changed condition needs two lines: `status - old condition` and `status + new condition`. Mods are ±1–2 on rolls in the domain they fit only. Never put stats, modifiers or title names in prose."
+    "Inventory is {{user}}'s alone: add items with `+ item` when found; the ledger assigns their I# IDs. Prefer `- I# (why)` when lost or used, and `I# update: description` when an item's description or holder changes; copy an existing ID from the inventory, never invent one. Name removals also work: full name first, otherwise a unique base name ignoring trailing parenthetical notes; ambiguous items need an ID. IDs are not unit counts. Every new title needs at least one effect, written `title: Name | effects`, with effects separated by `;`: a numeric `+1` or `+2 category: focus` (or `-1`/`-2` for a penalty) where category is physical, social or mental and focus names what it applies to; `proficiency: skill` for a trained skill; or plain narrative text when it only changes how the story treats {{user}}. Numeric effects are ±1 or ±2 only, and only in the category and focus they fit. Award a title for a real accomplishment. Track temporary conditions (Injured, Tired, Inspired) and clear them with time or action; a condition may carry the same effects: `status + Condition | effects`. Active conditions are in Status; condition text inside items or titles does not create a Status entry. For status removals, copy the existing condition name exactly, without explanations; clearing an already-absent condition is harmless. A changed condition needs two lines: `status - old condition` and `status + new condition`. Never put stats, modifiers or title names in prose."
   ].join("\n"),
   commands: COMMANDS6,
   template: (ctx) => commandTemplate("Inventory", COMMANDS6, ctx)
@@ -4056,7 +4082,7 @@ var HANDOVER_ASKS = [
   ["locations", "Locations: a `Name @ place` line for everyone it placed."],
   ["factions", "Factions: field lines for every faction it held."],
   ["quests", "Quests: a `+ Main:` or `+ Side:` line for every quest it held."],
-  ["inv", "Inventory: a `+ item` line for every item {{user}} carried, plus titles and status."],
+  ["inv", "Inventory: a `+ item` line for every item {{user}} carried, plus `title: Name | effects` and `status + Condition` lines."],
   ["cast", "Cast: field lines for everyone present — position, wearing, holding, condition."],
   ["chekhov", "Chekhov: a `load:` line for every planted setup it held (weight, hot, time lock)."],
   ["fate", "Fate/World: an open pursuit, deferred items and world happenings it held."]

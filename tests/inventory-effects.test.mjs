@@ -130,3 +130,40 @@ test("degenerate | forms do not create garbage entries", () => {
     r = run(emptyState(), "- status + Foo |");
     assert.deepEqual(r.state.inv.status, [{ name: "Foo", effects: [], hint: "" }]);
 });
+
+// ── prompt, retrofit facts and rules ──
+import { sectionByKey } from "../src/model/sections/registry.js";
+import { preTurnFacts } from "../src/model/turn.js";
+
+test("prompt groups effects by category", () => {
+    const s = emptyState();
+    s.inv.titles = [
+        { name: "Mon Ancre", effects: [{ kind: "numeric", n: 2, category: "social", focus: "Emilia" }], hint: "" },
+        { name: "Trained Diver", effects: [{ kind: "proficiency", skill: "diving" }, { kind: "narrative", text: "holds breath" }], hint: "" },
+        { name: "Royal Chariot", effects: [], hint: "" }];
+    s.inv.status = [{ name: "Legs spent", effects: [{ kind: "numeric", n: -2, category: "physical", focus: "running" }], hint: "" }];
+    const p = sectionByKey("inv").prompt(s.inv, s);
+    assert.match(p, /social: Mon Ancre \+2 \(Emilia\)/);
+    assert.match(p, /physical: Legs spent -2 \(running\)/);
+    assert.match(p, /proficiency: diving \(Trained Diver\)/);
+    assert.match(p, /narrative: Trained Diver — holds breath/);
+    assert.match(p, /needs effect: 1/);
+});
+test("retrofit facts list up to retrofitBatch needs-effect titles, oldest first, with hints", () => {
+    const s = emptyState();
+    s.inv.titles = Array.from({ length: 12 }, (_, i) => ({ name: `T${i}`, effects: [], hint: i === 0 ? "+2 social Emilia" : "" }));
+    const facts = preTurnFacts(s, C);
+    const line = facts.find(f => /need an effect/.test(f));
+    assert.match(line, /T0 \(old: \+2 social Emilia\)/);
+    assert.match(line, /T9\b/);
+    assert.doesNotMatch(line, /T10\b/);
+    assert.match(line, /title: Name \| effects/);
+});
+test("no retrofit fact when every title has effects", () => {
+    assert.equal(preTurnFacts(emptyState(), C).some(f => /need an effect/.test(f)), false);
+});
+test("rules name the categories, the effect forms and conditions with effects", () => {
+    const r = sectionByKey("inv").rules();
+    for (const s of ["physical", "social", "mental", "proficiency:", "±1", "title: Name | effects", "status + Condition | effects"]) assert.ok(r.includes(s), s);
+    assert.doesNotMatch(r, /Mods are ±1–2/);
+});
