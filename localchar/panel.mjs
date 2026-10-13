@@ -45,7 +45,7 @@ function readConfigControls(root) {
  * Fill `body` with the ledger panel and wire it. `fixedTab` shows one tab with no tab strip (the page
  * under Settings → Extensions). Returns the cleanup the host runs when the panel closes.
  */
-export function mountLedger({ host, body, startTab = "rules", fixedTab = null, getSettings, setSettings }) {
+export function mountLedger({ host, body, startTab = "rules", fixedTab = null, ready = async () => {}, getSettings, setSettings }) {
     let tab = fixedTab || startTab;
     let previewBaseDice = rollTurnDice();
     let view = null;
@@ -55,6 +55,7 @@ export function mountLedger({ host, body, startTab = "rules", fixedTab = null, g
     const notify = (kind, text) => host.notify(kind, text, TITLE);
 
     async function load() {
+        await ready();
         if (fixedTab) {
             view = { chat: [], settings: getSettings(), chatData: core.normalizeChatData({}), userName: "" };
             return;

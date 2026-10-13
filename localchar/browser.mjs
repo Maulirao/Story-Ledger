@@ -161,13 +161,26 @@ export default function register(host) {
         return () => { el.removeEventListener("click", onClick); undecorate(el); };
     }
 
+    // The stored settings arrive after register (and again after every update reloads the bundle).
+    // Nothing may be drawn or saved from the defaults before then: a page drawn from defaults saves
+    // them back over the reader's settings.
+    let settingsLoaded = false;
+    let settingsLoading = null;
+    function loadSettings() {
+        settingsLoading ??= host.settings.get()
+            .then(raw => { settings = core.normalizeSettings(raw); settingsLoaded = true; refreshDecorations(); })
+            .catch(error => { settingsLoading = null; throw error; });
+        return settingsLoading;
+    }
+
     async function setSettings(next) {
+        if (!settingsLoaded) throw new Error("the saved settings have not been read yet");
         settings = core.normalizeSettings(next);
         await host.settings.set(settings);
         refreshDecorations();
     }
 
-    const panelArgs = body => ({ host, body, getSettings: () => settings, setSettings });
+    const panelArgs = body => ({ host, body, ready: loadSettings, getSettings: () => settings, setSettings });
     function openPanel(startTab = "rules") {
         host.openPanel({ title: TITLE, render: body => mountLedger({ ...panelArgs(body), startTab }) });
     }
@@ -177,9 +190,7 @@ export default function register(host) {
     const offMenu = host.addChatMenuItem("Story Ledger", () => openPanel("rules"));
     const offPage = host.settingsPanel(body => mountLedger({ ...panelArgs(body), fixedTab: "settings" }));
 
-    host.settings.get()
-        .then(raw => { settings = core.normalizeSettings(raw); refreshDecorations(); })
-        .catch(noop);
+    loadSettings().catch(noop);
 
     return () => {
         disposed = true;

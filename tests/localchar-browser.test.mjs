@@ -202,3 +202,52 @@ test("configFromForm sanitises title caps", () => {
 test("configFormFromControls carries the title caps", () => {
     assert.deepEqual(configFormFromControls({ titles: [["softCap", "4"]] }).titles, { softCap: "4" });
 });
+
+// A body the ledger page can mount into without a DOM: it records what is drawn and lets a test fire
+// the change events the page listens for.
+function fakeBody() {
+    const listeners = {};
+    return {
+        textContent: "", innerHTML: "",
+        addEventListener(type, fn) { listeners[type] = fn; },
+        removeEventListener(type) { delete listeners[type]; },
+        querySelector: () => null,
+        fire: (type, event) => listeners[type]?.(event),
+    };
+}
+
+const settle = () => new Promise(resolve => setTimeout(resolve, 0));
+const setControl = (key, value) => ({ target: { type: "text", value, dataset: { set: key }, matches: sel => sel === "[data-set]" } });
+
+test("the Settings page waits for the stored settings, so a change after an update keeps the rest", async () => {
+    // An update reloads the extension: the page can be mounted before the stored settings arrive.
+    let release;
+    const stored = { theme: "parchment", checkStyle: "dnd", depth: 7 };
+    const { host, log } = fakeHost();
+    host.settings.get = () => new Promise(resolve => { release = () => resolve(stored); });
+    register(host);
+    const body = fakeBody();
+    log.pages[0](body);
+    await settle();
+    assert.equal(body.innerHTML, "", "nothing is drawn from defaults");
+    release();
+    await settle();
+    assert.notEqual(body.innerHTML, "", "the page is drawn once the stored settings are in");
+    await body.fire("change", setControl("fixupMode", "lean"));
+    assert.equal(log.settingsSaved.theme, "parchment");
+    assert.equal(log.settingsSaved.checkStyle, "dnd");
+    assert.equal(log.settingsSaved.depth, 7);
+    assert.equal(log.settingsSaved.fixupMode, "lean");
+});
+
+test("settings that could not be read are never saved over", async () => {
+    const { host, log } = fakeHost();
+    host.settings.get = async () => { throw new Error("offline"); };
+    register(host);
+    const body = fakeBody();
+    log.pages[0](body);
+    await settle();
+    assert.match(body.textContent, /could not be loaded/);
+    await assert.rejects(body.fire("change", setControl("fixupMode", "lean")));
+    assert.equal(log.settingsSaved, undefined);
+});

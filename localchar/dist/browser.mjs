@@ -5022,7 +5022,8 @@ function readConfigControls(root) {
     titles: all("[data-titles]").map((el) => [el.dataset.titles, el.value])
   });
 }
-function mountLedger({ host, body, startTab = "rules", fixedTab = null, getSettings, setSettings }) {
+function mountLedger({ host, body, startTab = "rules", fixedTab = null, ready = async () => {
+}, getSettings, setSettings }) {
   let tab = fixedTab || startTab;
   let previewBaseDice = rollTurnDice();
   let view = null;
@@ -5030,6 +5031,7 @@ function mountLedger({ host, body, startTab = "rules", fixedTab = null, getSetti
   let previewSeq = 0;
   const notify = (kind, text) => host.notify(kind, text, TITLE);
   async function load() {
+    await ready();
     if (fixedTab) {
       view = { chat: [], settings: getSettings(), chatData: normalizeChatData({}), userName: "" };
       return;
@@ -5360,12 +5362,26 @@ ${body}`) : true);
       undecorate(el);
     };
   }
+  let settingsLoaded = false;
+  let settingsLoading = null;
+  function loadSettings() {
+    settingsLoading ??= host.settings.get().then((raw) => {
+      settings = normalizeSettings(raw);
+      settingsLoaded = true;
+      refreshDecorations();
+    }).catch((error) => {
+      settingsLoading = null;
+      throw error;
+    });
+    return settingsLoading;
+  }
   async function setSettings(next) {
+    if (!settingsLoaded) throw new Error("the saved settings have not been read yet");
     settings = normalizeSettings(next);
     await host.settings.set(settings);
     refreshDecorations();
   }
-  const panelArgs = (body) => ({ host, body, getSettings: () => settings, setSettings });
+  const panelArgs = (body) => ({ host, body, ready: loadSettings, getSettings: () => settings, setSettings });
   function openPanel(startTab = "rules") {
     host.openPanel({ title: TITLE2, render: (body) => mountLedger({ ...panelArgs(body), startTab }) });
   }
@@ -5373,10 +5389,7 @@ ${body}`) : true);
   const offFilter = host.streamingFilter((text) => settings.enabled ? hideStreamingComment(text) : text);
   const offMenu = host.addChatMenuItem("Story Ledger", () => openPanel("rules"));
   const offPage = host.settingsPanel((body) => mountLedger({ ...panelArgs(body), fixedTab: "settings" }));
-  host.settings.get().then((raw) => {
-    settings = normalizeSettings(raw);
-    refreshDecorations();
-  }).catch(noop);
+  loadSettings().catch(noop);
   return () => {
     disposed = true;
     offHook();
