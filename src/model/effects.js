@@ -36,7 +36,7 @@ function parsePiece(piece) {
     const num = text.match(NUMERIC);
     if (num) {
         const n = Number(num[2]) * (num[1] === "-" ? -1 : 1);
-        if (Math.abs(n) > 2) return { effect: null, warning: `"${text}" is out of range (use -2 to +2)` };
+        if (n === 0 || Math.abs(n) > 2) return { effect: null, warning: `"${text}" is out of range (use ±1 or ±2)` };
         return { effect: { kind: "numeric", n, category: num[3].toLowerCase(), focus: unescSemi(num[4].trim()) } };
     }
     const odd = text.match(SIGNED_WORD);

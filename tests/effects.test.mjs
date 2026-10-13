@@ -74,3 +74,9 @@ test("capBonus: soft then hard cap", () => {
         { value: 3, cap: "" }, { value: 3, cap: "soft cap" }, { value: 4, cap: "soft cap" },
         { value: 5, cap: "soft cap" }, { value: 6, cap: "hard cap" }]);
 });
+test("zero bonuses are refused with a warning", () => {
+    const r = parseEffects("+0 social: x; proficiency: y");
+    assert.deepEqual(r.effects, [{ kind: "proficiency", skill: "y" }]);
+    assert.equal(r.warnings.length, 1);
+    assert.equal(parseEffects("-0 mental").effects.length, 0);
+});
