@@ -144,6 +144,8 @@ node tools/presets/convert.mjs tools/presets/recipes/rf-glm-bolt.json --write   
 
 In ledger comments, `status - condition` safely clears a condition even if it is
 already absent. Ambiguous names and malformed commands still produce notices.
+An agenda completion naming a quoted task is also harmless when that NPC has no
+saved agenda; its described effects still need their own ledger commands.
 Item and title removals still require a matching entry. Install updates and use ↻
 to rebuild an existing reply with the current parser.
 
@@ -155,6 +157,8 @@ without changing its ID. Additions stay `+ item`; the model must not invent IDs.
 ID removals also accept multiple parenthetical notes, such as
 `- I7 ($50) (paid for supplies)`, or colon descriptions such as
 `- I7: towel (left behind)`; the ID determines which entry is removed.
+Without a colon, a copied item label is accepted when it matches that ID's item,
+such as `- I7 towel (left behind)`.
 One ID identifies one listed entry, including any quantity in its description.
 Removed IDs are not reused along the retained sequence of snapshots.
 
@@ -166,6 +170,11 @@ matching entries require a full name or ID. Parentheses inside a name remain
 literal. An unknown or malformed ID command never falls back to a name match.
 These expanded command readings apply to ledger comments; tagged replies retain
 their old name-matching behavior.
+
+Title and condition bonuses labelled `emotional`, `comedy`, or `trust` are read
+as social bonuses, retaining the label in their focus: `+1 comedy Emilia` becomes
+`+1 social: comedy, Emilia`. These aliases work in imported lists too and follow
+the same ±1/±2 limits and per-roll caps as other bonuses.
 
 IDs survive save/read cycles. Swipes and ↻ rebuilds use their preceding snapshot,
 so a discarded alternative cannot remove an item or consume an ID in another.

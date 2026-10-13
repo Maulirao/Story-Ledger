@@ -27,15 +27,15 @@ test("list A splits, drops 'all prior', merges duplicates, keeps the hint", () =
     assert.equal(titles.find(t => t.name === "Undefeated Charioteer").hint, "passive +1 to all carry momentum checks");
 });
 
-test("list B (numbered) gives effects to Mon Ancre and Bon Garçon, hints to the rest", () => {
+test("list B gives social effects to supported aliases, leaving unknown categories as hints", () => {
     const titles = titlesOf(LIST_B);
     const by = n => titles.find(t => t.name === n);
     assert.deepEqual(by("Mon Ancre").effects, [{ kind: "numeric", n: 2, category: "social", focus: "Emilia" }]);
     assert.ok(by("Bon Garçon").effects.length > 0);
-    for (const n of ["Promise Keeper", "Got Your Nose", "Stood Up to Marie"]) {
-        assert.equal(by(n).effects.length, 0, n);
-        assert.ok(by(n).hint, n);
-    }
+    assert.deepEqual(by("Promise Keeper").effects, [{ kind: "numeric", n: 1, category: "social", focus: "trust, checks" }]);
+    assert.deepEqual(by("Got Your Nose").effects, [{ kind: "numeric", n: 1, category: "social", focus: "comedy, Emilia" }]);
+    assert.equal(by("Stood Up to Marie").effects.length, 0);
+    assert.ok(by("Stood Up to Marie").hint);
 });
 
 test("preTurnFacts lists exactly 10 needs-effect titles", () => {

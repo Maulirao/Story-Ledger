@@ -5,7 +5,8 @@
 // ──────────────────────────────────────────────────────────────────────────────
 
 const CATEGORIES = ["physical", "social", "mental"];
-const NUMERIC = /^([+-])(\d+)\s+(physical|social|mental)\b\s*:?\s*(.*)$/i;
+const SOCIAL_ALIASES = new Set(["emotional", "comedy", "trust"]);
+const NUMERIC = /^([+-])(\d+)\s+(physical|social|mental|emotional|comedy|trust)\b\s*:?\s*(.*)$/i;
 const SIGNED_WORD = /^[+-]\d+\s+([^\s:;,()]+)/;
 const PROFICIENCY = /^proficiency\s*:\s*(.+)$/i;
 const JUNK = /^(all prior|all previous|—)$/i;
@@ -37,7 +38,9 @@ function parsePiece(piece) {
     if (num) {
         const n = Number(num[2]) * (num[1] === "-" ? -1 : 1);
         if (n === 0 || Math.abs(n) > 2) return { effect: null, warning: `"${text}" is out of range (use ±1 or ±2)` };
-        return { effect: { kind: "numeric", n, category: num[3].toLowerCase(), focus: unescSemi(num[4].trim()) } };
+        const label = num[3].toLowerCase(), social = SOCIAL_ALIASES.has(label);
+        const focus = unescSemi(num[4].trim());
+        return { effect: { kind: "numeric", n, category: social ? "social" : label, focus: social ? [label, focus].filter(Boolean).join(", ") : focus } };
     }
     const odd = text.match(SIGNED_WORD);
     const narrative = { kind: "narrative", text: unescSemi(String(piece).trim()) };

@@ -352,8 +352,8 @@ export const FIXTURES = {
             clean(r);
             assert.deepEqual(r.state.agendas, { Ana: { ...AGENDA } });
         },
-        malformed: ['Bo: done "mend the nets" → the boat can sail', 'Ana: dnoe "mend the nets"', 'Ana done "mend the nets"', "Ana:"],
-        valid: ["Ana: done"],
+        malformed: ['Bo: done', 'Ana: dnoe "mend the nets"', 'Ana done "mend the nets"', "Ana:"],
+        valid: ["Ana: done", 'Bo: done "mend the nets" → the boat can sail'],
     },
     "agendas.knows": agendaField("knows", "aware", "Mara took the key", "konws"),
     "agendas.fib": agendaField("fib", "fibs", "says she was home all night", "fbi"),

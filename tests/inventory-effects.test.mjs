@@ -89,6 +89,15 @@ test("a refused number warns and keeps the other effects", () => {
     assert.deepEqual(r.state.inv.titles[0].effects, [{ kind: "proficiency", skill: "y" }]);
     assert.equal(invWarnings(r).length, 1);
 });
+
+test("the screenshot's title categories become social effects without warnings", () => {
+    for (const category of ["emotional", "comedy", "trust"]) {
+        const r = run(emptyState(), `- title: X | +1 ${category}: Emilia`);
+        assert.deepEqual(r.state.inv.titles[0].effects, [{ kind: "numeric", n: 1, category: "social", focus: `${category}, Emilia` }]);
+        assert.deepEqual(invWarnings(r), []);
+        assert.deepEqual(parseBlock(block(r.state), { config: C }).state.inv.titles, r.state.inv.titles);
+    }
+});
 test("status + with effects; semicolon recap still adds several without |", () => {
     let r = run(emptyState(), "- status + Legs spent | -2 physical: running, swimming");
     assert.deepEqual(r.state.inv.status[0].effects, [{ kind: "numeric", n: -2, category: "physical", focus: "running, swimming" }]);

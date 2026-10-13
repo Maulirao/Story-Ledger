@@ -90,6 +90,6 @@ test("FF numbered titles become effects", () => {
     const [a, b] = r.state.inv.titles;
     assert.deepEqual(a.effects, [{ kind: "numeric", n: 2, category: "social", focus: "Emilia" }]);
     assert.equal(b.name, "Got Your Nose");
-    assert.deepEqual(b.effects, []);
-    assert.equal(b.hint, "+1 comedy Emilia");
+    assert.deepEqual(b.effects, [{ kind: "numeric", n: 1, category: "social", focus: "comedy, Emilia" }]);
+    assert.equal(b.hint, "");
 });

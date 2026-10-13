@@ -60,6 +60,25 @@ test("a junk agenda line is unparsed", () => {
     assert.deepEqual(unparsed, [{ section: "Agendas", line: "Ana does stuff" }]);
 });
 
+test("a named completion without a saved agenda is a harmless comment no-op", () => {
+    const s = emptyState();
+    s.agendas = { Ana: agenda("restock", 0, 2) };
+    const line = 'Rodrigue: done "hold the impeller for Vermont" → impeller traded into Jan\'s hands, fifty plus cash into the till';
+    const r = postTurn(s, ch(`Agendas:\n- ${line}`), C);
+    assert.deepEqual(r.unparsed, []);
+    assert.deepEqual(r.state.agendas, { Ana: agenda("restock", 1, 2) });
+    assert.deepEqual(r.state.inv.items, []);
+    const tagged = postTurn(s, parseChanges(`<Story_Ledger>\nAgendas:\n- ${line}\n</Story_Ledger>`), C);
+    assert.deepEqual(tagged.unparsed, [{ section: "Agendas", line }]);
+});
+
+test("an unknown agenda completion still refuses malformed commands", () => {
+    const lines = ['Rodrigue: done gibberish', 'Rodrigue: done "" → paid', 'Rodrigue: done "trade" →'];
+    const r = postTurn(emptyState(), ch(`Agendas:\n${lines.map(line => `- ${line}`).join("\n")}`), C);
+    assert.deepEqual(r.unparsed, lines.map(line => ({ section: "Agendas", line })));
+    assert.deepEqual(r.state.agendas, {});
+});
+
 test("impossible agenda progress is unread and changes nothing", () => {
     const { state, unparsed } = postTurn(emptyState(), ch('Agendas:\n- Nora: new "repair" 3/2 @ shed\n- Nora: new "repair" 0/0'), C);
     assert.deepEqual(state.agendas, {});

@@ -18,9 +18,29 @@ test("out-of-range numbers are refused and unknown categories warn", () => {
     const big = parseEffects("+3 social: Emilia; proficiency: x");
     assert.deepEqual(big.effects, [{ kind: "proficiency", skill: "x" }]);
     assert.equal(big.warnings.length, 1);
-    const odd = parseEffects("+1 comedy Emilia");
-    assert.deepEqual(odd.effects, [{ kind: "narrative", text: "+1 comedy Emilia" }]);
+    const odd = parseEffects("+1 magic Emilia");
+    assert.deepEqual(odd.effects, [{ kind: "narrative", text: "+1 magic Emilia" }]);
     assert.match(odd.warnings[0], /unknown category/);
+});
+
+test("emotional, comedy and trust bonuses normalize to social with their focus retained", () => {
+    const r = parseEffects("+2 Emotional: Emilia; −1 comedy Gilles; +1 trust; +1 social: friends");
+    assert.deepEqual(r.effects, [
+        { kind: "numeric", n: 2, category: "social", focus: "emotional, Emilia" },
+        { kind: "numeric", n: -1, category: "social", focus: "comedy, Gilles" },
+        { kind: "numeric", n: 1, category: "social", focus: "trust" },
+        { kind: "numeric", n: 1, category: "social", focus: "friends" },
+    ]);
+    assert.deepEqual(r.warnings, []);
+    assert.equal(r.complete, true);
+    assert.equal(formatEffects(r.effects), "+2 social: emotional, Emilia; -1 social: comedy, Gilles; +1 social: trust; +1 social: friends");
+});
+
+test("social aliases obey the same numeric limits as canonical categories", () => {
+    const r = parseEffects("+3 comedy: Emilia; +0 trust; -4 emotional");
+    assert.deepEqual(r.effects, []);
+    assert.equal(r.warnings.length, 3);
+    assert.ok(r.warnings.every(w => /out of range/.test(w)));
 });
 test("formatEffects writes the canonical form", () => {
     assert.equal(formatEffects(parseEffects("+2 social Emilia;+1 mental").effects), "+2 social: Emilia; +1 mental");
@@ -39,7 +59,7 @@ test("legacy list: FF commas, parenthetical effects, hints, names", () => {
     assert.deepEqual(entries.map(e => [e.name, formatEffects(e.effects), e.hint]), [
         ["Mon Ancre", "+2 social: Emilia", ""],
         ["Bon Garçon", "+1 social: Sofia; +1 social: Gilles", ""],
-        ["Got Your Nose", "", "+1 comedy Emilia"],
+        ["Got Your Nose", "+1 social: comedy, Emilia", ""],
         ["Bitten (First)", "", ""],
         ["Daily Brusher (contracted)", "", ""]]);
 });

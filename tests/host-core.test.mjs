@@ -206,6 +206,25 @@ test("every notice names its kind and a title", () => {
     assert.equal(first.kind, "warning");
 });
 
+test("the screenshot's social aliases count on a capped check without effect warnings", () => {
+    const host = miniHost();
+    host.chat = [user("Go on.")];
+    host.lock(); host.turn("normal");
+    host.chat.push(char(`Prose.\n<!-- Story_Ledger
+Inventory:
+- title: A | +1 comedy: Emilia
+- title: B | +1 emotional: Emilia
+- title: C | +1 comedy: Gilles
+- title: D | +1 trust: Emilia
+Check:
+- Jan, makes Emilia laugh · social · DC 8 · d20 14 + A +1 + B +1 + C +1 + D +1 = +4 → +3 (soft cap) · total 17 · crit success
+-->`));
+    const out = host.rebuild(1);
+    assert.deepEqual(out.notices, []);
+    assert.doesNotMatch(out.mes, /↳ ledger:/);
+    assert.match(out.mes, /<b>Title:<\/b> A \| \+1 social: comedy, Emilia/);
+});
+
 test("fudge lifecycle across two turns", () => {
     const host = miniHost();
     playSixTurns(host);

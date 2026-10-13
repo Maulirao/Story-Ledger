@@ -420,8 +420,11 @@ export default {
             }
             else if (normalized && /^-\s*I\d+\b/i.test(line)) {
                 m = closedForm(line).match(/^-\s*(I\d+)\b([\s\S]*)$/i);
-                const at = m && (removalNote(m[2]) || /^\s*:\s*\S/.test(m[2])) ? (inv.itemIds || []).indexOf(m[1].toUpperCase()) : -1;
-                if (at < 0) unparsed.push(line);
+                const at = m ? (inv.itemIds || []).indexOf(m[1].toUpperCase()) : -1;
+                // A copied item label may follow its ID without a colon. It must
+                // agree with that ID's item; never fall back to another entry.
+                const labelled = at >= 0 && /^\s+\S/.test(m[2]) && itemIndex([inv.items[at]], m[2].trim(), undefined, true) === 0;
+                if (at < 0 || !(removalNote(m[2]) || /^\s*:\s*\S/.test(m[2]) || labelled)) unparsed.push(line);
                 else removeEntry(inv, at);
             }
             else if ((m = line.match(/^title\s*:\s*(.+)$/i))) {

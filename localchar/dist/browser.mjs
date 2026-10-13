@@ -286,8 +286,9 @@ var agendas_default = {
         ctx.touched.add(n.toLowerCase());
       } else if (m = line.match(/^(.+?)\s*:\s*done\b/i)) {
         const n = findName(Object.keys(state.agendas), m[1]);
-        if (!state.agendas[n]) unparsed.push(line);
-        else if (!ctx.touched.has(n.toLowerCase())) Object.assign(state.agendas[n], { task: "", step: 0, max: 0 });
+        if (!state.agendas[n]) {
+          if (!ctx.normalizedChanges || !/^.+?\s*:\s*done\s+"[^"\s][^"]*"\s*(?:→\s*\S.*)?$/i.test(line)) unparsed.push(line);
+        } else if (!ctx.touched.has(n.toLowerCase())) Object.assign(state.agendas[n], { task: "", step: 0, max: 0 });
       } else if (m = line.match(/^(.+?)\s+(knows|fibs?|circle|body)\s*:\s*(.+)$/i)) {
         const [, a] = entry(state, m[1]);
         const field3 = { knows: "aware", fib: "fibs", fibs: "fibs", circle: "circle", body: "body" }[m[2].toLowerCase()];
@@ -561,7 +562,8 @@ function adjustDecimal(balance, change) {
 
 // src/model/effects.js
 var CATEGORIES = ["physical", "social", "mental"];
-var NUMERIC = /^([+-])(\d+)\s+(physical|social|mental)\b\s*:?\s*(.*)$/i;
+var SOCIAL_ALIASES = /* @__PURE__ */ new Set(["emotional", "comedy", "trust"]);
+var NUMERIC = /^([+-])(\d+)\s+(physical|social|mental|emotional|comedy|trust)\b\s*:?\s*(.*)$/i;
 var SIGNED_WORD = /^[+-]\d+\s+([^\s:;,()]+)/;
 var PROFICIENCY = /^proficiency\s*:\s*(.+)$/i;
 var JUNK = /^(all prior|all previous|—)$/i;
@@ -591,7 +593,9 @@ function parsePiece(piece) {
   if (num) {
     const n = Number(num[2]) * (num[1] === "-" ? -1 : 1);
     if (n === 0 || Math.abs(n) > 2) return { effect: null, warning: `"${text}" is out of range (use ±1 or ±2)` };
-    return { effect: { kind: "numeric", n, category: num[3].toLowerCase(), focus: unescSemi(num[4].trim()) } };
+    const label = num[3].toLowerCase(), social = SOCIAL_ALIASES.has(label);
+    const focus = unescSemi(num[4].trim());
+    return { effect: { kind: "numeric", n, category: social ? "social" : label, focus: social ? [label, focus].filter(Boolean).join(", ") : focus } };
   }
   const odd = text.match(SIGNED_WORD);
   const narrative = { kind: "narrative", text: unescSemi(String(piece).trim()) };
@@ -1322,8 +1326,9 @@ var inventory_default = {
         else inv.items[at] = m[2].trim();
       } else if (normalized && /^-\s*I\d+\b/i.test(line)) {
         m = closedForm(line).match(/^-\s*(I\d+)\b([\s\S]*)$/i);
-        const at = m && (removalNote(m[2]) || /^\s*:\s*\S/.test(m[2])) ? (inv.itemIds || []).indexOf(m[1].toUpperCase()) : -1;
-        if (at < 0) unparsed.push(line);
+        const at = m ? (inv.itemIds || []).indexOf(m[1].toUpperCase()) : -1;
+        const labelled = at >= 0 && /^\s+\S/.test(m[2]) && itemIndex([inv.items[at]], m[2].trim(), void 0, true) === 0;
+        if (at < 0 || !(removalNote(m[2]) || /^\s*:\s*\S/.test(m[2]) || labelled)) unparsed.push(line);
         else removeEntry(inv, at);
       } else if (m = line.match(/^title\s*:\s*(.+)$/i)) {
         const parsed = withEffects(m[1], rawOf(/^title\s*:\s*(.+)$/i));

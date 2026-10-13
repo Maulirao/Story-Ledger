@@ -47,6 +47,29 @@ test("unknown and malformed ID commands never fall back to item names", () => {
     assert.deepEqual(r.unparsed, lines.map(line => ({ section: "Inventory", line })));
 });
 
+test("an ID removal accepts its matching item label and leaves Money unchanged", () => {
+    const s = emptyState();
+    s.inv.items = ["$50 (cash carried on Jan)", "impeller"];
+    s.inv.itemIds = ["I8", "I9"];
+    s.inv.money = { USD: "50" };
+    const r = turn(s, "- - I8 $50 (paid toward the impeller with Gilles's fifty)");
+    assert.deepEqual(r.unparsed, []);
+    assert.deepEqual(r.state.inv.items, ["impeller"]);
+    assert.deepEqual(r.state.inv.itemIds, ["I9"]);
+    assert.deepEqual(r.state.inv.money, { USD: "50" });
+    assert.deepEqual(s.inv.items, ["$50 (cash carried on Jan)", "impeller"]);
+});
+
+test("a labelled ID removal refuses conflicting labels and unknown IDs", () => {
+    const s = emptyState();
+    s.inv.items = ["$50", "impeller"];
+    s.inv.itemIds = ["I8", "I9"];
+    const lines = ["- I8 impeller (paid)", "- I99 $50 (paid)", "- I8 $50 stray command"];
+    const r = turn(s, lines.map(line => `- ${line}`).join("\n"));
+    assert.deepEqual(r.state.inv.items, s.inv.items);
+    assert.deepEqual(r.unparsed, lines.map(line => ({ section: "Inventory", line })));
+});
+
 test("name removals ignore arbitrary trailing notes only for a unique counted base", () => {
     for (const name of ["towel (with blue stripes)", "1 towel (bathroom)", "towel (under repair)", "1 towel (on emilia)", "towel (wet (after swimming))"]) {
         const s = emptyState(); s.inv.items = [name, "key"];
