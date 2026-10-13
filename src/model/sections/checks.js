@@ -28,7 +28,7 @@ const dndRules = ({ softCap, hardCap, situationalMax }) => [
     "Lock the DC first, from the task's difficulty and {{user}}'s proficiencies (Easy 1–5, Moderate 5–10, Hard 10–15, Impossible 15–20); titles and conditions go on the roll, by name, never into the DC.",
     "Every check names its category: physical, social or mental.",
     "On {{user}}'s roll, name every title and condition whose effect applies in that category, each with its number: `+ Mon Ancre +2`. Penalties always count, in full.",
-    `Positive title and condition bonuses on one roll are capped: up to ${signed(softCap)} counts in full, half of anything beyond (rounded down), never more than ${signed(hardCap)}; naming more titles past the cap adds nothing. Write \`= ±sum\` for the plain sum of every number, then \`→ ±capped (soft cap)\` (or hard cap) only when the cap changes it.`,
+    `Positive title and condition bonuses on {{user}}'s roll are capped: up to ${signed(softCap)} counts in full, half of anything beyond (rounded down), never more than ${signed(hardCap)}; naming more titles past the cap adds nothing. Write \`= ±sum\` for the plain sum of every number, then \`→ ±capped (soft cap)\` (or hard cap) only when the cap changes it.`,
     `Help or tools that are not titles go in at most one \`situational ±n (why)\`, at most ±${situationalMax}, not capped.`,
     "Delta = total − DC: Nat 20 or +8 crit success · 0 to +7 success · −1 to −3 near miss · −4 to −7 failure · Nat 1 or −8 crit failure. Dice are law; never fudge. Never name DCs, dice or stats in prose.",
     "Under `Check:`, one line per roll used: `Actor, action · category · DC n · d20 n + Title ±n … [+ situational ±n (why)] = ±sum [→ ±capped (soft cap)] · total t · Outcome`. Use the dice in order, one per line. With no bonus: `d20 14 · total 14`. The ledger checks the die, every name and number, the cap, the total and the outcome, and adds its own line when they disagree.",
@@ -59,8 +59,13 @@ export default {
             const parsed = arrow(ctx) ? null : parseCheckLine(line);
             // a read DnD line shows the cap arrow as →; Wind's Arrow and unread lines stay as written
             out.push(parsed ? line.replace(/->/g, "→") : line);
+            if (arrow(ctx)) continue;
+            // the n-th check line takes the n-th die, read or not; no dice at all skips the die check
+            const rolls = state.perTurn.checks.rolls;
+            const die = rolls.length ? rolls[n] : null;
+            n++;
             if (!parsed) continue;
-            const r = verifyCheck(parsed, { die: state.perTurn.checks.rolls[n++], inv: state.inv, user: ctx.userName, caps: capsOf(ctx) });
+            const r = verifyCheck(parsed, { die, inv: state.inv, user: ctx.userName, caps: capsOf(ctx) });
             if (r.ok) continue;
             out.push(r.ledgerLine);
             ctx.warnings.push({ section: "Check", text: `${parsed.actor}: ${r.problems.join("; ")}` });

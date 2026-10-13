@@ -128,3 +128,45 @@ test("the check rules state the configured caps", async () => {
     const text = renderRules(cfg);
     assert.match(text, /\+4/); assert.match(text, /\+7/); assert.match(text, /situational ±n \(why\)/); assert.match(text, /±1/);
 });
+
+// ── fix round 1 ──
+test("common outcome wordings are accepted", () => {
+    const ok = (line, die) => assert.deepEqual(v(line, die).problems, [], line);
+    ok("Emilia, a · DC 10 · d20 1 · total 1 · Crit Fail", 1);
+    ok("Emilia, a · DC 10 · d20 4 · total 4 · Fail", 4);
+    ok("Emilia, a · DC 10 · d20 4 · total 4 · failed", 4);
+    ok("Emilia, a · DC 10 · d20 4 · total 4 · fails", 4);
+    ok("Emilia, a · DC 10 · d20 20 · total 20 · Nat 20, critical success", 20);
+    ok("Emilia, a · DC 10 · d20 20 · total 20 · Natural 20 crit success", 20);
+    ok("Emilia, a · DC 10 · d20 12 · total 12 · successful", 12);
+    assert.equal(v("Emilia, a · DC 10 · d20 4 · total 4 · crit fail", 4).ok, false);
+});
+test("an unread line still uses up its die", () => {
+    const r = postTurn(emptyState(), ch("Check:\n- Emilia tries something odd\n- Emilia, b · DC 5 · d20 7 · total 7 · success"), { ...C, dice: { checks: [11, 7] } });
+    assert.equal(r.warnings.filter(w => w.section === "Check").length, 0);
+    assert.equal(r.state.perTurn.checks.lines.length, 2);
+});
+test("a source may carry a note after its number", () => {
+    assert.deepEqual(parseCheckLine("Jan, x · social · DC 8 · d20 11 + Mon Ancre +2 (Emilia) + Got Your Nose +1 = +3 · total 14 · success").sources,
+        [{ name: "Mon Ancre", n: 2 }, { name: "Got Your Nose", n: 1 }]);
+    assert.equal(v("Jan, x · social · DC 8 · d20 11 + Mon Ancre +2 (Emilia) + Got Your Nose +1 = +3 · total 14 · success", 11).ok, true);
+});
+test("a source name that swallowed another source is unread, not verified", () => {
+    assert.equal(parseCheckLine("Jan, x · social · DC 8 · d20 11 + Mon Ancre +2 [Emilia] + Got Your Nose +1 = +3 · total 14 · success"), null);
+});
+test("with no dice this turn the die is not compared", () => {
+    const r = postTurn(emptyState(), ch("Check:\n- Emilia, a · DC 5 · d20 11 · total 11 · success"), { ...C, dice: { checks: [] } });
+    assert.equal(r.warnings.filter(w => w.section === "Check").length, 0);
+    assert.deepEqual(verifyCheck(parseCheckLine("Emilia, a · DC 5 · d20 11 · total 11 · success"), { die: null, inv, user: "Jan", caps }).problems, []);
+});
+test("a non-user line may write its bonus capped or uncapped", () => {
+    const base = "Emilia, a · DC 10 · d20 6 + Grace +2 + Poise +2 + Wit +1 = +5";
+    assert.equal(v(`${base} → +4 (soft cap) · total 10 · success`, 6).ok, true);
+    assert.equal(v(`${base} · total 11 · success`, 6).ok, true);
+    assert.equal(v(`${base} → +5 · total 11 · success`, 6).ok, true);
+    assert.equal(v(`${base} → +3 (soft cap) · total 9 · near miss`, 6).ok, false);
+});
+test("the cap rule names {{user}}'s rolls", async () => {
+    const { renderRules } = await import("../src/model/prompt.js");
+    assert.match(renderRules(resolveConfig()), /bonuses on \{\{user\}\}'s roll are capped/);
+});

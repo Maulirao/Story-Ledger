@@ -2360,7 +2360,8 @@ var thoughts_default = {
 var CATEGORIES2 = ["physical", "social", "mental"];
 var SIGNED = "[+-]\\d+";
 var SITUATIONAL = new RegExp(`\\+\\s*situational\\s+(${SIGNED})\\s*(?:\\(([^)]*)\\))?`, "gi");
-var SOURCE = new RegExp(`\\+\\s*(.+?)\\s+(${SIGNED})(?=\\s*(?:\\+\\s|=|$))`, "g");
+var SOURCE = new RegExp(`\\+\\s*(.+?)\\s+(${SIGNED})(?:\\s*\\([^)]*\\))?(?=\\s*(?:\\+\\s|=|$))`, "g");
+var SWALLOWED = /\s[+-]\d|\s\+\s/;
 var SUM = new RegExp(`^(${SIGNED}|0)\\s*(?:(?:→|->)\\s*(${SIGNED}|0)\\s*(?:\\((soft cap|hard cap)\\))?)?$`, "i");
 var fold2 = (s) => String(s ?? "").replace(/[−–]/g, "-");
 var signed = (n) => n < 0 ? `-${-n}` : `+${n}`;
@@ -2396,7 +2397,7 @@ function parseRoll(rest) {
     out.sources.push({ name: name.trim(), n: Number(n) });
     return " ";
   });
-  return body.trim() ? null : out;
+  return body.trim() || out.sources.some((x) => SWALLOWED.test(` ${x.name} `)) ? null : out;
 }
 function parseCheckLine(line) {
   const fields = String(line ?? "").split(/\s+·\s+/).map((f) => f.trim());
@@ -2434,7 +2435,7 @@ function parseCheckLine(line) {
     outcome: fields[i]
   };
 }
-var normOutcome = (s) => String(s ?? "").toLowerCase().replace(/[-_]/g, " ").replace(/\bcritical\b/g, "crit").replace(/\s+/g, " ").trim();
+var normOutcome = (s) => String(s ?? "").toLowerCase().replace(/[-_—–]/g, " ").replace(/\s+/g, " ").trim().replace(/^nat(?:ural)?\s*\d+\s*[,:]?\s*/, "").replace(/\bcritical\b/g, "crit").replace(/\b(?:fail|fails|failed)\b/g, "failure").replace(/\bsuccessful\b/g, "success");
 var outcomeIs = (written, band) => {
   const w = normOutcome(written);
   return w.startsWith(band) && !/[a-z]/.test(w.charAt(band.length));
@@ -2454,8 +2455,8 @@ function verifyCheck(parsed, { die, inv, user, caps }) {
   const { softCap = 3, hardCap = 6, situationalMax = 2 } = caps || {};
   const isUser = parsed.actor === "{{user}}" || Boolean(user) && parsed.actor.toLowerCase() === String(user).toLowerCase();
   if (die === void 0) problems.push("no die left for this check");
-  else if (die !== parsed.d20) problems.push(`die is ${die}, not ${parsed.d20}`);
-  const d20 = die === void 0 ? parsed.d20 : die;
+  else if (die !== null && die !== parsed.d20) problems.push(`die is ${die}, not ${parsed.d20}`);
+  const d20 = die ?? parsed.d20;
   const situational = parsed.situational ? parsed.situational.n : 0;
   const legacy = parsed.sources.length ? 0 : parsed.legacyMod || 0;
   const ownRaw = parsed.sources.reduce((a, s) => a + s.n, 0) + situational + legacy;
@@ -2495,10 +2496,13 @@ function verifyCheck(parsed, { die, inv, user, caps }) {
     if (parsed.raw !== null && parsed.capped === null && ownBonus !== ownRaw) problems.push(`bonus ${signed(ownRaw)} is capped: → ${signed(ownBonus)}`);
   } else {
     ledgerSources = parsed.sources;
-    bonus = ownRaw;
+    const pos = parsed.sources.filter((x) => x.n > 0).reduce((a, x) => a + x.n, 0);
+    const cappedNpc = ownRaw - pos + capBonus(pos, { softCap, hardCap }).value;
+    ownBonus = parsed.capped === cappedNpc ? cappedNpc : ownRaw;
+    bonus = ownBonus;
   }
   if (parsed.raw !== null && parsed.raw !== ownRaw) problems.push(`= ${signed(parsed.raw)} should be ${signed(ownRaw)}`);
-  if (parsed.capped !== null && parsed.capped !== ownBonus) problems.push(`→ ${signed(parsed.capped)} should be ${signed(ownBonus)}${isUser ? "" : " (no cap applies)"}`);
+  if (parsed.capped !== null && parsed.capped !== ownBonus) problems.push(`→ ${signed(parsed.capped)} should be ${signed(ownBonus)}`);
   const effective = parsed.capped ?? parsed.raw ?? ownBonus;
   if (parsed.total !== null && parsed.total !== parsed.d20 + effective) problems.push(`total ${parsed.total} should be ${parsed.d20 + effective}`);
   if (parsed.total === null && parsed.legacyMod === null && (parsed.sources.length || parsed.situational)) problems.push("no total");
@@ -2533,7 +2537,7 @@ var dndRules = ({ softCap, hardCap, situationalMax }) => [
   "Lock the DC first, from the task's difficulty and {{user}}'s proficiencies (Easy 1–5, Moderate 5–10, Hard 10–15, Impossible 15–20); titles and conditions go on the roll, by name, never into the DC.",
   "Every check names its category: physical, social or mental.",
   "On {{user}}'s roll, name every title and condition whose effect applies in that category, each with its number: `+ Mon Ancre +2`. Penalties always count, in full.",
-  `Positive title and condition bonuses on one roll are capped: up to ${signed2(softCap)} counts in full, half of anything beyond (rounded down), never more than ${signed2(hardCap)}; naming more titles past the cap adds nothing. Write \`= ±sum\` for the plain sum of every number, then \`→ ±capped (soft cap)\` (or hard cap) only when the cap changes it.`,
+  `Positive title and condition bonuses on {{user}}'s roll are capped: up to ${signed2(softCap)} counts in full, half of anything beyond (rounded down), never more than ${signed2(hardCap)}; naming more titles past the cap adds nothing. Write \`= ±sum\` for the plain sum of every number, then \`→ ±capped (soft cap)\` (or hard cap) only when the cap changes it.`,
   `Help or tools that are not titles go in at most one \`situational ±n (why)\`, at most ±${situationalMax}, not capped.`,
   "Delta = total − DC: Nat 20 or +8 crit success · 0 to +7 success · −1 to −3 near miss · −4 to −7 failure · Nat 1 or −8 crit failure. Dice are law; never fudge. Never name DCs, dice or stats in prose.",
   "Under `Check:`, one line per roll used: `Actor, action · category · DC n · d20 n + Title ±n … [+ situational ±n (why)] = ±sum [→ ±capped (soft cap)] · total t · Outcome`. Use the dice in order, one per line. With no bonus: `d20 14 · total 14`. The ledger checks the die, every name and number, the cap, the total and the outcome, and adds its own line when they disagree."
@@ -2562,8 +2566,12 @@ var checks_default = {
       if (!line) continue;
       const parsed = arrow(ctx) ? null : parseCheckLine(line);
       out.push(parsed ? line.replace(/->/g, "→") : line);
+      if (arrow(ctx)) continue;
+      const rolls = state.perTurn.checks.rolls;
+      const die = rolls.length ? rolls[n] : null;
+      n++;
       if (!parsed) continue;
-      const r = verifyCheck(parsed, { die: state.perTurn.checks.rolls[n++], inv: state.inv, user: ctx.userName, caps: capsOf(ctx) });
+      const r = verifyCheck(parsed, { die, inv: state.inv, user: ctx.userName, caps: capsOf(ctx) });
       if (r.ok) continue;
       out.push(r.ledgerLine);
       ctx.warnings.push({ section: "Check", text: `${parsed.actor}: ${r.problems.join("; ")}` });

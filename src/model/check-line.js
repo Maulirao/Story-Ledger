@@ -11,7 +11,10 @@ import { nameMatches } from "./text.js";
 const CATEGORIES = ["physical", "social", "mental"];
 const SIGNED = "[+-]\\d+";
 const SITUATIONAL = new RegExp(`\\+\\s*situational\\s+(${SIGNED})\\s*(?:\\(([^)]*)\\))?`, "gi");
-const SOURCE = new RegExp(`\\+\\s*(.+?)\\s+(${SIGNED})(?=\\s*(?:\\+\\s|=|$))`, "g");
+// a source may carry a note after its number: `+ Mon Ancre +2 (Emilia)`
+const SOURCE = new RegExp(`\\+\\s*(.+?)\\s+(${SIGNED})(?:\\s*\\([^)]*\\))?(?=\\s*(?:\\+\\s|=|$))`, "g");
+// a captured name holding another number or `+ ` swallowed a neighbour: unread, not misverified
+const SWALLOWED = /\s[+-]\d|\s\+\s/;
 const SUM = new RegExp(`^(${SIGNED}|0)\\s*(?:(?:→|->)\\s*(${SIGNED}|0)\\s*(?:\\((soft cap|hard cap)\\))?)?$`, "i");
 
 const fold = s => String(s ?? "").replace(/[−–]/g, "-");
@@ -50,7 +53,7 @@ function parseRoll(rest) {
         return " ";
     });
     body = body.replace(SOURCE, (_, name, n) => { out.sources.push({ name: name.trim(), n: Number(n) }); return " "; });
-    return body.trim() ? null : out;
+    return body.trim() || out.sources.some(x => SWALLOWED.test(` ${x.name} `)) ? null : out;
 }
 
 /**
@@ -82,7 +85,12 @@ export function parseCheckLine(line) {
     };
 }
 
-const normOutcome = s => String(s ?? "").toLowerCase().replace(/[-_]/g, " ").replace(/\bcritical\b/g, "crit").replace(/\s+/g, " ").trim();
+// `Nat 20, critical success`, `Crit Fail`, `failed`, `successful` all name their band
+const normOutcome = s => String(s ?? "").toLowerCase().replace(/[-_—–]/g, " ").replace(/\s+/g, " ").trim()
+    .replace(/^nat(?:ural)?\s*\d+\s*[,:]?\s*/, "")
+    .replace(/\bcritical\b/g, "crit")
+    .replace(/\b(?:fail|fails|failed)\b/g, "failure")
+    .replace(/\bsuccessful\b/g, "success");
 /** The written outcome names `band` (anything after the band's words is ignored). */
 const outcomeIs = (written, band) => {
     const w = normOutcome(written);
@@ -106,13 +114,14 @@ function checkSource(source, inv, category) {
  * { ok, problems, ledgerLine } (ledgerLine is "" when ok).
  */
 export function verifyCheck(parsed, { die, inv, user, caps }) {
+    // die: the n-th die; undefined when the dice ran out, null when none were rolled this turn
     const problems = [];
     const { softCap = 3, hardCap = 6, situationalMax = 2 } = caps || {};
     const isUser = parsed.actor === "{{user}}" || (Boolean(user) && parsed.actor.toLowerCase() === String(user).toLowerCase());
 
     if (die === undefined) problems.push("no die left for this check");
-    else if (die !== parsed.d20) problems.push(`die is ${die}, not ${parsed.d20}`);
-    const d20 = die === undefined ? parsed.d20 : die;
+    else if (die !== null && die !== parsed.d20) problems.push(`die is ${die}, not ${parsed.d20}`);
+    const d20 = die ?? parsed.d20;
 
     // the line's own arithmetic, and the ledger's corrected sources
     const situational = parsed.situational ? parsed.situational.n : 0;
@@ -148,12 +157,16 @@ export function verifyCheck(parsed, { die, inv, user, caps }) {
         bonus = capped.value + mine.neg + sitN + legacy;
         if (parsed.raw !== null && parsed.capped === null && ownBonus !== ownRaw) problems.push(`bonus ${signed(ownRaw)} is capped: → ${signed(ownBonus)}`);
     } else {
+        // no caps for other actors, but a line that caps its own bonus is not wrong either
         ledgerSources = parsed.sources;
-        bonus = ownRaw;
+        const pos = parsed.sources.filter(x => x.n > 0).reduce((a, x) => a + x.n, 0);
+        const cappedNpc = ownRaw - pos + capBonus(pos, { softCap, hardCap }).value;
+        ownBonus = parsed.capped === cappedNpc ? cappedNpc : ownRaw;
+        bonus = ownBonus;
     }
 
     if (parsed.raw !== null && parsed.raw !== ownRaw) problems.push(`= ${signed(parsed.raw)} should be ${signed(ownRaw)}`);
-    if (parsed.capped !== null && parsed.capped !== ownBonus) problems.push(`→ ${signed(parsed.capped)} should be ${signed(ownBonus)}${isUser ? "" : " (no cap applies)"}`);
+    if (parsed.capped !== null && parsed.capped !== ownBonus) problems.push(`→ ${signed(parsed.capped)} should be ${signed(ownBonus)}`);
     // each written step is checked against the step before it, so one slip is named once
     const effective = parsed.capped ?? parsed.raw ?? ownBonus;
     if (parsed.total !== null && parsed.total !== parsed.d20 + effective) problems.push(`total ${parsed.total} should be ${parsed.d20 + effective}`);
