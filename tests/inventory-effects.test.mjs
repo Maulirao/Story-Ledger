@@ -167,3 +167,12 @@ test("rules name the categories, the effect forms and conditions with effects", 
     for (const s of ["physical", "social", "mental", "proficiency:", "±1", "title: Name | effects", "status + Condition | effects"]) assert.ok(r.includes(s), s);
     assert.doesNotMatch(r, /Mods are ±1–2/);
 });
+test("an effect-less condition does not count as needing an effect", () => {
+    const s = emptyState();
+    s.inv.titles = [{ name: "Mon Ancre", effects: [{ kind: "numeric", n: 2, category: "social", focus: "Emilia" }], hint: "" }];
+    s.inv.status = [{ name: "Soaked", effects: [], hint: "" }];
+    const p = sectionByKey("inv").prompt(s.inv, s);
+    assert.doesNotMatch(p, /needs effect/);
+    assert.match(p, /status: Soaked/);
+    assert.doesNotMatch(p, /titles /);
+});
