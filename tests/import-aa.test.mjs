@@ -28,3 +28,14 @@ test("an Ancient Access ledger imports turn, last beats, agendas, notebook, gun,
     assert.ok(r.unread.some(u => u.startsWith("SCENE")));
     assert.ok(Object.keys(r.state.rel.awaiting).length, "BONDS are carried as relationships awaiting NEW");
 });
+
+test("AA gear titles and conditions go through the legacy list reader", () => {
+    const led = `<ledger>\nTURN: 3\nGEAR: Jan — umbrella · Mon Ancre (+2 social Emilia); Charmer (+1 social: Ana) · all prior + wet (-1 physical) | Mara — mug · soaked\n</ledger>`;
+    const r = importForeign([ai(led)], C);
+    const [a, b] = r.state.inv.titles;
+    assert.equal(a.name, "Mon Ancre");
+    assert.deepEqual(a.effects, [{ kind: "numeric", n: 2, category: "social", focus: "Emilia" }]);
+    assert.deepEqual(b.effects, [{ kind: "numeric", n: 1, category: "social", focus: "Ana" }]);
+    assert.deepEqual(r.state.inv.status.map(e => [e.name, e.effects.length]), [["wet", 1]]);
+    assert.ok(r.unread.some(u => /"all prior"/.test(u)));
+});

@@ -3,6 +3,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { resolveConfig } from "../src/model/config.js";
 import { importForeign } from "../src/model/import/index.js";
+import { entryNames } from "../src/model/sections/inventory.js";
 import { importFromLegacyNotebook } from "../src/model/notebook.js";
 import { buildHandover } from "../src/model/prompt.js";
 import { FF_FULL } from "./fixtures/foreign.mjs";
@@ -34,8 +35,8 @@ FIRED: the cup, the saucer
 </ledger>`;
     const r = importForeign([ai(led)], C);
     assert.deepEqual(r.state.inv.items, ["umbrella", "spare key"]);
-    assert.deepEqual(r.state.inv.titles, ["Charmer"]);
-    assert.deepEqual(r.state.inv.status, ["wet"]);
+    assert.deepEqual(entryNames(r.state.inv.titles), ["Charmer"]);
+    assert.deepEqual(entryNames(r.state.inv.status), ["wet"]);
     assert.deepEqual(r.state.quests.map(q => [q.kind, q.objective, q.status, q.progress]), [["Main", "find the key", "active", "1/3"], ["Side", "fix the gate", "done", ""]]);
     assert.deepEqual(r.state.factions["Harbour Guild"], { goal: "wants the docks", intel: "knows about the tax", fibs: "claims innocence", state: "low morale", conflict: "", relations: "hostile to the mayor" });
     assert.deepEqual(r.state.chekhov.bullets.map(b => [b.desc, b.weight, b.age]), [["the ladder", 2, 5]]);

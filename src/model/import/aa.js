@@ -8,6 +8,7 @@
 import { emptyState, nextId } from "../state.js";
 import { importFromLegacyNotebook } from "../notebook.js";
 import { lockTime, parseStoryTime } from "../storytime.js";
+import { readLegacyList } from "../effects.js";
 import { plain, value, listOf, headerNow, nowResolved, nowUnread, sameName, bondsOf, quoted } from "./util.js";
 
 const PER_TURN = new Set(["WORLD", "CHECK", "THOUGHTS"]);
@@ -95,8 +96,11 @@ export function parseAa(mes, config = {}) {
                 const [items, titles, status] = dot(who[2]);
                 if (isUser(who[1])) {
                     s.inv.items.push(...listOf(items));
-                    s.inv.titles.push(...listOf(titles));
-                    s.inv.status.push(...listOf(status));
+                    for (const [label, text, into] of [["Titles", titles, s.inv.titles], ["Status", status, s.inv.status]]) {
+                        const { entries, dropped } = readLegacyList(value(text));
+                        into.push(...entries);
+                        for (const d of dropped) unread.push(`${label}: "${d}" was not a title — paste your full list into the block's Titles row.`);
+                    }
                 } else if (value(items)) {
                     s.cast[who[1].trim()] = { position: "", wearing: "", holding: value(items), condition: value(dot(who[2])[1]) };
                     mark("cast");

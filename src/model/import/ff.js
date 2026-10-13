@@ -9,6 +9,7 @@
 import { emptyState, nextId } from "../state.js";
 import { importFromLegacyNotebook } from "../notebook.js";
 import { lockTime, parseStoryTime } from "../storytime.js";
+import { readLegacyList } from "../effects.js";
 import { plain, value, summarySections, rowsOf, rowFields, listOf, headerNow, nowResolved, nowUnread, bondsOf, quoted } from "./util.js";
 
 const PER_TURN = /THOUGHTS|DND|WORLD SIM|PHYSICS|INTERNAL STATES/;
@@ -76,15 +77,22 @@ function quests(rows, s) {
     return n;
 }
 
-function inventory(rows, s) {
+/** A Titles/Status row through the legacy list reader; pieces it threw away go to the handover. */
+function legacyEntries(text, label, unread) {
+    const { entries, dropped } = readLegacyList(value(text));
+    for (const d of dropped) unread.push(`${label}: "${d}" was not a title — paste your full list into the block's Titles row.`);
+    return entries;
+}
+
+function inventory(rows, s, unread) {
     let n = 0;
     for (const row of rows) {
         const { name, rest } = rowFields(row);
         const label = name.toLowerCase();
         if (label === "inv" || label === "inventory") { s.inv.items = listOf(rest); n++; }
-        else if (/^titles/.test(label)) { s.inv.titles = listOf(rest); n++; }
-        else if (label === "status") { s.inv.status = listOf(rest); n++; }
-        else if (label === "mods") { s.inv.mods = value(rest); n++; }
+        else if (/^titles/.test(label)) { s.inv.titles = legacyEntries(rest, "Titles", unread); n++; }
+        else if (label === "status") { s.inv.status = legacyEntries(rest, "Status", unread); n++; }
+        else if (label === "mods") { if (value(rest)) unread.push("Mods row not carried over — bonuses now come from title effects."); n++; }
     }
     return n;
 }
@@ -163,7 +171,7 @@ export function parseFf(mes, config = {}) {
         [/NPC LOCATIONS/, sec => locations(rowsOf(sec.body), s), "locations", true],
         [/^FACTIONS$/, sec => factions(rowsOf(sec.body), s), "factions", true],
         [/^QUESTS$/, sec => quests(rowsOf(sec.body), s), "quests", true],
-        [/^INV/, sec => inventory(rowsOf(sec.body), s), "inv", true],
+        [/^INV/, sec => inventory(rowsOf(sec.body), s, unread), "inv", true],
         [/CHEKHOV/, sec => chekhov(sec.body, s), "chekhov"],
         [/FATE ROUTINE/, sec => fate(rowsOf(sec.body), s), "fate"],
         // bonds cannot become 12 axes by code: each awaits the model's NEW line, carrying what FF recorded

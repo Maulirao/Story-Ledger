@@ -8,7 +8,7 @@ import { parseStoryTime } from "../storytime.js";
 /** Text with tags removed, entities decoded and whitespace collapsed. */
 export const plain = s => String(s ?? "")
     .replace(/<br\s*\/?>/gi, " ").replace(/<[^>]+>/g, "")
-    .replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&#124;/g, "|").replace(/&amp;/g, "&")
+    .replace(/&#124&#59;/g, "|;").replace(/&#59;/g, ";").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&#124;/g, "|").replace(/&amp;/g, "&")
     .replace(/\s+/g, " ").trim();
 
 /** "None", "—", "-", "N/A" and empty read as "". */

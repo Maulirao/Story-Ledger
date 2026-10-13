@@ -2830,7 +2830,7 @@ function importFromLegacyNotebook(chat) {
 }
 
 // src/model/import/util.js
-var plain = (s) => String(s ?? "").replace(/<br\s*\/?>/gi, " ").replace(/<[^>]+>/g, "").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&#124;/g, "|").replace(/&amp;/g, "&").replace(/\s+/g, " ").trim();
+var plain = (s) => String(s ?? "").replace(/<br\s*\/?>/gi, " ").replace(/<[^>]+>/g, "").replace(/&#124&#59;/g, "|;").replace(/&#59;/g, ";").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&#124;/g, "|").replace(/&amp;/g, "&").replace(/\s+/g, " ").trim();
 var value = (s) => {
   const t = plain(s);
   return /^(none|—|-|n\/a|nothing|empty)?$/i.test(t) ? "" : t;
@@ -3649,7 +3649,12 @@ function quests(rows, s) {
   }
   return n;
 }
-function inventory(rows, s) {
+function legacyEntries(text, label, unread) {
+  const { entries, dropped } = readLegacyList(value(text));
+  for (const d of dropped) unread.push(`${label}: "${d}" was not a title — paste your full list into the block's Titles row.`);
+  return entries;
+}
+function inventory(rows, s, unread) {
   let n = 0;
   for (const row of rows) {
     const { name, rest } = rowFields(row);
@@ -3658,13 +3663,13 @@ function inventory(rows, s) {
       s.inv.items = listOf(rest);
       n++;
     } else if (/^titles/.test(label)) {
-      s.inv.titles = listOf(rest);
+      s.inv.titles = legacyEntries(rest, "Titles", unread);
       n++;
     } else if (label === "status") {
-      s.inv.status = listOf(rest);
+      s.inv.status = legacyEntries(rest, "Status", unread);
       n++;
     } else if (label === "mods") {
-      s.inv.mods = value(rest);
+      if (value(rest)) unread.push("Mods row not carried over — bonuses now come from title effects.");
       n++;
     }
   }
@@ -3778,7 +3783,7 @@ function parseFf(mes, config = {}) {
     [/NPC LOCATIONS/, (sec) => locations(rowsOf(sec.body), s), "locations", true],
     [/^FACTIONS$/, (sec) => factions(rowsOf(sec.body), s), "factions", true],
     [/^QUESTS$/, (sec) => quests(rowsOf(sec.body), s), "quests", true],
-    [/^INV/, (sec) => inventory(rowsOf(sec.body), s), "inv", true],
+    [/^INV/, (sec) => inventory(rowsOf(sec.body), s, unread), "inv", true],
     [/CHEKHOV/, (sec) => chekhov(sec.body, s), "chekhov"],
     [/FATE ROUTINE/, (sec) => fate(rowsOf(sec.body), s), "fate"],
     // bonds cannot become 12 axes by code: each awaits the model's NEW line, carrying what FF recorded
@@ -3925,8 +3930,11 @@ function parseAa(mes, config = {}) {
         const [items, titles, status] = dot(who[2]);
         if (isUser(who[1])) {
           s.inv.items.push(...listOf(items));
-          s.inv.titles.push(...listOf(titles));
-          s.inv.status.push(...listOf(status));
+          for (const [label, text, into] of [["Titles", titles, s.inv.titles], ["Status", status, s.inv.status]]) {
+            const { entries, dropped } = readLegacyList(value(text));
+            into.push(...entries);
+            for (const d of dropped) unread.push(`${label}: "${d}" was not a title — paste your full list into the block's Titles row.`);
+          }
         } else if (value(items)) {
           s.cast[who[1].trim()] = { position: "", wearing: "", holding: value(items), condition: value(dot(who[2])[1]) };
           mark("cast");
