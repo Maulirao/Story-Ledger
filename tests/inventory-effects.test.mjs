@@ -105,9 +105,28 @@ test("duplicate Condition rows merge on parse", () => {
     assert.deepEqual(r.state.inv.status, [{ name: "Soaked", effects: [{ kind: "numeric", n: -1, category: "physical", focus: "running" }], hint: "" }]);
 });
 test("an empty Title or Condition row is a silent no-op", () => {
-    const base = emptyState(); base.inv.items = ["key"]; base.inv.money = { USD: "5" };
-    const r = parseBlock(withRows("- <b>Item I1:</b> key\n- <b>Title:</b>\n- <b>Condition:</b> "), { config: C });
+    const prev = emptyState(); prev.inv.items = ["key"]; prev.inv.itemIds = ["I1"]; prev.inv.money = { USD: "5" };
+    const r = parseBlock(withRows("- <b>Money USD:</b> 5\n- <b>Item I1:</b> key\n- <b>Title:</b>\n- <b>Condition:</b> "), { config: C, prev });
     assert.deepEqual(r.errors, []);
+    assert.deepEqual(r.state.inv.items, ["key"]);
+    assert.deepEqual(r.state.inv.money, { USD: "5" });
+});
+test("refused effects keep an existing entry's effects", () => {
+    const eff = [{ kind: "numeric", n: 2, category: "physical", focus: "swimming" }];
+    const s = emptyState(); s.inv.titles = [{ name: "Strong Swimmer", effects: eff, hint: "" }]; s.inv.status = [{ name: "Tired", effects: eff, hint: "" }];
+    const r = run(s, "- title: Strong Swimmer | +5 physical: swimming\n- status + Tired | +5 physical: x");
+    assert.deepEqual(r.state.inv.titles[0].effects, eff);
+    assert.deepEqual(r.state.inv.status[0].effects, eff);
+    assert.equal(invWarnings(r).length, 2);
+});
+test("degenerate | forms do not create garbage entries", () => {
+    let r = run(emptyState(), "- title: X |");
+    assert.deepEqual(r.state.inv.titles, [{ name: "X", effects: [], hint: "" }]);
+    assert.match(invWarnings(r)[0].text, /^"X" needs an effect/);
+    r = run(emptyState(), "- title: | +1 social\n- status + | -1 physical");
     assert.deepEqual(r.state.inv.titles, []);
     assert.deepEqual(r.state.inv.status, []);
+    assert.equal(r.unparsed.length, 2);
+    r = run(emptyState(), "- status + Foo |");
+    assert.deepEqual(r.state.inv.status, [{ name: "Foo", effects: [], hint: "" }]);
 });

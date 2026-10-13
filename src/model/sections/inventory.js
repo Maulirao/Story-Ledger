@@ -334,10 +334,12 @@ export default {
             const names = entryNames(list);
             return normalized ? (nameMatches(names, name, raw)[0] ?? -1) : names.findIndex(x => same(x, name));
         };
-        // "Name | effects" → the name and its parsed effects; null without a usable "|" split
+        // "Name | effects" → the name and its parsed effects (empty when the effect side is blank);
+        // null without a "|"; { bad } when the name side is blank
         const withEffects = (text, rawText) => {
             const bar = text.indexOf("|");
-            if (bar < 0 || !text.slice(bar + 1).trim() || !text.slice(0, bar).trim()) return null;
+            if (bar < 0) return null;
+            if (!text.slice(0, bar).trim()) return { bad: true };
             const rawBar = rawText === undefined ? -1 : rawText.indexOf("|");
             return { name: text.slice(0, bar).trim(), rawName: rawBar < 0 ? undefined : rawText.slice(0, rawBar).trim(), ...parseEffects(text.slice(bar + 1)) };
         };
@@ -347,8 +349,9 @@ export default {
             for (const w of parsed.warnings) warn(line, `Effect ignored: ${w}.`);
             const at = find(list, parsed.name, parsed.rawName);
             if (at < 0) list.push({ name: parsed.name, effects: parsed.effects, hint: "" });
-            else { list[at].effects = parsed.effects; list[at].hint = ""; }
-            if (title && !parsed.effects.length) needsEffect(line, parsed.name);
+            else if (parsed.effects.length) { list[at].effects = parsed.effects; list[at].hint = ""; }
+            // a refused or blank effect side never wipes what the entry already has
+            if (title && !(at < 0 ? parsed.effects : list[at].effects).length) needsEffect(line, parsed.name);
         };
         lines.forEach((text, i) => {
             const line = String(text).trim();   // parseChanges already removed the list bullet
@@ -396,7 +399,8 @@ export default {
             }
             else if ((m = line.match(/^title\s*:\s*(.+)$/i))) {
                 const parsed = withEffects(m[1], rawOf(/^title\s*:\s*(.+)$/i));
-                if (parsed) setEntry(inv.titles, line, parsed, true);
+                if (parsed?.bad) unparsed.push(line);
+                else if (parsed) setEntry(inv.titles, line, parsed, true);
                 else if (find(inv.titles, m[1].trim(), undefined) < 0) {
                     inv.titles.push(entry(m[1]));
                     needsEffect(line, m[1].trim());
@@ -406,7 +410,7 @@ export default {
             else if ((m = line.match(/^status\s*[:+]\s*(.+)$/i))) {
                 // A model's semicolon-separated status recap adds conditions; only status - removes one.
                 const parsed = withEffects(m[1], rawOf(/^status\s*[:+]\s*(.+)$/i));
-                if (parsed) { setEntry(inv.status, line, parsed, false); return; }
+                if (parsed) { if (parsed.bad) unparsed.push(line); else setEntry(inv.status, line, parsed, false); return; }
                 const conditions = readList(m[1]);
                 if (!conditions.length) unparsed.push(line);
                 for (const condition of conditions) if (!inv.status.some(t => same(t.name, condition))) inv.status.push(entry(condition));

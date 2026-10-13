@@ -1220,7 +1220,8 @@ var inventory_default = {
     };
     const withEffects = (text, rawText) => {
       const bar = text.indexOf("|");
-      if (bar < 0 || !text.slice(bar + 1).trim() || !text.slice(0, bar).trim()) return null;
+      if (bar < 0) return null;
+      if (!text.slice(0, bar).trim()) return { bad: true };
       const rawBar = rawText === void 0 ? -1 : rawText.indexOf("|");
       return { name: text.slice(0, bar).trim(), rawName: rawBar < 0 ? void 0 : rawText.slice(0, rawBar).trim(), ...parseEffects(text.slice(bar + 1)) };
     };
@@ -1229,11 +1230,11 @@ var inventory_default = {
       for (const w of parsed.warnings) warn(line, `Effect ignored: ${w}.`);
       const at = find(list, parsed.name, parsed.rawName);
       if (at < 0) list.push({ name: parsed.name, effects: parsed.effects, hint: "" });
-      else {
+      else if (parsed.effects.length) {
         list[at].effects = parsed.effects;
         list[at].hint = "";
       }
-      if (title && !parsed.effects.length) needsEffect(line, parsed.name);
+      if (title && !(at < 0 ? parsed.effects : list[at].effects).length) needsEffect(line, parsed.name);
     };
     lines2.forEach((text, i) => {
       const line = String(text).trim();
@@ -1280,7 +1281,8 @@ var inventory_default = {
         else removeEntry(inv, at);
       } else if (m = line.match(/^title\s*:\s*(.+)$/i)) {
         const parsed = withEffects(m[1], rawOf(/^title\s*:\s*(.+)$/i));
-        if (parsed) setEntry(inv.titles, line, parsed, true);
+        if (parsed?.bad) unparsed.push(line);
+        else if (parsed) setEntry(inv.titles, line, parsed, true);
         else if (find(inv.titles, m[1].trim(), void 0) < 0) {
           inv.titles.push(entry2(m[1]));
           needsEffect(line, m[1].trim());
@@ -1290,7 +1292,8 @@ var inventory_default = {
       } else if (m = line.match(/^status\s*[:+]\s*(.+)$/i)) {
         const parsed = withEffects(m[1], rawOf(/^status\s*[:+]\s*(.+)$/i));
         if (parsed) {
-          setEntry(inv.status, line, parsed, false);
+          if (parsed.bad) unparsed.push(line);
+          else setEntry(inv.status, line, parsed, false);
           return;
         }
         const conditions = readList(m[1]);
