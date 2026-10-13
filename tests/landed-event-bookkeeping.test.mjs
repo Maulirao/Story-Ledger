@@ -46,3 +46,29 @@ test("unknown event labels and missing aftermath still report instead of inventi
         assert.deepEqual(r.state.fate.residue, []);
     }
 });
+
+test("BACKGROUND_INCIDENT saves reported aftermath independently of the rolled event", () => {
+    const aftermath = "the town barricade truck rolling past the dealer lot, cones dropped on the shoulder, holiday prep visible and unremarked";
+    for (const heading of ["Fate", "World"]) {
+        for (const extra of [{}, { fudges: { source: "WEIGHTED" } }, { sections: { worldsim: false } }]) {
+            const config = { ...C, ...extra };
+            const s = emptyState();
+            s.fate.owed = ["unrelated aftermath"];
+            const baseline = postTurn(s, null, config).state;
+            const r = run(s, `${heading}:\n- World BACKGROUND_INCIDENT landed as ${aftermath}`, config);
+            assert.deepEqual(r.unparsed, []);
+            assert.deepEqual(r.state.fate.residue, [`BACKGROUND_INCIDENT — ${aftermath}`]);
+            assert.deepEqual({ ...r.state, fate: { ...r.state.fate, residue: [] } }, baseline);
+        }
+    }
+});
+
+test("background incident reports require nonempty aftermath and keep tagged semantics", () => {
+    const lines = ["World BACKGROUND_INCIDENT landed as", "World BACKGROUND_INCIDENTAL landed as a truck", "World UNKNOWN landed as a truck"];
+    const r = run(emptyState(), `Fate:\n${lines.map(line => `- ${line}`).join("\n")}`);
+    assert.deepEqual(r.unparsed, lines.map(line => ({ section: "Fate", line })));
+    assert.deepEqual(r.state.fate.residue, []);
+    const line = "World BACKGROUND_INCIDENT landed as a truck";
+    const tagged = postTurn(emptyState(), parseChanges(`<Story_Ledger>\nFate:\n- ${line}\n</Story_Ledger>`), C);
+    assert.deepEqual(tagged.unparsed, [{ section: "Fate", line }]);
+});

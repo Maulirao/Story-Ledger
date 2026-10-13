@@ -115,6 +115,9 @@ function modsRow(value) {
 
 // Legacy tagged replies recognize removal explanations; other qualifiers stay literal.
 const EXPLAINED = /\s+\((?:dropped|lost|used|left|given|consumed|discarded|spent|handed)\b[^()]*\)\s*$/i;
+// A single list marker can swallow a model's removal sign. Only an explicit
+// disposal note and a matching saved item make the remaining text a removal.
+const DISPOSAL_RECAP = /\s+\((?:consumed|discarded|spent|paid|settled)\b[^()]*\)\s*$/i;
 const itemKey = text => foldQuotes(text).trim().replace(/^1\s+/, "").toLowerCase();
 const validId = id => /^I[1-9]\d*$/i.test(String(id)) && Number.isSafeInteger(Number(String(id).slice(1)));
 
@@ -467,6 +470,11 @@ export default {
             }
             else if ((m = line.match(/^-\s*(.+)$/))) {
                 const at = itemIndex(inv.items, m[1], rawOf(/^-\s*(.+)$/), normalized);
+                if (at < 0) unparsed.push(line);
+                else removeEntry(inv, at);
+            }
+            else if (normalized && DISPOSAL_RECAP.test(line)) {
+                const at = itemIndex(inv.items, line, rawLine ?? undefined, true);
                 if (at < 0) unparsed.push(line);
                 else removeEntry(inv, at);
             }

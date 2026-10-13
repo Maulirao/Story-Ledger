@@ -225,6 +225,35 @@ Check:
     assert.match(out.mes, /<b>Title:<\/b> A \| \+1 social: comedy, Emilia/);
 });
 
+test("the dealer-tab screenshot rebuilds without warnings and records only its stated changes", async () => {
+    const { parseBlock } = await import("../src/model/block.js");
+    const host = miniHost();
+    host.chat = [user("Start.")];
+    host.lock(); host.turn("normal");
+    host.chat.push(char("Prose.\n<!-- Story_Ledger\nInventory:\n- + $5 bill (in Jan's wallet)\n- + key\n- money: 55 USD\n-->"));
+    host.rebuild(1);
+    host.chat.push(user("Pay the dealer."));
+    host.lock(); host.turn("normal");
+    const aftermath = "the town barricade truck rolling past the dealer lot, cones dropped on the shoulder, holiday prep visible and unremarked";
+    host.chat.push(char(`Prose.\n<!-- Story_Ledger
+Inventory:
+- $5 bill (settled the dealer tab, tip kept)
+- title: Close Companion | +1 intimacy: Emilia
+Fate:
+- World BACKGROUND_INCIDENT landed as ${aftermath}
+-->`));
+    const out = host.rebuild(3);
+    assert.deepEqual(out.notices, []);
+    const { state, errors } = parseBlock(out.mes, { config: core.engineConfig(host.settings, "Jan", {}) });
+    assert.deepEqual(errors, []);
+    assert.deepEqual(state.inv.items, ["key"]);
+    assert.deepEqual(state.inv.itemIds, ["I2"]);
+    assert.deepEqual(state.inv.money, { USD: "55" });
+    assert.deepEqual(state.inv.titles[0].effects, [{ kind: "numeric", n: 1, category: "social", focus: "intimacy, Emilia" }]);
+    assert.deepEqual(state.fate.residue, [`BACKGROUND_INCIDENT — ${aftermath}`]);
+    assert.match(out.mes, /<b>Event:<\/b> OPENING/);
+});
+
 test("fudge lifecycle across two turns", () => {
     const host = miniHost();
     playSixTurns(host);

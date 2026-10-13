@@ -562,8 +562,8 @@ function adjustDecimal(balance, change) {
 
 // src/model/effects.js
 var CATEGORIES = ["physical", "social", "mental"];
-var SOCIAL_ALIASES = /* @__PURE__ */ new Set(["emotional", "comedy", "trust"]);
-var NUMERIC = /^([+-])(\d+)\s+(physical|social|mental|emotional|comedy|trust)\b\s*:?\s*(.*)$/i;
+var SOCIAL_ALIASES = /* @__PURE__ */ new Set(["emotional", "comedy", "trust", "intimacy"]);
+var NUMERIC = /^([+-])(\d+)\s+(physical|social|mental|emotional|comedy|trust|intimacy)\b\s*:?\s*(.*)$/i;
 var SIGNED_WORD = /^[+-]\d+\s+([^\s:;,()]+)/;
 var PROFICIENCY = /^proficiency\s*:\s*(.+)$/i;
 var JUNK = /^(all prior|all previous|—)$/i;
@@ -1023,6 +1023,7 @@ function modsRow(value2) {
   return Object.entries(sums).map(([k, n]) => n ? `${k} +${n}${n > hardCap ? " raw (capped per roll)" : ""}` : `${k} —`).join(" · ");
 }
 var EXPLAINED = /\s+\((?:dropped|lost|used|left|given|consumed|discarded|spent|handed)\b[^()]*\)\s*$/i;
+var DISPOSAL_RECAP = /\s+\((?:consumed|discarded|spent|paid|settled)\b[^()]*\)\s*$/i;
 var itemKey = (text) => foldQuotes(text).trim().replace(/^1\s+/, "").toLowerCase();
 var validId = (id) => /^I[1-9]\d*$/i.test(String(id)) && Number.isSafeInteger(Number(String(id).slice(1)));
 function ensureItemIds(state, prevInv) {
@@ -1371,6 +1372,10 @@ var inventory_default = {
         inv.itemIds.push(nextId(state, "I", inv.itemIds));
       } else if (m = line.match(/^-\s*(.+)$/)) {
         const at = itemIndex(inv.items, m[1], rawOf(/^-\s*(.+)$/), normalized);
+        if (at < 0) unparsed.push(line);
+        else removeEntry(inv, at);
+      } else if (normalized && DISPOSAL_RECAP.test(line)) {
+        const at = itemIndex(inv.items, line, rawLine ?? void 0, true);
         if (at < 0) unparsed.push(line);
         else removeEntry(inv, at);
       } else unparsed.push(line);
@@ -2095,9 +2100,9 @@ var fate_default = {
     const closed = ctx.normalizedChanges ? closedForm : (s) => s;
     for (const record of records) {
       const line = String(record.line).trim();
-      const consequence = line.match(/^World\s+CONSEQUENCE\s+landed\s+as\s+(\S.*)$/i);
-      if (consequence) {
-        appendResidue(fate2, `CONSEQUENCE — ${consequence[1].trim()}`, ctx);
+      const consequence = line.match(/^World\s+(CONSEQUENCE|BACKGROUND_INCIDENT)\s+landed\s+as\s+(\S.*)$/i);
+      if (consequence && (consequence[1].toUpperCase() === "CONSEQUENCE" || ctx.normalizedChanges)) {
+        appendResidue(fate2, `${consequence[1].toUpperCase()} — ${consequence[2].trim()}`, ctx);
         continue;
       }
       const reported = eventNames.map((name) => ({ name, aftermath: realizedWorldAftermath(line, name, ctx.normalizedChanges) })).find((event) => event.aftermath !== null);

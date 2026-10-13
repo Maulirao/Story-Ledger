@@ -70,6 +70,31 @@ test("a labelled ID removal refuses conflicting labels and unknown IDs", () => {
     assert.deepEqual(r.unparsed, lines.map(line => ({ section: "Inventory", line })));
 });
 
+test("a single-bullet spent-item line removes the bill without debiting Money", () => {
+    const s = emptyState();
+    s.inv.items = ["$5 bill (in Jan's wallet)", "$50 bill"];
+    s.inv.itemIds = ["I8", "I9"];
+    s.inv.money = { USD: "55" };
+    const line = "$5 bill (settled the dealer tab, tip kept)";
+    const r = turn(s, `- ${line}`);
+    assert.deepEqual(r.unparsed, []);
+    assert.deepEqual(r.state.inv.items, ["$50 bill"]);
+    assert.deepEqual(r.state.inv.itemIds, ["I9"]);
+    assert.deepEqual(r.state.inv.money, { USD: "55" });
+    const tagged = postTurn(s, parseChanges(`<Story_Ledger>\nInventory:\n- ${line}\n</Story_Ledger>`), C);
+    assert.deepEqual(tagged.unparsed, [{ section: "Inventory", line }]);
+    assert.deepEqual(tagged.state.inv.items, s.inv.items);
+});
+
+test("single-bullet removals need an explicit disposal note and a unique saved item", () => {
+    const s = emptyState();
+    s.inv.items = ["$5 bill (left pocket)", "$5 bill (right pocket)", "$50 bill", "key"];
+    const lines = ["$5 bill (settled the tab)", "$10 bill (paid the tab)", "$50 bill (tip kept)", "$50 bill (left pocket)", "key", "$50 bill (settled the tab", "$50 bill (settled the tab) + lantern"];
+    const r = turn(s, lines.map(line => `- ${line}`).join("\n"));
+    assert.deepEqual(r.unparsed, lines.map(line => ({ section: "Inventory", line })));
+    assert.deepEqual(r.state.inv.items, s.inv.items);
+});
+
 test("name removals ignore arbitrary trailing notes only for a unique counted base", () => {
     for (const name of ["towel (with blue stripes)", "1 towel (bathroom)", "towel (under repair)", "1 towel (on emilia)", "towel (wet (after swimming))"]) {
         const s = emptyState(); s.inv.items = [name, "key"];

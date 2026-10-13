@@ -42,6 +42,16 @@ test("social aliases obey the same numeric limits as canonical categories", () =
     assert.equal(r.warnings.length, 3);
     assert.ok(r.warnings.every(w => /out of range/.test(w)));
 });
+
+test("intimacy bonuses use social checks and preserve their focus", () => {
+    const r = parseEffects("+2 intimacy: Emilia; -1 INTIMACY; +3 intimacy: Gilles");
+    assert.deepEqual(r.effects, [
+        { kind: "numeric", n: 2, category: "social", focus: "intimacy, Emilia" },
+        { kind: "numeric", n: -1, category: "social", focus: "intimacy" },
+    ]);
+    assert.equal(r.warnings.length, 1);
+    assert.match(r.warnings[0], /out of range/);
+});
 test("formatEffects writes the canonical form", () => {
     assert.equal(formatEffects(parseEffects("+2 social Emilia;+1 mental").effects), "+2 social: Emilia; +1 mental");
 });

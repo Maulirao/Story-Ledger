@@ -5,8 +5,8 @@
 // ──────────────────────────────────────────────────────────────────────────────
 
 const CATEGORIES = ["physical", "social", "mental"];
-const SOCIAL_ALIASES = new Set(["emotional", "comedy", "trust"]);
-const NUMERIC = /^([+-])(\d+)\s+(physical|social|mental|emotional|comedy|trust)\b\s*:?\s*(.*)$/i;
+const SOCIAL_ALIASES = new Set(["emotional", "comedy", "trust", "intimacy"]);
+const NUMERIC = /^([+-])(\d+)\s+(physical|social|mental|emotional|comedy|trust|intimacy)\b\s*:?\s*(.*)$/i;
 const SIGNED_WORD = /^[+-]\d+\s+([^\s:;,()]+)/;
 const PROFICIENCY = /^proficiency\s*:\s*(.+)$/i;
 const JUNK = /^(all prior|all previous|—)$/i;

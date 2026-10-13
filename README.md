@@ -87,7 +87,8 @@ lines; a new command or heading ends it. Older entries need no migration.
 `World CONSEQUENCE landed as aftermath` is also accepted under `Fate:` or `World:`
 for a consequence that actually occurred in the story, such as the race buoy breaking.
 It saves the aftermath as residue on TRUE or WEIGHTED turns, without changing the
-rolled World Sim event or clearing unrelated owed aftermath.
+rolled World Sim event or clearing unrelated owed aftermath. In ledger comments,
+`World BACKGROUND_INCIDENT landed as aftermath` is saved the same way.
 
 Other `World EVENT landed as aftermath` reports name the rolled World Sim event: use the exact
 announced event name, and only when Fate's source is TRUE and that event was realized.
@@ -171,7 +172,11 @@ literal. An unknown or malformed ID command never falls back to a name match.
 These expanded command readings apply to ledger comments; tagged replies retain
 their old name-matching behavior.
 
-Title and condition bonuses labelled `emotional`, `comedy`, or `trust` are read
+In ledger comments, an item line with no sign whose trailing note says it was
+`consumed`, `discarded`, `spent`, `paid`, or `settled` is read as a removal when
+it matches one saved item, such as `- $5 bill (settled the dealer tab)`.
+
+Title and condition bonuses labelled `emotional`, `comedy`, `trust`, or `intimacy` are read
 as social bonuses, retaining the label in their focus: `+1 comedy Emilia` becomes
 `+1 social: comedy, Emilia`. These aliases work in imported lists too and follow
 the same ±1/±2 limits and per-roll caps as other bonuses.
