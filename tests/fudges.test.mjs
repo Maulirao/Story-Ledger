@@ -13,7 +13,7 @@ test("rollTurnDice returns three Fate dice, one World die and three check dice",
     assert.deepEqual(rolls, { fate: { a: 1, b: 6, c: 11 }, world: 16, checks: [20, 3, 19] });
 });
 
-test("fudges hold for every generation of their reply and clear after the next user message", () => {
+test("fudges hold across replies and same-reply generations without affecting earlier replies", () => {
     let f = { tier: "MAJOR", appliedTo: null };
     let r = fudgesForGeneration(f, 7);
     assert.equal(r.active.tier, "MAJOR");
@@ -22,8 +22,13 @@ test("fudges hold for every generation of their reply and clear after the next u
     r = fudgesForGeneration(f, 7);
     assert.equal(r.active.tier, "MAJOR"); // swipe / regenerate / continue
     r = fudgesForGeneration(f, 9);
-    assert.equal(r.active, null);
-    assert.equal(r.next, null); // the reply after the next user message
+    assert.equal(r.active.tier, "MAJOR");
+    assert.equal(r.next.appliedTo, 7);
+    assert.equal(f.appliedTo, 7, "the saved input is not mutated");
+    assert.equal(fudgesForGeneration(r.next, 7).active.tier, "MAJOR", "swiping an earlier affected reply keeps controls");
+    const earlier = fudgesForGeneration(r.next, 5);
+    assert.equal(earlier.active, null);
+    assert.equal(earlier.next.appliedTo, 7);
 });
 
 test("locked dice replace rolled ones and are named", () => {

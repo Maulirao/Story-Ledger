@@ -115,6 +115,22 @@ test("turn facts carry the announcements and the dice", () => {
     assert.equal(renderTurnFacts(emptyState(), { ...C, sections: {} }), "");
 });
 
+test("turn facts send current Fate and World values without revealing reader controls", () => {
+    const s = emptyState();
+    s.fate.q = 11;
+    s.fate.sinceMajor = 18;
+    s.scene.public = true;
+    const out = renderTurnFacts(s, {
+        ...C, sections: {}, dice: { fate: { a: 9, b: 3, c: 17 }, world: 2 },
+        fudges: { calm: true }, fudgedDice: ["fate.a", "world"],
+    });
+    assert.match(out, /Fate dice: A 9 · B 3 · C 17\n/);
+    assert.doesNotMatch(out, /fudged|overrides?|reader controls/i);
+    assert.match(out, /Fate: AMBIENT \+ TRUE/);
+    assert.match(out, /already resolved.*do not reroll or recalculate/i);
+    assert.match(out, /World Sim die: 2\./);
+});
+
 test("rules include only enabled sections' rules", () => {
     assert.match(renderRules({ ...C, sections: {} }), /Agendas: every named NPC/);
     assert.doesNotMatch(renderRules({ ...C, sections: { agendas: false } }), /Agendas: every named NPC/);

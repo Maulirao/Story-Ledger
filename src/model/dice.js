@@ -47,7 +47,7 @@ export function withFudges(dice, fudges) {
     return { dice: result, fudged: applied };
 }
 
-/** Keep a fudge for every generation of its target reply, then clear it on a later reply. */
+/** Keep saved controls across replies until cleared; do not apply them to earlier replies. */
 export function fudgesForGeneration(fudges, index) {
     if (!fudges || typeof fudges !== "object") return { active: null, next: null };
     if (fudges.appliedTo === null || fudges.appliedTo === undefined) {
@@ -55,8 +55,7 @@ export function fudgesForGeneration(fudges, index) {
         next.appliedTo = index;
         return { active: clone(fudges), next };
     }
-    if (index === fudges.appliedTo) return { active: clone(fudges), next: clone(fudges) };
-    if (index > fudges.appliedTo) return { active: null, next: null };
+    if (index >= fudges.appliedTo) return { active: clone(fudges), next: clone(fudges) };
     return { active: null, next: clone(fudges) };
 }
 

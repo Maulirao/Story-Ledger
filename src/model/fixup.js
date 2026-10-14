@@ -32,7 +32,7 @@ export function extractComment(output) {
 export function fixupConfigInputs(mes, storedFudges, index) {
     return {
         dice: diceFromBlock(mes),
-        fudges: storedFudges && storedFudges.appliedTo === index ? storedFudges : null,
+        fudges: storedFudges && Number.isInteger(storedFudges.appliedTo) && storedFudges.appliedTo <= index ? storedFudges : null,
     };
 }
 

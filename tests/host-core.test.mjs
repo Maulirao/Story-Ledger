@@ -15,6 +15,20 @@ const clone = value => JSON.parse(JSON.stringify(value));
 const rng = () => 0.5;
 const noticeShape = n => ({ kind: n.kind, title: n.title, message: n.text });
 
+test("locked dice survive later replies until explicitly cleared", () => {
+    const chatData = core.normalizeChatData({ storyLedger: { fudges: { dice: { "fate.a": 20, world: 7, checks: [20, 3, 11] }, appliedTo: null } } });
+    for (const length of [1, 3, 5]) {
+        const turn = core.prepareTurn({ chat: Array.from({ length }, () => ({})), type: "normal", chatData, rng });
+        assert.deepEqual(turn.pending.dice, { fate: { a: 20, b: 11, c: 11 }, world: 7, checks: [20, 3, 11] });
+        assert.deepEqual(turn.pending.fudged, ["fate.a", "world", "checks"]);
+        chatData.fudges = turn.fudgesNext;
+    }
+    chatData.fudges = null;
+    const cleared = core.prepareTurn({ chat: [{}], type: "normal", chatData, rng });
+    assert.deepEqual(cleared.pending.dice, { fate: { a: 11, b: 11, c: 11 }, world: 11, checks: [11, 11, 11] });
+    assert.deepEqual(cleared.pending.fudged, []);
+});
+
 /** A minimal host: what a real one does around the core, enough to replay a chat. */
 function miniHost({ settings = {} } = {}) {
     const host = {
@@ -271,7 +285,8 @@ test("fudge lifecycle across two turns", () => {
     host.chat = clone(sixth);
     host.pending = null;
     host.turn("normal");
-    assert.equal(host.chatData.fudges, golden.fudgeLifecycle.second);
+    assert.deepEqual(host.chatData.fudges, { dice: DICE_LOCKS, appliedTo: 5 });
+    assert.deepEqual(host.pending.dice, { fate: { a: 11, b: 4, c: 17 }, world: 9, checks: [14, 6, 19] });
     assert.equal(substitute(host.inject("normal").text), golden.fudgeLifecycle.secondPrompt);
 });
 

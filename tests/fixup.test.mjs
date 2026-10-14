@@ -61,13 +61,14 @@ test("extractComment takes the first complete comment only", () => {
     assert.equal(extractComment(BLOCK), null);
 });
 
-test("fixupConfigInputs reads shown dice and only this reply's fudges", () => {
+test("fixupConfigInputs reads shown dice and controls already active for this reply", () => {
     const mes = writeBlockInto("prose", "<!-- GFX_START --><!-- story-ledger-state v1 --><internal_states><details><summary>🎲 WORLD SIM</summary>\n- <b>Roll:</b> 7\n</details></internal_states><!-- GFX_END -->");
     const fudges = { dice: { world: 20 }, appliedTo: 3 };
     const r = fixupConfigInputs(mes, fudges, 3);
     assert.equal(r.dice.world, 7);
     assert.deepEqual(r.fudges, fudges);
-    for (const applied of [2, null, undefined]) assert.equal(fixupConfigInputs(mes, { ...fudges, appliedTo: applied }, 3).fudges, null);
+    assert.deepEqual(fixupConfigInputs(mes, { ...fudges, appliedTo: 2 }, 3).fudges, { dice: { world: 20 }, appliedTo: 2 });
+    for (const applied of [4, null, undefined]) assert.equal(fixupConfigInputs(mes, { ...fudges, appliedTo: applied }, 3).fudges, null);
     assert.equal(fixupConfigInputs(mes, null, 3).fudges, null);
 });
 

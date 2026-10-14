@@ -367,6 +367,8 @@ export default {
             "MAJOR+WEIGHTED": "Pay off the selected hot setup as the major turn.",
         }[`${outcome.tier}+${outcome.source}`];
         const facts = [`Fate: ${outcome.tier} + ${outcome.source} — ${cell}`];
+        facts.push(`Fate dice: A ${outcome.dice.a} · B ${outcome.dice.b} · C ${outcome.dice.c}`);
+        facts.push("Fate is already resolved by the ledger with its configured rules; do not reroll or recalculate it using preset tables or previous-turn dice. Follow this turn's resolved tier, source and bullet instructions.");
         if (outcome.fellBack) facts.push("No eligible hot bullet could fire, so MAJOR + WEIGHTED fell back to TRUE.");
         if (outcome.news) facts.push("This turn's ambient content is world news; adapt it to the setting and react in proportion to its real impact.");
         if (outcome.collision) facts.push(`Collision with THREAD “${fate.pursuit}”: ${outcome.collision}. Let this result change the pursuit's direction.`);

@@ -242,7 +242,7 @@ export function rebuildMessage({ chat: c, index, settings: s, chatData, userName
     const config = givenConfig || (() => {
         const dice = pending ? pending.dice : diceFromBlock(msg.mes);
         const saved = chatData.fudges;
-        const fudges = pending ? pending.fudges : (saved && saved.appliedTo === index ? saved : null);
+        const fudges = pending ? pending.fudges : (saved && Number.isInteger(saved.appliedTo) && saved.appliedTo <= index ? saved : null);
         return engineConfig(s, userName, { dice, fudges, fudgedDice: pending ? pending.fudged : withFudges(dice, fudges).fudged, rolls: dice.checks || [] });
     })();
     const start = startOf(c, index, config, chatData, true);
@@ -446,7 +446,7 @@ export function popupHtml(tab, view, previewBaseDice = null) {
             ? `<option value="${esc(fudge.fire)}" selected>${esc(fudge.fire)} (not active)</option>` : "";
         const initialApplied = withFudges(dice, fudge);
         const initialFacts = renderTurnFacts(state, engineConfig(s, userName, { dice: initialApplied.dice, fudges: fudge, fudgedDice: initialApplied.fudged, rolls: initialApplied.dice.checks }));
-        body = `<p class="sl-meta">Lock dice or outcomes for the next reply. Swipes and continues of that reply keep these controls.</p>
+        body = `<p class="sl-meta">Lock dice or outcomes for upcoming replies. Saved controls stay active until changed or cleared, including swipes and continues.</p>
             <h4>Turn dice <small>— unlocked dice roll again when generation starts</small></h4>
             <div class="sl-dice-grid">
                 ${die("fate.a", "Fate A", hasOwn(locks, "fate.a") ? locks["fate.a"] : dice.fate.a, hasOwn(locks, "fate.a"))}

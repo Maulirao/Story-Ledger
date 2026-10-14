@@ -55,7 +55,7 @@ the reply — FF's `<internal_states>` layout, folded under **🎬 INTERNAL STAT
   are in Settings.
 - **🎲 Next turn** in the popup or the newest block's header: lock dice, force a tier/source,
   choose Calm or a bullet, and preview the next turn. Swipes and continues reuse the controls;
-  they clear after a later reply. Slash commands: `/ledger-dice fate.a=20 world=7 checks=20,3,11`,
+  they stay active across turns until changed or cleared. Slash commands: `/ledger-dice fate.a=20 world=7 checks=20,3,11`,
   `/ledger-dice reroll|clear`, `/ledger-force MAJOR WEIGHTED|calm`, and `/ledger-fire B2|none`.
 - 🗺️ **Quests tab**: every quest stays in the block; a finished one reaches the model only when you
   tick **Send to the model** (or **Send all finished quests**). The tick is stored in the block

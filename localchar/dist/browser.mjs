@@ -2230,6 +2230,8 @@ var fate_default = {
       "MAJOR+WEIGHTED": "Pay off the selected hot setup as the major turn."
     }[`${outcome.tier}+${outcome.source}`];
     const facts = [`Fate: ${outcome.tier} + ${outcome.source} — ${cell}`];
+    facts.push(`Fate dice: A ${outcome.dice.a} · B ${outcome.dice.b} · C ${outcome.dice.c}`);
+    facts.push("Fate is already resolved by the ledger with its configured rules; do not reroll or recalculate it using preset tables or previous-turn dice. Follow this turn's resolved tier, source and bullet instructions.");
     if (outcome.fellBack) facts.push("No eligible hot bullet could fire, so MAJOR + WEIGHTED fell back to TRUE.");
     if (outcome.news) facts.push("This turn's ambient content is world news; adapt it to the setting and react in proportion to its real impact.");
     if (outcome.collision) facts.push(`Collision with THREAD “${fate2.pursuit}”: ${outcome.collision}. Let this result change the pursuit's direction.`);
@@ -2342,6 +2344,7 @@ var worldsim_default = {
     const event = ctx.turn.worldsim;
     if (!event) return [];
     const facts = [`World Sim: ${event.name} — ${event.text}. Use it only if Fate's cell is TRUE; discard it on a WEIGHTED turn; skip it in an intimate scene.`];
+    facts.push(`World Sim die: ${event.roll}. The ledger has already selected the event using its configured table; do not reroll or reselect it using preset tables.`);
     if (ctx.turn.fate?.source === "TRUE") facts.push(`If this World Sim event is realized, record its aftermath under Fate as \`World ${event.name} landed as actual aftermath\`. Keep this exact event name; replace only the aftermath text. Omit the command if the event is unused.`);
     return facts;
   },
@@ -4574,7 +4577,7 @@ function popupHtml(tab, view, previewBaseDice = null) {
     const oldFire = fudge.fire && fudge.fire !== "none" && !(state.chekhov?.bullets || []).some((b) => b.id === fudge.fire) ? `<option value="${esc2(fudge.fire)}" selected>${esc2(fudge.fire)} (not active)</option>` : "";
     const initialApplied = withFudges(dice, fudge);
     const initialFacts = renderTurnFacts(state, engineConfig(s, userName, { dice: initialApplied.dice, fudges: fudge, fudgedDice: initialApplied.fudged, rolls: initialApplied.dice.checks }));
-    body = `<p class="sl-meta">Lock dice or outcomes for the next reply. Swipes and continues of that reply keep these controls.</p>
+    body = `<p class="sl-meta">Lock dice or outcomes for upcoming replies. Saved controls stay active until changed or cleared, including swipes and continues.</p>
             <h4>Turn dice <small>— unlocked dice roll again when generation starts</small></h4>
             <div class="sl-dice-grid">
                 ${die("fate.a", "Fate A", hasOwn(locks, "fate.a") ? locks["fate.a"] : dice.fate.a, hasOwn(locks, "fate.a"))}
