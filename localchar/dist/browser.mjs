@@ -329,7 +329,11 @@ var agendas_default = {
   apply(state, lines2, ctx) {
     const unparsed = [];
     for (const raw of lines2.flatMap((line) => fieldCommands(line, ctx.normalizedChanges))) {
-      const line = String(raw).trim();
+      let line = String(raw).trim();
+      if (ctx.normalizedChanges) {
+        const completed = line.match(/^(.+?)\s*:\s*new\s+"([^"\s][^"]*)"\s*→\s*done\s*(?:;\s*(\S.*))?$/i);
+        if (completed) line = `${completed[1]}: done "${completed[2]}"${completed[3] ? ` → ${completed[3]}` : ""}`;
+      }
       let m;
       if (m = line.match(/^(.+?)\s*:\s*new\s+"([^"]+)"\s+(\d+)\s*\/\s*(\d+)\s*(?:@\s*(.+))?$/i)) {
         const step = Number(m[3]), max = Number(m[4]);

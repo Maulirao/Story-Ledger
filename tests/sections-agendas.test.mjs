@@ -144,6 +144,30 @@ test("an unknown agenda completion still refuses malformed commands", () => {
     assert.deepEqual(r.state.agendas, {});
 });
 
+test("a new task explicitly marked done is a completion in comments", () => {
+    const line = 'Clerk: new "Close the dollar store at one, catch the afternoon bus" → done; store locked at one, bus caught; agenda closed';
+    const s = emptyState();
+    s.agendas.Clerk = agenda("close the store", 1, 2, { aware: "bus leaves at two", body: "coat" });
+    const r = postTurn(s, ch(`Agendas:\n- ${line}`), C);
+    assert.deepEqual(r.unparsed, []);
+    assert.deepEqual(r.state.agendas.Clerk, agenda("", 0, 0, { aware: "bus leaves at two", body: "coat" }));
+    const unknown = postTurn(emptyState(), ch(`Agendas:\n- ${line}`), C);
+    assert.deepEqual(unknown.unparsed, []);
+    assert.deepEqual(unknown.state.agendas, {});
+    const replacement = postTurn(s, ch(`Agendas:\n- Clerk: new "go home" 0/2\n- ${line}`), C);
+    assert.equal(replacement.state.agendas.Clerk.task, "go home");
+    assert.equal(replacement.state.agendas.Clerk.step, 0);
+    const tagged = postTurn(s, parseChanges(`<Story_Ledger>\nAgendas:\n- ${line}\n</Story_Ledger>`), C);
+    assert.deepEqual(tagged.unparsed, [{ section: "Agendas", line }]);
+});
+
+test("incomplete new agenda commands are not inferred to be completions", () => {
+    const lines = ['Clerk: new "done with shopping"', 'Clerk: new "close" → done soon', 'Clerk: new "close" → store locked', 'Clerk: new "" → done', 'Clerk: new "close" 3/2 → done'];
+    const r = postTurn(emptyState(), ch(`Agendas:\n${lines.map(line => `- ${line}`).join("\n")}`), C);
+    assert.deepEqual(r.unparsed, lines.map(line => ({ section: "Agendas", line })));
+    assert.deepEqual(r.state.agendas, {});
+});
+
 test("impossible agenda progress is unread and changes nothing", () => {
     const { state, unparsed } = postTurn(emptyState(), ch('Agendas:\n- Nora: new "repair" 3/2 @ shed\n- Nora: new "repair" 0/0'), C);
     assert.deepEqual(state.agendas, {});
