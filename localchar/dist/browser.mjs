@@ -2100,7 +2100,7 @@ var fate_default = {
     const closed = ctx.normalizedChanges ? closedForm : (s) => s;
     for (const record of records) {
       const line = String(record.line).trim();
-      const consequence = line.match(/^World\s+(CONSEQUENCE|BACKGROUND_INCIDENT)\s+landed\s+as\s+(\S.*)$/i);
+      const consequence = line.match(/^World\s+(CONSEQUENCE|BACKGROUND_INCIDENT|GOSSIP_SURGE)\s+landed\s+as\s+(\S.*)$/i);
       if (consequence && (consequence[1].toUpperCase() === "CONSEQUENCE" || ctx.normalizedChanges)) {
         appendResidue(fate2, `${consequence[1].toUpperCase()} — ${consequence[2].trim()}`, ctx);
         continue;

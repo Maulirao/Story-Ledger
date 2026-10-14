@@ -88,7 +88,8 @@ lines; a new command or heading ends it. Older entries need no migration.
 for a consequence that actually occurred in the story, such as the race buoy breaking.
 It saves the aftermath as residue on TRUE or WEIGHTED turns, without changing the
 rolled World Sim event or clearing unrelated owed aftermath. In ledger comments,
-`World BACKGROUND_INCIDENT landed as aftermath` is saved the same way.
+`World BACKGROUND_INCIDENT landed as aftermath` and
+`World GOSSIP_SURGE landed as aftermath` are saved the same way.
 
 Other `World EVENT landed as aftermath` reports name the rolled World Sim event: use the exact
 announced event name, and only when Fate's source is TRUE and that event was realized.

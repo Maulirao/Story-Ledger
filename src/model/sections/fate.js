@@ -230,7 +230,7 @@ export default {
         const closed = ctx.normalizedChanges ? closedForm : s => s;
         for (const record of records) {
             const line = String(record.line).trim();
-            const consequence = line.match(/^World\s+(CONSEQUENCE|BACKGROUND_INCIDENT)\s+landed\s+as\s+(\S.*)$/i);
+            const consequence = line.match(/^World\s+(CONSEQUENCE|BACKGROUND_INCIDENT|GOSSIP_SURGE)\s+landed\s+as\s+(\S.*)$/i);
             if (consequence && (consequence[1].toUpperCase() === "CONSEQUENCE" || ctx.normalizedChanges)) {
                 // Generic story aftermath, independent of the rolled World Sim event and its source.
                 // It records what happened without changing the roll or paying unrelated residue debt.

@@ -72,3 +72,29 @@ test("background incident reports require nonempty aftermath and keep tagged sem
     const tagged = postTurn(emptyState(), parseChanges(`<Story_Ledger>\nFate:\n- ${line}\n</Story_Ledger>`), C);
     assert.deepEqual(tagged.unparsed, [{ section: "Fate", line }]);
 });
+
+test("GOSSIP_SURGE saves the screenshot aftermath without changing the rolled event or owed residue", () => {
+    const aftermath = "Gervais bragged about the face-on-shorts transfer through the shared wall; the dollar store clerk connected it to the shorts purchase while bagging, and the strip mall now carries the story into Canada Day";
+    for (const heading of ["Fate", "World"]) {
+        for (const extra of [{}, { fudges: { source: "WEIGHTED" } }, { sections: { worldsim: false } }]) {
+            const config = { ...C, ...extra };
+            const s = emptyState();
+            s.fate.owed = ["unrelated aftermath"];
+            const baseline = postTurn(s, null, config).state;
+            const r = run(s, `${heading}:\n- World GOSSIP_SURGE landed as ${aftermath}`, config);
+            assert.deepEqual(r.unparsed, []);
+            assert.deepEqual(r.state.fate.residue, [`GOSSIP_SURGE — ${aftermath}`]);
+            assert.deepEqual({ ...r.state, fate: { ...r.state.fate, residue: [] } }, baseline);
+        }
+    }
+});
+
+test("gossip surge tolerance requires an exact label and aftermath, and keeps tagged semantics", () => {
+    const lines = ["World GOSSIP_SURGE landed as", "World GOSSIP_SURGES landed as a rumour"];
+    const r = run(emptyState(), `Fate:\n${lines.map(line => `- ${line}`).join("\n")}`);
+    assert.deepEqual(r.unparsed, lines.map(line => ({ section: "Fate", line })));
+    assert.deepEqual(r.state.fate.residue, []);
+    const line = "World GOSSIP_SURGE landed as a rumour";
+    const tagged = postTurn(emptyState(), parseChanges(`<Story_Ledger>\nFate:\n- ${line}\n</Story_Ledger>`), C);
+    assert.deepEqual(tagged.unparsed, [{ section: "Fate", line }]);
+});
