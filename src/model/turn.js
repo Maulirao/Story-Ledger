@@ -10,10 +10,11 @@ import { parseBlock, findBlock, BLOCK_MARK, replaceSectionRows } from "./block.j
 import { enabledSections, CORE_KEYS, sectionByKey, needsPresent, SECTIONS } from "./sections/registry.js";
 import { HEADINGS, headingKey } from "./headings.js";
 import { applyTurn, replayRelations } from "./relations.js";
-import { importFromLegacyNotebook, notebookBody, parseNotebookBlock, THREAD_LIMIT } from "./notebook.js";
+import { importFromLegacyNotebook, notebookBody, parseNotebookBlock } from "./notebook.js";
 import { parseChanges } from "./changes.js";
 import { importForeign } from "./import/index.js";
 import { nameMatches } from "./text.js";
+import { DEFAULT_SECTION_CONFIG } from "./config.js";
 
 const clone = o => JSON.parse(JSON.stringify(o));
 const key = s => String(s).trim().toLowerCase();
@@ -116,16 +117,16 @@ export function preTurnFacts(state, config) {
     const ctx = sectionContext(state, state.scene.present, config);
     for (const sec of on) if (sec.decide) ctx.turn[sec.key] = sec.decide(state, ctx);
     const facts = on.flatMap(sec => (sec.facts ? sec.facts(state, ctx) : []));
-    if ((config.sections || {}).notebook !== false) facts.push(...threadFacts(state.threads || []));
+    if ((config.sections || {}).notebook !== false) facts.push(...threadFacts(state.threads || [], config.sectionConfig?.threadLimit ?? DEFAULT_SECTION_CONFIG.threadLimit));
     return facts;
 }
 
-/** Open threads past THREAD_LIMIT: ask for the surplus to be resolved, naming the oldest. */
-function threadFacts(threads) {
-    const over = threads.length - THREAD_LIMIT;
-    if (over <= 0) return [];
+/** Open threads past `limit` (0 = none): ask for the surplus to be resolved, naming the oldest. */
+function threadFacts(threads, limit) {
+    const over = threads.length - limit;
+    if (!(limit > 0) || over <= 0) return [];
     const oldest = threads.slice(0, Math.min(over, 6)).map(t => `"${t}"`).join(", ");
-    return [`${threads.length} open threads, over the limit of ${THREAD_LIMIT} — resolve at least ${over} this turn with \`- [T]\` lines: those already finished, past their time, or covered by another thread. Oldest first: ${oldest}.`];
+    return [`${threads.length} open threads, over the limit of ${limit} — resolve at least ${over} this turn with \`- [T]\` lines: those already finished, past their time, or covered by another thread. Oldest first: ${oldest}.`];
 }
 
 /**

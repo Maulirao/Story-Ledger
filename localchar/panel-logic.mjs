@@ -1,7 +1,7 @@
 // The panel's form reading, kept free of the DOM: panel.mjs lifts plain values out of the controls and
 // these turn them into what the actions take. (index.js reads the same controls through jQuery.)
 
-import { resolveConfig, sanitizeChekhov, sanitizeFate, sanitizeTitles } from "../src/model/config.js";
+import { resolveConfig, sanitizeChekhov, sanitizeFate, sanitizeTitles, sanitizeThreadLimit } from "../src/model/config.js";
 
 const validDie = value => Number.isInteger(Number(value)) && String(value).trim() !== "" && Number(value) >= 1 && Number(value) <= 20;
 
@@ -32,7 +32,7 @@ export function fudgeFromControls({ dice = {}, checks = { locked: false, values:
  * [[key, value], ...] straight off the data- attributes, values still strings (the action converts and
  * sanitizes).
  */
-export function configFormFromControls({ cfg = [], gate = [], phi = [], axes = [], decay = [], skip = undefined, chekhov = [], firing = "model", fate = [], titles = [] } = {}) {
+export function configFormFromControls({ cfg = [], gate = [], phi = [], axes = [], decay = [], skip = undefined, chekhov = [], firing = "model", fate = [], titles = [], threadLimit = undefined } = {}) {
     const pairs = list => Object.fromEntries(list);
     const nested = {};
     for (const [key, field, value] of axes) (nested[key] ||= {})[field] = value;
@@ -41,6 +41,7 @@ export function configFormFromControls({ cfg = [], gate = [], phi = [], axes = [
         decay: pairs(decay), chekhov: { ...pairs(chekhov), firing }, fate: pairs(fate), titles: pairs(titles),
     };
     if (skip !== undefined) form.skip = skip;
+    if (threadLimit !== undefined) form.threadLimit = threadLimit;
     return form;
 }
 
@@ -67,5 +68,6 @@ export function configFromForm(current, form = {}) {
     c.sectionConfig.chekhov = sanitizeChekhov(form.chekhov || {}, c.sectionConfig.chekhov);
     c.sectionConfig.fate = sanitizeFate(form.fate || {}, c.sectionConfig.fate);
     c.sectionConfig.titles = sanitizeTitles(form.titles || {}, c.sectionConfig.titles);
+    c.sectionConfig.threadLimit = sanitizeThreadLimit(form.threadLimit, c.sectionConfig.threadLimit);
     return c;
 }

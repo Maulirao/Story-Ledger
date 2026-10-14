@@ -843,6 +843,8 @@ var DEFAULT_RELATION_CONFIG = {
 var DEFAULT_SECTION_CONFIG = {
   lastBeats: 3,
   // 🧾 LAST keeps this many newest beats
+  threadLimit: 12,
+  // open [T] threads past this are flagged for retiring; 0 = no limit
   chekhov: {
     eligibleAge: 6,
     // a bullet may fire from this age
@@ -921,6 +923,7 @@ function resolveConfig(overrides) {
       else if (k === "fate" && v && typeof v === "object") base.sectionConfig.fate = mergeKnown(base.sectionConfig.fate, v);
       else if (k === "worldsim" && v && typeof v === "object") base.sectionConfig.worldsim = mergeKnown(base.sectionConfig.worldsim, v);
       else if (k === "titles" && v && typeof v === "object") base.sectionConfig.titles = sanitizeTitles(v, base.sectionConfig.titles);
+      else if (k === "threadLimit") base.sectionConfig.threadLimit = sanitizeThreadLimit(v, base.sectionConfig.threadLimit);
       else if (k in base.sectionConfig && typeof v === typeof base.sectionConfig[k]) base.sectionConfig[k] = v;
     }
   }
@@ -998,6 +1001,10 @@ function sanitizeFate(input = {}, prev = DEFAULT_SECTION_CONFIG.fate) {
     out[key2] = Math.max(1, Math.round(Number(raw)));
   }
   return out;
+}
+function sanitizeThreadLimit(raw, prev = DEFAULT_SECTION_CONFIG.threadLimit) {
+  if (raw === void 0 || raw === null || String(raw).trim() === "" || !Number.isFinite(Number(raw))) return prev;
+  return Math.min(99, Math.max(0, Math.round(Number(raw))));
 }
 
 // src/model/sections/inventory.js
@@ -2860,7 +2867,6 @@ function storyTime(chat, notebook, max = 6) {
   }
   return { now, timeline: trail.reverse() };
 }
-var THREAD_LIMIT = 12;
 var NOTEBOOK_BLOCK_TEMPLATE = [
   "Now: [Story time after this reply, free text — e.g. Day 12 — Tuesday, March 4, 21:44 | Lake, the lawn. Day N counts from the story's first day and never resets.]",
   "Threads:",
@@ -4203,14 +4209,14 @@ function preTurnFacts(state, config) {
   const ctx = sectionContext(state, state.scene.present, config);
   for (const sec of on) if (sec.decide) ctx.turn[sec.key] = sec.decide(state, ctx);
   const facts = on.flatMap((sec) => sec.facts ? sec.facts(state, ctx) : []);
-  if ((config.sections || {}).notebook !== false) facts.push(...threadFacts(state.threads || []));
+  if ((config.sections || {}).notebook !== false) facts.push(...threadFacts(state.threads || [], config.sectionConfig?.threadLimit ?? DEFAULT_SECTION_CONFIG.threadLimit));
   return facts;
 }
-function threadFacts(threads) {
-  const over = threads.length - THREAD_LIMIT;
-  if (over <= 0) return [];
+function threadFacts(threads, limit) {
+  const over = threads.length - limit;
+  if (!(limit > 0) || over <= 0) return [];
   const oldest = threads.slice(0, Math.min(over, 6)).map((t) => `"${t}"`).join(", ");
-  return [`${threads.length} open threads, over the limit of ${THREAD_LIMIT} — resolve at least ${over} this turn with \`- [T]\` lines: those already finished, past their time, or covered by another thread. Oldest first: ${oldest}.`];
+  return [`${threads.length} open threads, over the limit of ${limit} — resolve at least ${over} this turn with \`- [T]\` lines: those already finished, past their time, or covered by another thread. Oldest first: ${oldest}.`];
 }
 function latestState(chat, beforeIndex, config) {
   for (let i = Math.min(beforeIndex, (chat || []).length) - 1; i >= 0; i--) {
@@ -4694,6 +4700,8 @@ function popupHtml(tab, view, previewBaseDice = null) {
             </div>
             <h4>🎲 Fate & World Sim</h4>
             <div class="sl-grid">${[["deferredExpire", "Deferred expiry"], ["worldKeep", "World entries kept"], ["reach1Drop", "Drop Reach 1 at age"], ["pursuitLimit", "Pursuit limit"], ["residueKeep", "Residue lines kept"]].map(([k, label]) => `<label>${label} <input type="number" min="1" class="text_pole sl-num" data-fate="${k}" value="${cf.sectionConfig.fate[k]}"></label>`).join("")}</div>
+            <h4>🧵 Threads</h4>
+            <div class="sl-grid"><label>Max open threads (0 = no limit) <input type="number" min="0" max="99" class="text_pole sl-num" data-threads="threadLimit" value="${cf.sectionConfig.threadLimit}"></label></div>
             <h4>🎖️ Titles</h4>
             <div class="sl-grid">${[["softCap", "Soft cap", 0, 20], ["hardCap", "Hard cap", 0, 20], ["situationalMax", "Situational max", 0, 5], ["retrofitBatch", "Retrofit per turn", 1, 30]].map(([k, label, min, max]) => `<label>${label} <input type="number" min="${min}" max="${max}" class="text_pole sl-num" data-titles="${k}" value="${cf.sectionConfig.titles[k]}"></label>`).join("")}</div>
             <div class="sl-btns"><button class="menu_button" id="sl-save-config">Save engine numbers</button><button class="menu_button" id="sl-reset-config">Reset to defaults</button></div>`;
@@ -5040,7 +5048,7 @@ function fudgeFromControls({ dice = {}, checks = { locked: false, values: [] }, 
   if (fire) fudge.fire = fire;
   return fudge;
 }
-function configFormFromControls({ cfg = [], gate = [], phi = [], axes = [], decay = [], skip = void 0, chekhov: chekhov2 = [], firing = "model", fate: fate2 = [], titles = [] } = {}) {
+function configFormFromControls({ cfg = [], gate = [], phi = [], axes = [], decay = [], skip = void 0, chekhov: chekhov2 = [], firing = "model", fate: fate2 = [], titles = [], threadLimit = void 0 } = {}) {
   const pairs = (list) => Object.fromEntries(list);
   const nested = {};
   for (const [key2, field3, value2] of axes) (nested[key2] ||= {})[field3] = value2;
@@ -5055,6 +5063,7 @@ function configFormFromControls({ cfg = [], gate = [], phi = [], axes = [], deca
     titles: pairs(titles)
   };
   if (skip !== void 0) form.skip = skip;
+  if (threadLimit !== void 0) form.threadLimit = threadLimit;
   return form;
 }
 function settingFromControl({ type, checked, value: value2 }) {
@@ -5074,6 +5083,7 @@ function configFromForm(current, form = {}) {
   c.sectionConfig.chekhov = sanitizeChekhov(form.chekhov || {}, c.sectionConfig.chekhov);
   c.sectionConfig.fate = sanitizeFate(form.fate || {}, c.sectionConfig.fate);
   c.sectionConfig.titles = sanitizeTitles(form.titles || {}, c.sectionConfig.titles);
+  c.sectionConfig.threadLimit = sanitizeThreadLimit(form.threadLimit, c.sectionConfig.threadLimit);
   return c;
 }
 
@@ -5108,7 +5118,8 @@ function readConfigControls(root) {
     chekhov: all("[data-chk]").map((el) => [el.dataset.chk, el.value]),
     firing: String(root.querySelector("[data-chk-firing]")?.value || "model"),
     fate: all("[data-fate]").map((el) => [el.dataset.fate, el.value]),
-    titles: all("[data-titles]").map((el) => [el.dataset.titles, el.value])
+    titles: all("[data-titles]").map((el) => [el.dataset.titles, el.value]),
+    threadLimit: root.querySelector("[data-threads]")?.value
   });
 }
 function mountLedger({ host, body, startTab = "rules", fixedTab = null, ready = async () => {

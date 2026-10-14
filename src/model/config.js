@@ -55,6 +55,7 @@ export const DEFAULT_RELATION_CONFIG = {
 /** Numbers the state sections use (anything not part of the relationship engine). */
 export const DEFAULT_SECTION_CONFIG = {
     lastBeats: 3,   // 🧾 LAST keeps this many newest beats
+    threadLimit: 12, // open [T] threads past this are flagged for retiring; 0 = no limit
     chekhov: {
         eligibleAge: 6,     // a bullet may fire from this age
         pruneAge: 12,       // unfired bullets this old are pruned to Fired
@@ -125,6 +126,7 @@ export function resolveConfig(overrides) {
             else if (k === "fate" && v && typeof v === "object") base.sectionConfig.fate = mergeKnown(base.sectionConfig.fate, v);
             else if (k === "worldsim" && v && typeof v === "object") base.sectionConfig.worldsim = mergeKnown(base.sectionConfig.worldsim, v);
             else if (k === "titles" && v && typeof v === "object") base.sectionConfig.titles = sanitizeTitles(v, base.sectionConfig.titles);
+            else if (k === "threadLimit") base.sectionConfig.threadLimit = sanitizeThreadLimit(v, base.sectionConfig.threadLimit);
             else if (k in base.sectionConfig && typeof v === typeof base.sectionConfig[k]) base.sectionConfig[k] = v;
         }
     }
@@ -220,4 +222,10 @@ export function sanitizeFate(input = {}, prev = DEFAULT_SECTION_CONFIG.fate) {
         out[key] = Math.max(1, Math.round(Number(raw)));
     }
     return out;
+}
+
+/** Max open threads from the Settings form or saved config: a blank or non-number keeps `prev`; 0 = no limit, at most 99. */
+export function sanitizeThreadLimit(raw, prev = DEFAULT_SECTION_CONFIG.threadLimit) {
+    if (raw === undefined || raw === null || String(raw).trim() === "" || !Number.isFinite(Number(raw))) return prev;
+    return Math.min(99, Math.max(0, Math.round(Number(raw))));
 }
