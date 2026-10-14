@@ -284,6 +284,9 @@ const describe = i => i.op === "add" ? `- add: ${i.text}`
     : i.op === "edit" ? `- edit "${i.targetText}" → ${i.text}`
     : `- remove "${i.targetText}"${i.text ? ` (${i.text})` : ""}`;
 
+/** Open threads the model is asked to keep; past it, the turn facts ask for the oldest to be resolved. */
+export const THREAD_LIMIT = 12;
+
 export function renderNotebookPrompt(notebook, threads, time = null) {
     const rules = (notebook && notebook.rules) || [];
     const inbox = ((notebook && notebook.inbox) || []).filter(i => !i.stale);

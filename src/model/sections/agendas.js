@@ -8,11 +8,28 @@ import { esc, unesc, ROW, fieldsOf } from "../text.js";
 import { findName, hasName } from "./people.js";
 import { locationLine, setLocation } from "./locations.js";
 import { commandTemplate } from "../commands.js";
+import { parseStoryTime } from "../storytime.js";
 
 const FIELDS = ["aware", "fibs", "circle", "body"];
 const blank = () => ({ task: "", step: 0, max: 0, aware: "", fibs: "", circle: "", body: "" });
 const show = v => (v ? esc(v) : "—");
 const read = v => { const t = unesc(v); return t === "—" ? "" : t; };
+
+function fieldLine(line, normalized) {
+    return line.match(normalized
+        ? /^(.+?)(?:\s*:\s*|\s+)(knows|fibs?|circle|body)\s*:\s*(.+)$/i
+        : /^(.+?)\s+(knows|fibs?|circle|body)\s*:\s*(.+)$/i);
+}
+
+function fieldCommands(raw, normalized) {
+    const line = String(raw).trim();
+    const m = normalized && fieldLine(line, true);
+    if (!m) return [line];
+    // Only split an explicit command for the same person. Ordinary punctuation
+    // in knowledge/body text stays intact; legacy tagged inputs keep their reading.
+    const name = m[1].trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return line.split(new RegExp(`\\s*[;·|]\\s*(?=${name}(?:\\s*:\\s*|\\s+)(?:knows|fibs?|circle|body)\\s*:\\s*\\S)`, "i"));
+}
 
 const COMMANDS = [
     { id: "agendas.new", form: 'Name: new "task" 0/N @ place', example: 'Ana: new "mend the nets" 0/2 @ the harbour', keywords: ["new"] },
@@ -50,6 +67,18 @@ function entry(state, name) {
 
 const offScreen = (state, name) => !hasName(state.scene.present, name);
 
+// "before noon", "by 8 PM", "until 14:30": a same-day deadline the task states for itself.
+// Midnight is left out — on a clock that wraps it would always read as past.
+const DEADLINE = /\b(?:before|by|until|till)\s+(noon|midday|\d{1,2}:\d{2}(?:\s*[ap]\.?\s*m\.?)?|\d{1,2}\s*[ap]\.?\s*m\.?)(?!\w|:\d)/i;
+
+/** The deadline words of `task` when the story clock is at or past them, else null. */
+function overdue(task, now) {
+    const m = String(task).match(DEADLINE);
+    const due = m && parseStoryTime(m[1]);
+    const at = parseStoryTime(now);
+    return due && at && at.minutes >= due.minutes ? m[1] : null;
+}
+
 export default {
     key: "agendas",
     title: "👤 NPC AGENDAS",
@@ -80,7 +109,7 @@ export default {
     },
     apply(state, lines, ctx) {
         const unparsed = [];
-        for (const raw of lines) {
+        for (const raw of lines.flatMap(line => fieldCommands(line, ctx.normalizedChanges))) {
             const line = String(raw).trim();   // parseChanges already removed the list bullet
             let m;
             if ((m = line.match(/^(.+?)\s*:\s*new\s+"([^"]+)"\s+(\d+)\s*\/\s*(\d+)\s*(?:@\s*(.+))?$/i))) {
@@ -100,7 +129,7 @@ export default {
                     if (!ctx.normalizedChanges || !/^.+?\s*:\s*done\s+"[^"\s][^"]*"\s*(?:→\s*\S.*)?$/i.test(line)) unparsed.push(line);
                 }
                 else if (!ctx.touched.has(n.toLowerCase())) Object.assign(state.agendas[n], { task: "", step: 0, max: 0 });
-            } else if ((m = line.match(/^(.+?)\s+(knows|fibs?|circle|body)\s*:\s*(.+)$/i))) {
+            } else if ((m = fieldLine(line, ctx.normalizedChanges))) {
                 const [, a] = entry(state, m[1]);
                 const field = { knows: "aware", fib: "fibs", fibs: "fibs", circle: "circle", body: "body" }[m[2].toLowerCase()];
                 const v = m[3].trim();
@@ -122,12 +151,17 @@ export default {
             if (a.max > 0 && a.step < a.max && offScreen(state, n) && !ctx.touched.has(n.toLowerCase())) a.step += 1;
         }
     },
-    facts(state) {
+    facts(state, ctx) {
         const out = [];
         for (const [n, a] of Object.entries(state.agendas)) {
-            if (!a.max || !offScreen(state, n)) continue;
-            if (a.step < a.max && a.step + 1 >= a.max) out.push(`${n} finishes "${a.task}" off-screen this turn — apply its effect and give ${n} a new agenda.`);
-            else if (a.step >= a.max) out.push(`${n}'s agenda "${a.task}" is finished — give ${n} a new one.`);
+            if (ctx.userName && hasName([ctx.userName], n)) continue;
+            if (!a.task.trim()) {
+                out.push(`${n} has no agenda — write an Agendas new line with a concrete goal and 1–3 steps drawn from the story.`);
+            } else if (!(a.max > 0)) {
+                out.push(`${n}'s agenda "${a.task}" cannot advance without steps — write an Agendas new line with valid progress, or done and a new agenda if the story already finished it.`);
+            } else if (a.step >= a.max) out.push(`${n}'s agenda "${a.task}" is finished — give ${n} a new one.`);
+            else if (overdue(a.task, state.scene.now)) out.push(`${n}'s agenda "${a.task}" was due by ${overdue(a.task, state.scene.now)} and the story time is past it — write done for it, or a new agenda that fits what ${n} is doing now; do not steer the scene back toward the old deadline.`);
+            else if (offScreen(state, n) && a.step + 1 >= a.max) out.push(`${n} finishes "${a.task}" off-screen this turn — apply its effect and give ${n} a new agenda.`);
         }
         return out;
     },

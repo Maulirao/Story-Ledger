@@ -5,7 +5,7 @@ import { resolveConfig } from "../src/model/config.js";
 import { emptyState } from "../src/model/state.js";
 import { parseChanges } from "../src/model/changes.js";
 import { renderBlock } from "../src/model/block.js";
-import { postTurn, latestState, initialState, writeBlockInto } from "../src/model/turn.js";
+import { postTurn, latestState, initialState, writeBlockInto, preTurnFacts } from "../src/model/turn.js";
 
 const C = { ...resolveConfig(), userName: "Jan" };
 const ALL = { scene: true, relationships: true, notebook: true };
@@ -142,4 +142,18 @@ test("thread removal preserves exact-match multiplicity", () => {
 
 test("an ambiguous quote-equivalent thread removal removes nothing", () => {
     assert.deepEqual(turnWith(["fix “gate”", "fix «gate»"], 'Threads:\n- - [T] fix "gate"'), ["fix “gate”", "fix «gate»"]);
+});
+
+test("threads over the limit ask the model to resolve the oldest", () => {
+    const cfg = { ...resolveConfig(), sections: {} };
+    const s = emptyState();
+    s.threads = Array.from({ length: 15 }, (_, i) => `thread ${i + 1}`);
+    const facts = preTurnFacts(s, cfg).join("\n");
+    assert.match(facts, /15 open threads.*limit of 12.*at least 3/);
+    assert.match(facts, /"thread 1"/);
+    assert.doesNotMatch(facts, /"thread 15"/);
+    s.threads = s.threads.slice(0, 12);
+    assert.doesNotMatch(preTurnFacts(s, cfg).join("\n"), /open threads/);
+    s.threads = Array.from({ length: 15 }, (_, i) => `thread ${i + 1}`);
+    assert.doesNotMatch(preTurnFacts(s, { ...cfg, sections: { notebook: false } }).join("\n"), /open threads/);
 });

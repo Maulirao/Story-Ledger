@@ -204,6 +204,46 @@ var locations_default = {
   template: (ctx) => commandTemplate("Locations", COMMANDS2, ctx)
 };
 
+// src/model/storytime.js
+var dayOf = (text) => {
+  const m = String(text || "").match(/\bDay\s+(\d+)\b/i);
+  return m ? Number(m[1]) : null;
+};
+function minutesOf(text) {
+  const t = String(text || "");
+  if (/\bnoon\b|\bmidday\b/i.test(t) && !/\d{1,2}:\d{2}/.test(t)) return 12 * 60;
+  if (/\bmidnight\b/i.test(t) && !/\d{1,2}:\d{2}/.test(t)) return 0;
+  let m = t.match(/\b(\d{1,2}):(\d{2})\s*([ap])\.?\s*m\.?\b/i);
+  if (m) return (Number(m[1]) % 12 + (m[3].toLowerCase() === "p" ? 12 : 0)) * 60 + Number(m[2]);
+  m = t.match(/\b(\d{1,2}):(\d{2})\b/);
+  if (m && Number(m[1]) < 24 && Number(m[2]) < 60) return Number(m[1]) * 60 + Number(m[2]);
+  m = t.match(/\b(\d{1,2})\s*([ap])\.?\s*m\.?\b/i);
+  if (m) return (Number(m[1]) % 12 + (m[2].toLowerCase() === "p" ? 12 : 0)) * 60;
+  return null;
+}
+function parseStoryTime(text) {
+  const minutes = minutesOf(text);
+  return minutes === null ? null : { day: dayOf(text), minutes };
+}
+function lockTime(spec, now) {
+  const minutes = minutesOf(spec);
+  if (minutes === null) return null;
+  const day = dayOf(spec);
+  if (day !== null) return { day, minutes };
+  const tomorrow = /\btomorrow\b/i.test(spec), today = /\btoday\b|\btonight\b/i.test(spec);
+  if (!now) return { day: null, minutes };
+  const later = tomorrow || !today && minutes < now.minutes;
+  if (now.day === null || now.day === void 0) return later ? { day: null, minutes, wait: true } : { day: null, minutes };
+  return { day: later ? now.day + 1 : now.day, minutes };
+}
+function isAtOrPast(now, at) {
+  if (!now || !at) return false;
+  const nowDay = now.day !== null && now.day !== void 0, atDay = at.day !== null && at.day !== void 0;
+  if (atDay && !nowDay) return false;
+  if (!atDay) return now.minutes >= at.minutes;
+  return now.day > at.day || now.day === at.day && now.minutes >= at.minutes;
+}
+
 // src/model/sections/agendas.js
 var FIELDS2 = ["aware", "fibs", "circle", "body"];
 var blank2 = () => ({ task: "", step: 0, max: 0, aware: "", fibs: "", circle: "", body: "" });
@@ -212,6 +252,16 @@ var read2 = (v) => {
   const t = unesc(v);
   return t === "—" ? "" : t;
 };
+function fieldLine(line, normalized) {
+  return line.match(normalized ? /^(.+?)(?:\s*:\s*|\s+)(knows|fibs?|circle|body)\s*:\s*(.+)$/i : /^(.+?)\s+(knows|fibs?|circle|body)\s*:\s*(.+)$/i);
+}
+function fieldCommands(raw, normalized) {
+  const line = String(raw).trim();
+  const m = normalized && fieldLine(line, true);
+  if (!m) return [line];
+  const name = m[1].trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return line.split(new RegExp(`\\s*[;·|]\\s*(?=${name}(?:\\s*:\\s*|\\s+)(?:knows|fibs?|circle|body)\\s*:\\s*\\S)`, "i"));
+}
 var COMMANDS3 = [
   { id: "agendas.new", form: 'Name: new "task" 0/N @ place', example: 'Ana: new "mend the nets" 0/2 @ the harbour', keywords: ["new"] },
   { id: "agendas.done", form: 'Name: done "task" → effect', example: 'Ana: done "mend the nets" → the boat can sail', keywords: ["done"] },
@@ -242,6 +292,13 @@ function entry(state, name) {
   return [n, state.agendas[n]];
 }
 var offScreen = (state, name) => !hasName(state.scene.present, name);
+var DEADLINE = /\b(?:before|by|until|till)\s+(noon|midday|\d{1,2}:\d{2}(?:\s*[ap]\.?\s*m\.?)?|\d{1,2}\s*[ap]\.?\s*m\.?)(?!\w|:\d)/i;
+function overdue(task, now) {
+  const m = String(task).match(DEADLINE);
+  const due = m && parseStoryTime(m[1]);
+  const at = parseStoryTime(now);
+  return due && at && at.minutes >= due.minutes ? m[1] : null;
+}
 var agendas_default = {
   key: "agendas",
   title: "👤 NPC AGENDAS",
@@ -271,7 +328,7 @@ var agendas_default = {
   },
   apply(state, lines2, ctx) {
     const unparsed = [];
-    for (const raw of lines2) {
+    for (const raw of lines2.flatMap((line) => fieldCommands(line, ctx.normalizedChanges))) {
       const line = String(raw).trim();
       let m;
       if (m = line.match(/^(.+?)\s*:\s*new\s+"([^"]+)"\s+(\d+)\s*\/\s*(\d+)\s*(?:@\s*(.+))?$/i)) {
@@ -289,7 +346,7 @@ var agendas_default = {
         if (!state.agendas[n]) {
           if (!ctx.normalizedChanges || !/^.+?\s*:\s*done\s+"[^"\s][^"]*"\s*(?:→\s*\S.*)?$/i.test(line)) unparsed.push(line);
         } else if (!ctx.touched.has(n.toLowerCase())) Object.assign(state.agendas[n], { task: "", step: 0, max: 0 });
-      } else if (m = line.match(/^(.+?)\s+(knows|fibs?|circle|body)\s*:\s*(.+)$/i)) {
+      } else if (m = fieldLine(line, ctx.normalizedChanges)) {
         const [, a] = entry(state, m[1]);
         const field3 = { knows: "aware", fib: "fibs", fibs: "fibs", circle: "circle", body: "body" }[m[2].toLowerCase()];
         const v = m[3].trim();
@@ -310,12 +367,17 @@ var agendas_default = {
       if (a.max > 0 && a.step < a.max && offScreen(state, n) && !ctx.touched.has(n.toLowerCase())) a.step += 1;
     }
   },
-  facts(state) {
+  facts(state, ctx) {
     const out = [];
     for (const [n, a] of Object.entries(state.agendas)) {
-      if (!a.max || !offScreen(state, n)) continue;
-      if (a.step < a.max && a.step + 1 >= a.max) out.push(`${n} finishes "${a.task}" off-screen this turn — apply its effect and give ${n} a new agenda.`);
-      else if (a.step >= a.max) out.push(`${n}'s agenda "${a.task}" is finished — give ${n} a new one.`);
+      if (ctx.userName && hasName([ctx.userName], n)) continue;
+      if (!a.task.trim()) {
+        out.push(`${n} has no agenda — write an Agendas new line with a concrete goal and 1–3 steps drawn from the story.`);
+      } else if (!(a.max > 0)) {
+        out.push(`${n}'s agenda "${a.task}" cannot advance without steps — write an Agendas new line with valid progress, or done and a new agenda if the story already finished it.`);
+      } else if (a.step >= a.max) out.push(`${n}'s agenda "${a.task}" is finished — give ${n} a new one.`);
+      else if (overdue(a.task, state.scene.now)) out.push(`${n}'s agenda "${a.task}" was due by ${overdue(a.task, state.scene.now)} and the story time is past it — write done for it, or a new agenda that fits what ${n} is doing now; do not steer the scene back toward the old deadline.`);
+      else if (offScreen(state, n) && a.step + 1 >= a.max) out.push(`${n} finishes "${a.task}" off-screen this turn — apply its effect and give ${n} a new agenda.`);
     }
     return out;
   },
@@ -1442,46 +1504,6 @@ var last_default = {
   commands: COMMANDS7,
   template: (ctx) => commandTemplate("Last", COMMANDS7, ctx)
 };
-
-// src/model/storytime.js
-var dayOf = (text) => {
-  const m = String(text || "").match(/\bDay\s+(\d+)\b/i);
-  return m ? Number(m[1]) : null;
-};
-function minutesOf(text) {
-  const t = String(text || "");
-  if (/\bnoon\b|\bmidday\b/i.test(t) && !/\d{1,2}:\d{2}/.test(t)) return 12 * 60;
-  if (/\bmidnight\b/i.test(t) && !/\d{1,2}:\d{2}/.test(t)) return 0;
-  let m = t.match(/\b(\d{1,2}):(\d{2})\s*([ap])\.?\s*m\.?\b/i);
-  if (m) return (Number(m[1]) % 12 + (m[3].toLowerCase() === "p" ? 12 : 0)) * 60 + Number(m[2]);
-  m = t.match(/\b(\d{1,2}):(\d{2})\b/);
-  if (m && Number(m[1]) < 24 && Number(m[2]) < 60) return Number(m[1]) * 60 + Number(m[2]);
-  m = t.match(/\b(\d{1,2})\s*([ap])\.?\s*m\.?\b/i);
-  if (m) return (Number(m[1]) % 12 + (m[2].toLowerCase() === "p" ? 12 : 0)) * 60;
-  return null;
-}
-function parseStoryTime(text) {
-  const minutes = minutesOf(text);
-  return minutes === null ? null : { day: dayOf(text), minutes };
-}
-function lockTime(spec, now) {
-  const minutes = minutesOf(spec);
-  if (minutes === null) return null;
-  const day = dayOf(spec);
-  if (day !== null) return { day, minutes };
-  const tomorrow = /\btomorrow\b/i.test(spec), today = /\btoday\b|\btonight\b/i.test(spec);
-  if (!now) return { day: null, minutes };
-  const later = tomorrow || !today && minutes < now.minutes;
-  if (now.day === null || now.day === void 0) return later ? { day: null, minutes, wait: true } : { day: null, minutes };
-  return { day: later ? now.day + 1 : now.day, minutes };
-}
-function isAtOrPast(now, at) {
-  if (!now || !at) return false;
-  const nowDay = now.day !== null && now.day !== void 0, atDay = at.day !== null && at.day !== void 0;
-  if (atDay && !nowDay) return false;
-  if (!atDay) return now.minutes >= at.minutes;
-  return now.day > at.day || now.day === at.day && now.minutes >= at.minutes;
-}
 
 // src/model/sections/chekhov.js
 var COMMANDS8 = [
@@ -2838,6 +2860,7 @@ function storyTime(chat, notebook, max = 6) {
   }
   return { now, timeline: trail.reverse() };
 }
+var THREAD_LIMIT = 12;
 var NOTEBOOK_BLOCK_TEMPLATE = [
   "Now: [Story time after this reply, free text — e.g. Day 12 — Tuesday, March 4, 21:44 | Lake, the lawn. Day N counts from the story's first day and never resets.]",
   "Threads:",
@@ -4179,7 +4202,15 @@ function preTurnFacts(state, config) {
   const on = enabledSections(config.sections);
   const ctx = sectionContext(state, state.scene.present, config);
   for (const sec of on) if (sec.decide) ctx.turn[sec.key] = sec.decide(state, ctx);
-  return on.flatMap((sec) => sec.facts ? sec.facts(state, ctx) : []);
+  const facts = on.flatMap((sec) => sec.facts ? sec.facts(state, ctx) : []);
+  if ((config.sections || {}).notebook !== false) facts.push(...threadFacts(state.threads || []));
+  return facts;
+}
+function threadFacts(threads) {
+  const over = threads.length - THREAD_LIMIT;
+  if (over <= 0) return [];
+  const oldest = threads.slice(0, Math.min(over, 6)).map((t) => `"${t}"`).join(", ");
+  return [`${threads.length} open threads, over the limit of ${THREAD_LIMIT} — resolve at least ${over} this turn with \`- [T]\` lines: those already finished, past their time, or covered by another thread. Oldest first: ${oldest}.`];
 }
 function latestState(chat, beforeIndex, config) {
   for (let i = Math.min(beforeIndex, (chat || []).length) - 1; i >= 0; i--) {
