@@ -9,6 +9,8 @@ export function buildLedgerDuty(config = {}, type = "normal") {
 }
 
 const LEDGER_ONLY = "The reply above is finished. Do not continue the story and do not repeat or change any of its prose. Write only one hidden Story_Ledger comment: <!-- Story_Ledger, the commands, then -->. Nothing before or after it.";
+// A time someone mentions ("dinner's in ten minutes") is not a cue to cut to it.
+const PACING = "Pacing (strict): a time, appointment or summons mentioned in the story is background information, never a cue to end the current scene or skip ahead to it. \"Dinner starts in ten minutes\" means the people having dinner will be at the table in ten minutes, and nothing more; the scene does not move toward the table, and it gets there only if and when {{user}} goes. Do not wrap up the conversation, have characters press {{user}} to leave, cut or time-skip to the appointment, or end a reply by heading out. Characters can be late and the people waiting can wait; if the time passes, it passes, and the world reacts to the absence later.";
 const THOUGHTS_ONLY = "The reply's comment is missing Thoughts. Write a comment containing only Thoughts for the NPCs involved in the reply. Do not repeat its other changes; they are kept.";
 
 /** `type === "ledger"` is the fix-up: the finished reply needs its comment (`kase` "missing") or its Thoughts ("thoughts"), nothing else. */
@@ -39,6 +41,7 @@ export function buildGenerationReminder(state, config = {}, type = "normal", { k
         const known = currencies.length ? `Initialized Money currencies: ${currencies.map(c => c || "unspecified").join(", ")}.` : "No Money balance is initialized.";
         lines.push(`${known} Before a transaction in a currency without a balance, initialize its known pre-transaction amount with money: amount currency BEFORE the delta. Cash in Items does not initialize Money. Never invent an unknown total; once initialized, report only actual income or spending deltas.`);
     }
+    if (!ledger) lines.push(PACING);
     const thoughts = sections.thoughts !== false ? " and Thoughts for every NPC involved" : "";
     lines.push(
         `Final check before you stop writing: the last thing in this reply must be the Story_Ledger comment${thoughts}. Do not end on prose alone.`,

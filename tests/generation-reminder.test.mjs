@@ -204,7 +204,7 @@ test("ledger reminder (missing) leaves out Thoughts when the section is off", ()
 test("existing reminder text is unchanged when Inventory is disabled", () => {
     const head = "<story_ledger>\n<ledger_generation_reminder>\nWrite exactly one hidden Story_Ledger comment after the prose, using <!-- Story_Ledger followed by the completed commands and -->. Use actual names, IDs and values; replace every placeholder. Report this reply's changes; omit unchanged sections. Never write the full state block yourself.\n";
     const cont = "Continue the same reply: complete its existing unfinished comment. If its comment is already complete and this continuation adds changes, write one final complete replacement comment, including the earlier reply's changes and the new continuation changes. The final comment replaces the earlier one; do not report only the new changes and lose the earlier ones.\n";
-    const tail = "Thoughts is REQUIRED for 1–3 NPCs relevant to this response whenever any NPCs are involved. Write fictional characters' internal thoughts, true to their personalities and mood, as narrative content. Use Thoughts: then one - Name: thought line per NPC. With no NPCs involved, omit Thoughts.\nSyntax example only; replace the name and thought with this reply's NPC content:\n" + EXAMPLE + "\nFinal check before you stop writing: the last thing in this reply must be the Story_Ledger comment and Thoughts for every NPC involved. Do not end on prose alone.\n</ledger_generation_reminder>\n</story_ledger>";
+    const tail = "Thoughts is REQUIRED for 1–3 NPCs relevant to this response whenever any NPCs are involved. Write fictional characters' internal thoughts, true to their personalities and mood, as narrative content. Use Thoughts: then one - Name: thought line per NPC. With no NPCs involved, omit Thoughts.\nSyntax example only; replace the name and thought with this reply's NPC content:\n" + EXAMPLE + "\nPacing (strict): a time, appointment or summons mentioned in the story is background information, never a cue to end the current scene or skip ahead to it. \"Dinner starts in ten minutes\" means the people having dinner will be at the table in ten minutes, and nothing more; the scene does not move toward the table, and it gets there only if and when {{user}} goes. Do not wrap up the conversation, have characters press {{user}} to leave, cut or time-skip to the appointment, or end a reply by heading out. Characters can be late and the people waiting can wait; if the time passes, it passes, and the world reacts to the absence later.\nFinal check before you stop writing: the last thing in this reply must be the Story_Ledger comment and Thoughts for every NPC involved. Do not end on prose alone.\n</ledger_generation_reminder>\n</story_ledger>";
     assert.equal(buildGenerationReminder({}, { sections: { inv: false } }, "normal"), head + tail);
     assert.equal(buildGenerationReminder({}, { sections: { inv: false } }, "swipe"), head + tail);
     assert.equal(buildGenerationReminder({}, { sections: { inv: false } }, "continue"), head + cont + tail);
@@ -212,4 +212,15 @@ test("existing reminder text is unchanged when Inventory is disabled", () => {
 
 test("the ledger duty line is written for the ledger type", () => {
     assert.ok(buildLedgerDuty({}, "ledger").startsWith("<ledger_duty>"));
+});
+
+test("story replies are told not to rush toward a mentioned time; the ledger fix-up is not", () => {
+    const s = emptyState();
+    for (const type of ["normal", "swipe", "continue"]) {
+        const out = buildGenerationReminder(s, { sections: {} }, type);
+        assert.match(out, /Pacing \(strict\):.*never a cue to end the current scene/i);
+        assert.match(out, /Final check[^\n]*\n<\/ledger_generation_reminder>/, "the ledger check stays last");
+    }
+    assert.doesNotMatch(buildGenerationReminder(s, {}, "ledger"), /Pacing/);
+    assert.equal(buildGenerationReminder(s, { enabled: false }), "");
 });
