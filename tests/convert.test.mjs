@@ -34,6 +34,32 @@ test("an unknown prompt name aborts the preset", () => {
     assert.deepEqual(report.missing, ["prompt: No Such Prompt"]);
 });
 
+test("added prompts go in after their anchor, in every prompt order that has it", () => {
+    const recipe = { add: [{ after: "👾Internal States 💾🎮", enabled: true, prompt: { identifier: "p-new", name: "New Rule", content: "Hold the line." } }] };
+    const { preset, report } = applyRecipe(mini(), recipe);
+    assert.deepEqual(report.missing, []);
+    assert.deepEqual(preset.prompts.map(p => p.identifier), ["main", "p-states", "p-new", "p-bonds", "p-style"]);
+    assert.deepEqual(preset.prompt_order.map(o => o.order.map(e => e.identifier)), [["main", "p-states", "p-new"], ["main", "p-states", "p-new", "p-bonds", "p-style"]]);
+    assert.deepEqual(enabled(preset, "p-new"), [true, true]);
+    assert.deepEqual(report.added, [{ name: "New Rule", after: "👾Internal States 💾🎮", enabled: true }]);
+    preset.prompts[2].content = "changed";
+    assert.equal(recipe.add[0].prompt.content, "Hold the line.", "the recipe's prompt is copied, not shared");
+});
+
+test("adding a prompt the preset already has aborts the preset", () => {
+    const byId = applyRecipe(mini(), { add: [{ after: "main", enabled: true, prompt: { identifier: "p-style", name: "Other", content: "" } }] });
+    assert.deepEqual(byId.report.missing, ["prompt exists: Other"]);
+    assert.deepEqual(byId.preset, mini());
+    const byName = applyRecipe(mini(), { add: [{ after: "main", enabled: true, prompt: { identifier: "p-x", name: "Style", content: "" } }] });
+    assert.deepEqual(byName.report.missing, ["prompt exists: Style"]);
+});
+
+test("an added prompt whose anchor is missing aborts the preset", () => {
+    const { preset, report } = applyRecipe(mini(), { add: [{ after: "No Such Prompt", enabled: true, prompt: { identifier: "p-new", name: "New Rule", content: "" } }] });
+    assert.deepEqual(report.missing, ["prompt: No Such Prompt"]);
+    assert.deepEqual(preset, mini());
+});
+
 test("prompts left on that still order the old block are reported as warnings", () => {
     const p = mini();
     p.prompts.push({ identifier: "p-post", name: "Post-History Instructions", content: "Ensure the <internal_states> block closes every reply." });

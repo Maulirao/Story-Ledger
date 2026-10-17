@@ -135,7 +135,8 @@ or the cast when the old block lacked them. Rules (`[R]`) from the old notebook 
 `tools/presets/convert.mjs` makes a "+ Story Ledger" copy of a preset from a recipe in
 `tools/presets/recipes/`: it switches off the machinery Story Ledger now runs (internal states,
 bonds, notebook, agendas, Chekhov, World Sim, Fate, Turn Dice, …) and rewrites the reasoning
-step that maintained it. It prints what it would change and writes nothing without `--write`
+step that maintained it. A recipe can also `add` whole prompts after a named one, for
+additions a preset's own release lacks. It prints what it would change and writes nothing without `--write`
 (and never over an existing file without `--replace`); any prompt or text the recipe expects
 but the preset lacks aborts that preset.
 

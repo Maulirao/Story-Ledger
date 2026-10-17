@@ -1,6 +1,6 @@
 // ──────────────────────────────────────────────────────────────────────────────
 // Preset converter: makes a "+ Story Ledger" copy of a SillyTavern chat-completion
-// preset from a recipe — prompts to switch off and exact text edits. Dry run by
+// preset from a recipe — prompts to add, prompts to switch off and exact text edits. Dry run by
 // default (prints what would change); --write writes the copy, never over an
 // existing file unless --replace is given. Any name or text the recipe expects but
 // the preset lacks aborts the whole preset: nothing is written.
@@ -19,13 +19,25 @@ const LINGERING = /<internal_states>|<ledger>/i;
 const findPrompt = (preset, key) => (preset.prompts || []).find(p => p.name === key || p.identifier === key || (p.name || "").trim() === String(key).trim());
 
 /**
- * Apply `recipe` ({ off: string[], edits: [{ prompt, find, replace }] }) to a preset object.
- * Returns { preset, report: { off: [{ name, identifier, was }], edits: [{ prompt, find, replace }], missing: string[] } };
+ * Apply `recipe` ({ add: [{ after, enabled, prompt }], off: string[], edits: [{ prompt, find, replace }] }) to a preset object.
+ * Returns { preset, report: { added: [{ name, after, enabled }], off: [{ name, identifier, was }], edits: [{ prompt, find, replace }], missing: string[] } };
  * when `missing` is non-empty the returned preset is the untouched input.
  */
 export function applyRecipe(input, recipe) {
     const preset = JSON.parse(JSON.stringify(input));
-    const report = { off: [], edits: [], missing: [], warnings: [] };
+    const report = { added: [], off: [], edits: [], missing: [], warnings: [] };
+    // a new prompt goes in right after its anchor, in the prompt list and in every order that holds the anchor
+    for (const { after, enabled, prompt } of recipe.add || []) {
+        if (findPrompt(preset, prompt.identifier) || findPrompt(preset, prompt.name)) { report.missing.push(`prompt exists: ${prompt.name}`); continue; }
+        const anchor = findPrompt(preset, after);
+        if (!anchor) { report.missing.push(`prompt: ${after}`); continue; }
+        preset.prompts.splice(preset.prompts.indexOf(anchor) + 1, 0, JSON.parse(JSON.stringify(prompt)));
+        for (const o of preset.prompt_order || []) {
+            const at = (o.order || []).findIndex(e => e.identifier === anchor.identifier);
+            if (at >= 0) o.order.splice(at + 1, 0, { identifier: prompt.identifier, enabled: !!enabled });
+        }
+        report.added.push({ name: prompt.name, after: anchor.name, enabled: !!enabled });
+    }
     for (const key of recipe.off || []) {
         const p = findPrompt(preset, key);
         if (!p) { report.missing.push(`prompt: ${key}`); continue; }
@@ -55,7 +67,9 @@ export function applyRecipe(input, recipe) {
 const short = (s, n = 160) => { const t = String(s).replace(/\s+/g, " "); return t.length > n ? `${t.slice(0, n)}…` : t; };
 
 export function formatReport(recipe, report, target, exists) {
-    const out = [`Recipe: ${recipe.source}  →  ${target}${exists ? "  (EXISTS — needs --replace)" : ""}`, "", "Switched off:"];
+    const out = [`Recipe: ${recipe.source}  →  ${target}${exists ? "  (EXISTS — needs --replace)" : ""}`, ""];
+    if (report.added.length) out.push("Added:", ...report.added.map(a => `  - ${a.name.trim()}  (after ${a.after.trim()}, ${a.enabled ? "on" : "off"})`), "");
+    out.push("Switched off:");
     for (const o of report.off) out.push(`  - ${o.name.trim()}  (${o.was.map(w => (w ? "on" : "off")).join("/") || "not in any order"} → off)`);
     out.push("", "Text edits:");
     for (const e of report.edits) out.push(`  - ${e.prompt.trim()}`, `      before: ${short(e.find)}`, `      after:  ${short(e.replace)}`);
