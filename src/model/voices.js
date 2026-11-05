@@ -9,8 +9,11 @@ export const MIND = "mind";
 export const MIND_FILL = "#111111";
 
 export const TONES = ["whisper", "measured", "shout", "tremble"];
-/** Sola's tones, read as the nearest of the four (the Preset Handover map). */
-export const TONE_ALIASES = { steady: "measured", heavy: "shout", bite: "shout" };
+/** Sola's tones (and their "-ing" forms), read as the nearest of the four (the Preset Handover map). */
+export const TONE_ALIASES = {
+    steady: "measured", heavy: "shout", bite: "shout",
+    whispering: "whisper", trembling: "tremble", biting: "shout", shouting: "shout",
+};
 
 /** Sola V2's dialogue palette. */
 export const SOLA = {
@@ -54,9 +57,25 @@ export const PALETTE = {
     ...SOLA,
 };
 
-/** Tag names that are formatting, never a voice (`<b>"Hi"</b>` stays bold). */
-export const HTML_TAGS = new Set(("a abbr b bdi bdo big blockquote br center cite code data del details dfn div em font i img ins kbd "
-    + "label li mark p q rp rt ruby s samp small span strike strong sub summary sup td th time tt u var wbr").split(" "));
+/** Every HTML element: a tag the browser renders, never a voice (`<b>"Hi"</b>` stays bold). A character called Mark is `<Mark_>`. */
+export const HTML_TAGS = new Set(("a abbr acronym address area article aside audio b base bdi bdo big blink blockquote body br button canvas "
+    + "caption center cite code col colgroup data datalist dd del details dfn dialog dir div dl dt em embed fieldset figcaption figure font "
+    + "footer form frame frameset h1 h2 h3 h4 h5 h6 head header hgroup hr html i iframe img input ins kbd label legend li link main map mark "
+    + "marquee math menu meta meter nav nobr noembed noframes noscript object ol optgroup option output p param picture plaintext pre progress "
+    + "q rb rp rt rtc ruby s samp script search section select slot small source span strike strong style sub summary sup svg table tbody td "
+    + "template textarea tfoot th thead time title tr track tt u ul var video wbr xmp").split(" "));
+
+/**
+ * Tags before a quote that are never a voice: HTML, the presets' thinking tags, and Sola's
+ * typography (gradients, kinetics, template placeholders), whose own modules may still be on.
+ */
+const NON_VOICES = new Set([
+    ...HTML_TAGS,
+    "think", "thinking", "thought", "thoughts", "reasoning", "internal_monologue",
+    "dusk", "solstice", "hearth", "eclipse", "wildwood", "mistveil",
+    "stretch", "tilt", "echo", "crush", "fracture",
+    "palette_name", "gradient_name", "tone_name", "kinetic_tag",
+]);
 
 /** `#rrggbb` (lowercase) for `#rgb`, `#rrggbb` or a palette name; null for anything else. */
 export function colourHex(value) {
@@ -115,8 +134,8 @@ export function nearDuplicates(entries) {
 
 // ── Names ───────────────────────────────────────────────────────────────────
 
-/** A voice name for comparing: lower-case, spaces, `_` and `-` folded to one space. */
-export const voiceKey = name => String(name ?? "").toLowerCase().replace(/[\s_-]+/g, " ").trim();
+/** A voice name for comparing: accents dropped, lower-case, spaces, `_` and `-` folded to one space. */
+export const voiceKey = name => String(name ?? "").normalize("NFD").replace(/\p{M}/gu, "").toLowerCase().replace(/[\s_-]+/g, " ").trim();
 
 /**
  * The key in `list` that `name` names: the one with the same voiceKey, else the only key
@@ -145,10 +164,12 @@ export function withVoiceOverrides(voices, overrides) {
 
 /**
  * What to paint for each tagged quote in `text`, given the chat's voices ({ name: { hex } }):
- * { quote, top, bottom (null for one voice), tone, mind }. A voice resolves to the list, then
- * a palette name, then mind; a voice nobody named yet gets the colour the fill-in will give it.
+ * { quote, index (its place among quotesIn(text)), top, bottom (null for one voice), tone, mind }.
+ * A voice resolves to the list, then a palette name, then mind; a voice nobody named yet gets
+ * the colour the fill-in will give it.
  */
 export function planPaint(text, list) {
+    const positions = quotesWithPositions(text).map(q => q.at);
     const taken = Object.values(list || {}).map(v => v.hex).filter(Boolean);
     const picks = new Map();
     const resolve = v => {
@@ -162,9 +183,18 @@ export function planPaint(text, list) {
     };
     return readVoiceTags(text).map(tag => {
         const [a, b] = tag.voices.slice(0, 2).map(resolve);
-        return { quote: tag.quote, top: a.hex, bottom: b ? b.hex : null, tone: tag.tone, mind: a.mind || Boolean(b && b.mind) };
+        return { quote: tag.quote, index: positions.indexOf(tag.quoteAt), top: a.hex, bottom: b ? b.hex : null, tone: tag.tone, mind: a.mind || Boolean(b && b.mind) };
     });
 }
+
+// The quote kinds SillyTavern wraps in <q>, each closing with its own mark, never across a line.
+const ANY_QUOTE = /"[^"\n]{1,2000}?"|“[^”\n]{1,2000}?”|«[^»\n]{1,2000}?»|「[^」\n]{1,2000}?」|『[^』\n]{1,2000}?』|＂[^＂\n]{1,2000}?＂/g;
+// comments and tags blanked to spaces, so indexes still line up with the raw text
+const blankMarkup = text => String(text ?? "").replace(/<!--[\s\S]*?(?:-->|$)|<[^<>]*>/g, m => " ".repeat(m.length));
+const quotesWithPositions = text => [...blankMarkup(text).matchAll(ANY_QUOTE)].map(m => ({ text: m[0], at: m.index }));
+
+/** Every quote in a message's raw text, in order, as the host will show them (tags and comments skipped). */
+export const quotesIn = text => quotesWithPositions(text).map(q => q.text);
 
 /** A quote reduced to its letters and digits, lower-cased: markdown and quote marks drop out. */
 export const quoteKey = s => String(s ?? "").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
@@ -184,7 +214,7 @@ export function matchQuotes(planned, onScreen) {
 // ── Tags ────────────────────────────────────────────────────────────────────
 
 const NAME = String.raw`[\p{L}\p{N}][\p{L}\p{N} '’_-]{0,39}`;
-const TAG = new RegExp(String.raw`<\s*(?:color\s*:\s*)?(${NAME}(?:\s*\+\s*${NAME})*)((?:\s*:\s*[a-z][a-z0-9_-]{0,24})*)\s*>\s*([“"][^”"]{1,2000}?[”"])(?:\s*<\s*\/[^<>\n\r]{0,40}>)?`, "giu");
+const TAG = new RegExp(String.raw`<\s*(?:(?:color|gradient|kinetic)\s*:\s*)?(${NAME}(?:\s*\+\s*${NAME})*)((?:\s*:\s*[a-z][a-z0-9_-]{0,24})*)\s*>\s*("[^"\n]{1,2000}?"|“[^”\n]{1,2000}?”)(?:\s*<\s*\/[^<>\n\r]{0,40}>)?`, "giu");
 
 const toneOf = segments => {
     for (const raw of segments.split(":").map(s => s.trim().toLowerCase()).filter(Boolean)) {
@@ -195,17 +225,28 @@ const toneOf = segments => {
 };
 
 /**
+ * A tag the browser kept as text at the end of `text` (a name starting with a letter it does not
+ * open tags on, such as <Élodie>): { at, length }, or null. Trailing spaces are not part of it.
+ */
+export function trailingTagAt(text) {
+    const m = /<[^<>\n]{1,60}>(?=\s*$)/.exec(String(text ?? ""));
+    return m ? { at: m.index, length: m[0].length } : null;
+}
+
+/**
  * Every voice tag right before a quote, in order: { voices (as written), tone (canonical or
- * null), quote (with its marks), at (index of the `<`) }. Formatting tags are skipped.
+ * null), quote (with its marks), at (index of the `<`), quoteAt (index of the quote) }.
+ * Formatting tags are skipped.
  */
 export function readVoiceTags(text) {
     const out = [];
     for (const m of String(text ?? "").matchAll(TAG)) {
         const voices = m[1].split("+").map(v => v.trim()).filter(Boolean);
-        // formatting is not a voice; nor is a lone tone (Sola's standalone <whisper>"…" in old chats)
-        const first = voiceKey(voices[0]);
-        if (!voices.length || HTML_TAGS.has(first) || TONES.includes(first) || Object.hasOwn(TONE_ALIASES, first)) continue;
-        out.push({ voices, tone: toneOf(m[2] || ""), quote: m[3], at: m.index });
+        // HTML, thinking and typography tags are not voices (checked as written, so <Mark_> is a voice);
+        // nor is a lone tone (Sola's standalone <whisper>"…" in old chats)
+        const raw = String(voices[0] ?? "").toLowerCase(), first = voiceKey(raw);
+        if (!voices.length || NON_VOICES.has(raw) || TONES.includes(first) || Object.hasOwn(TONE_ALIASES, first)) continue;
+        out.push({ voices, tone: toneOf(m[2] || ""), quote: m[3], at: m.index, quoteAt: m.index + m[0].lastIndexOf(m[3]) });
     }
     return out;
 }

@@ -55,3 +55,9 @@ test("the Voices tab says when the section is switched off", () => {
     const off = core.normalizeSettings({ sections: { voices: false } });
     assert.match(core.popupHtml("voices", { chat: [], settings: off, userName: "Jan", chatData: core.normalizeChatData({}) }), /switched off in Settings/);
 });
+
+test("✕ removes an override however its key is spelled", () => {
+    const d = core.normalizeChatData({ storyLedger: { voiceOverrides: { Jim: "orchid" } } });
+    assert.deepEqual(core.setVoice(d, "Jim Hawkins", null), { ok: true, chatDataPatch: { voiceOverrides: {} } });
+    assert.deepEqual(core.setVoice(d, "Jim Hawkins", "red"), { ok: true, chatDataPatch: { voiceOverrides: { "Jim Hawkins": "red" } } });
+});

@@ -499,7 +499,15 @@ var factions_default = {
 var MIND = "mind";
 var MIND_FILL = "#111111";
 var TONES = ["whisper", "measured", "shout", "tremble"];
-var TONE_ALIASES = { steady: "measured", heavy: "shout", bite: "shout" };
+var TONE_ALIASES = {
+  steady: "measured",
+  heavy: "shout",
+  bite: "shout",
+  whispering: "whisper",
+  trembling: "tremble",
+  biting: "shout",
+  shouting: "shout"
+};
 var SOLA = {
   marigold: "#f4a261",
   amber: "#f3b74b",
@@ -548,7 +556,31 @@ var PALETTE = {
   ...Object.fromEntries(Array.from({ length: pairs.length / 2 }, (_, i) => [pairs[2 * i], `#${pairs[2 * i + 1]}`])),
   ...SOLA
 };
-var HTML_TAGS = new Set("a abbr b bdi bdo big blockquote br center cite code data del details dfn div em font i img ins kbd label li mark p q rp rt ruby s samp small span strike strong sub summary sup td th time tt u var wbr".split(" "));
+var HTML_TAGS = new Set("a abbr acronym address area article aside audio b base bdi bdo big blink blockquote body br button canvas caption center cite code col colgroup data datalist dd del details dfn dialog dir div dl dt em embed fieldset figcaption figure font footer form frame frameset h1 h2 h3 h4 h5 h6 head header hgroup hr html i iframe img input ins kbd label legend li link main map mark marquee math menu meta meter nav nobr noembed noframes noscript object ol optgroup option output p param picture plaintext pre progress q rb rp rt rtc ruby s samp script search section select slot small source span strike strong style sub summary sup svg table tbody td template textarea tfoot th thead time title tr track tt u ul var video wbr xmp".split(" "));
+var NON_VOICES = /* @__PURE__ */ new Set([
+  ...HTML_TAGS,
+  "think",
+  "thinking",
+  "thought",
+  "thoughts",
+  "reasoning",
+  "internal_monologue",
+  "dusk",
+  "solstice",
+  "hearth",
+  "eclipse",
+  "wildwood",
+  "mistveil",
+  "stretch",
+  "tilt",
+  "echo",
+  "crush",
+  "fracture",
+  "palette_name",
+  "gradient_name",
+  "tone_name",
+  "kinetic_tag"
+]);
 function colourHex(value2) {
   const s = String(value2 ?? "").trim().toLowerCase();
   if (/^#[0-9a-f]{6}$/.test(s)) return s;
@@ -591,7 +623,7 @@ function nearDuplicates(entries) {
   }
   return out;
 }
-var voiceKey = (name) => String(name ?? "").toLowerCase().replace(/[\s_-]+/g, " ").trim();
+var voiceKey = (name) => String(name ?? "").normalize("NFD").replace(/\p{M}/gu, "").toLowerCase().replace(/[\s_-]+/g, " ").trim();
 function findVoice(list, name) {
   const keys = Object.keys(list || {});
   const k = voiceKey(name);
@@ -606,6 +638,7 @@ function withVoiceOverrides(voices, overrides) {
   return out;
 }
 function planPaint(text, list) {
+  const positions = quotesWithPositions(text).map((q) => q.at);
   const taken = Object.values(list || {}).map((v) => v.hex).filter(Boolean);
   const picks = /* @__PURE__ */ new Map();
   const resolve = (v) => {
@@ -619,9 +652,13 @@ function planPaint(text, list) {
   };
   return readVoiceTags(text).map((tag2) => {
     const [a, b] = tag2.voices.slice(0, 2).map(resolve);
-    return { quote: tag2.quote, top: a.hex, bottom: b ? b.hex : null, tone: tag2.tone, mind: a.mind || Boolean(b && b.mind) };
+    return { quote: tag2.quote, index: positions.indexOf(tag2.quoteAt), top: a.hex, bottom: b ? b.hex : null, tone: tag2.tone, mind: a.mind || Boolean(b && b.mind) };
   });
 }
+var ANY_QUOTE = /"[^"\n]{1,2000}?"|“[^”\n]{1,2000}?”|«[^»\n]{1,2000}?»|「[^」\n]{1,2000}?」|『[^』\n]{1,2000}?』|＂[^＂\n]{1,2000}?＂/g;
+var blankMarkup = (text) => String(text ?? "").replace(/<!--[\s\S]*?(?:-->|$)|<[^<>]*>/g, (m) => " ".repeat(m.length));
+var quotesWithPositions = (text) => [...blankMarkup(text).matchAll(ANY_QUOTE)].map((m) => ({ text: m[0], at: m.index }));
+var quotesIn = (text) => quotesWithPositions(text).map((q) => q.text);
 var quoteKey = (s) => String(s ?? "").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
 function matchQuotes(planned, onScreen) {
   let from = 0;
@@ -637,7 +674,7 @@ function matchQuotes(planned, onScreen) {
   });
 }
 var NAME = String.raw`[\p{L}\p{N}][\p{L}\p{N} '’_-]{0,39}`;
-var TAG2 = new RegExp(String.raw`<\s*(?:color\s*:\s*)?(${NAME}(?:\s*\+\s*${NAME})*)((?:\s*:\s*[a-z][a-z0-9_-]{0,24})*)\s*>\s*([“"][^”"]{1,2000}?[”"])(?:\s*<\s*\/[^<>\n\r]{0,40}>)?`, "giu");
+var TAG2 = new RegExp(String.raw`<\s*(?:(?:color|gradient|kinetic)\s*:\s*)?(${NAME}(?:\s*\+\s*${NAME})*)((?:\s*:\s*[a-z][a-z0-9_-]{0,24})*)\s*>\s*("[^"\n]{1,2000}?"|“[^”\n]{1,2000}?”)(?:\s*<\s*\/[^<>\n\r]{0,40}>)?`, "giu");
 var toneOf = (segments) => {
   for (const raw of segments.split(":").map((s) => s.trim().toLowerCase()).filter(Boolean)) {
     if (TONES.includes(raw)) return raw;
@@ -645,13 +682,17 @@ var toneOf = (segments) => {
   }
   return null;
 };
+function trailingTagAt(text) {
+  const m = /<[^<>\n]{1,60}>(?=\s*$)/.exec(String(text ?? ""));
+  return m ? { at: m.index, length: m[0].length } : null;
+}
 function readVoiceTags(text) {
   const out = [];
   for (const m of String(text ?? "").matchAll(TAG2)) {
     const voices = m[1].split("+").map((v) => v.trim()).filter(Boolean);
-    const first = voiceKey(voices[0]);
-    if (!voices.length || HTML_TAGS.has(first) || TONES.includes(first) || Object.hasOwn(TONE_ALIASES, first)) continue;
-    out.push({ voices, tone: toneOf(m[2] || ""), quote: m[3], at: m.index });
+    const raw = String(voices[0] ?? "").toLowerCase(), first = voiceKey(raw);
+    if (!voices.length || NON_VOICES.has(raw) || TONES.includes(first) || Object.hasOwn(TONE_ALIASES, first)) continue;
+    out.push({ voices, tone: toneOf(m[2] || ""), quote: m[3], at: m.index, quoteAt: m.index + m[0].lastIndexOf(m[3]) });
   }
   return out;
 }
@@ -662,7 +703,7 @@ var COMMANDS5 = [
 ];
 var LINE = /^(.+?)\s*[:=]\s*(\S+)$/;
 var SOURCES = /* @__PURE__ */ new Set(["model", "auto"]);
-var RULES = `Voices: tag every line of spoken dialogue with who says it, right before the opening quote: <Name>"…"</Name>. Two voices split each letter, the first on top and the second below: write <Speaker+Listener>"…" when it matters who is addressed, as in a group scene. Telepathy is the reserved voice mind, never a character: <Speaker+mind>"…", or <mind>"…" when the sender is unknown. Add a tone only when the delivery needs it: <Name:whisper>, <Name:shout>, <Name:measured>, <Name:tremble>, also after two voices (<Speaker+Listener:whisper>). The first time someone speaks, give them a colour under Voices: in the ledger comment: a CSS colour name or a #hex, readable on a dark background and far from the colours already taken. A speaker who already has a colour in earlier replies keeps it. A set colour never changes. These tags replace any other dialogue-colour instruction.`;
+var RULES = `Voices: tag every line of spoken dialogue with who says it, right before the opening quote: <Name>"…"</Name>. A name that is also an HTML tag (Mark, Ruby, Em) takes an underscore: <Mark_>. Two voices split each letter, the first on top and the second below: write <Speaker+Listener>"…" when it matters who is addressed, as in a group scene. Telepathy is the reserved voice mind, never a character: <Speaker+mind>"…", or <mind>"…" when the sender is unknown. Add a tone only when the delivery needs it: <Name:whisper>, <Name:shout>, <Name:measured>, <Name:tremble>, also after two voices (<Speaker+Listener:whisper>). The first time someone speaks, give them a colour under Voices: in the ledger comment: a CSS colour name or a #hex, readable on a dark background and far from the colours already taken. A speaker who already has a colour in earlier replies keeps it. A set colour never changes. These tags replace any other dialogue-colour instruction.`;
 var hexesOf = (list) => Object.values(list || {}).map((v) => colourHex(typeof v === "string" ? v : v.colour)).filter(Boolean);
 var voices_default = {
   key: "voices",
@@ -703,6 +744,8 @@ var voices_default = {
         warn(line, `"mind" is reserved for telepathy; give the character another tag name.`);
         continue;
       }
+      const o = findVoice(ctx.reply?.voiceOverrides, name);
+      if (o !== null && colourHex(ctx.reply.voiceOverrides[o]) === hex) continue;
       const had = state.voices[name];
       if (had && had.source === "model") {
         if (colourHex(had.colour) !== hex) warn(line, `${name} already speaks in ${had.colour}; only the reader changes a set colour.`);
@@ -5290,7 +5333,7 @@ function decorate3(root, ctx) {
 
 // src/ui/voices-paint.js
 var SHOW_TEXT = 4;
-var QUOTE = /[“"][^”"]{1,2000}?[”"]/g;
+var QUOTE = /"[^"\n]{1,2000}?"|“[^”\n]{1,2000}?”|«[^»\n]{1,2000}?»|「[^」\n]{1,2000}?」|『[^』\n]{1,2000}?』|＂[^＂\n]{1,2000}?＂/g;
 function spanAttrs(span) {
   const className = ["sl-voice", span.bottom ? "sl-voice-two" : "", span.mind ? "sl-voice-mind" : "", span.tone ? `sl-tone-${span.tone}` : ""].filter(Boolean).join(" ");
   return { className, style: `--sl-top:${span.top};--sl-bottom:${span.bottom ?? span.top}` };
@@ -5312,20 +5355,35 @@ function unpaintVoices(el) {
     parent.normalize?.();
   }
 }
+function hideLiteralTag(doc, node) {
+  if (!node || node.nodeType !== 3) return;
+  const t = trailingTagAt(node.data);
+  if (!t) return;
+  const tag2 = node.splitText(t.at);
+  tag2.splitText(t.length);
+  const hide = doc.createElement("span");
+  hide.className = "sl-voice-tag";
+  hide.setAttribute("data-sl-voice", "");
+  tag2.parentNode.insertBefore(hide, tag2);
+  hide.appendChild(tag2);
+}
 function paintVoices(el, rawText, list) {
   unpaintVoices(el);
-  const plan = planPaint(rawText, list);
+  const plan = planPaint(rawText, list).filter((p) => p.index >= 0);
   if (!plan.length) return;
-  const planned = plan.map((p) => p.quote);
+  const all = quotesIn(rawText);
   const doc = el.ownerDocument;
   const qs = [...el.querySelectorAll("q")].filter((q) => !inBlock(q));
   if (qs.length) {
-    matchQuotes(planned, qs.map((q) => q.textContent)).forEach((at, i) => {
-      if (at < 0) return;
-      const span = voiceSpan(doc, plan[i]);
+    const aligned2 = matchQuotes(all, qs.map((q) => q.textContent));
+    for (const p of plan) {
+      const at = aligned2[p.index];
+      if (at < 0) continue;
+      const span = voiceSpan(doc, p);
       while (qs[at].firstChild) span.appendChild(qs[at].firstChild);
       qs[at].appendChild(span);
-    });
+      hideLiteralTag(doc, qs[at].previousSibling);
+    }
     return;
   }
   const found = [];
@@ -5334,14 +5392,16 @@ function paintVoices(el, rawText, list) {
     if (inBlock(node)) continue;
     for (const m of node.data.matchAll(QUOTE)) found.push({ node, start: m.index, end: m.index + m[0].length, text: m[0] });
   }
-  const hits = matchQuotes(planned, found.map((f) => f.text)).map((at, i) => ({ at, i })).filter((h) => h.at >= 0);
-  for (const { at, i } of hits.reverse()) {
+  const aligned = matchQuotes(all, found.map((f) => f.text));
+  const hits = plan.map((p) => ({ at: aligned[p.index], p })).filter((h) => h.at >= 0).sort((a, b) => b.at - a.at);
+  for (const { at, p } of hits) {
     const { node, start, end } = found[at];
     const quote = node.splitText(start);
     quote.splitText(end - start);
-    const span = voiceSpan(doc, plan[i]);
+    const span = voiceSpan(doc, p);
     quote.parentNode.insertBefore(span, quote);
     span.appendChild(quote);
+    hideLiteralTag(doc, node);
   }
 }
 

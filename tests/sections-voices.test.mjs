@@ -90,3 +90,19 @@ test("the template, rules and prompt carry Voices", () => {
 test("a lone tone tag is never filled in as a character", () => {
     assert.deepEqual(postTurn(emptyState(), ch("Now: x"), C, { text: '<whisper>"Quiet."', voiceOverrides: {} }).state.voices, {});
 });
+
+test("Sola's typography tags are never filled in as characters", () => {
+    const text = '<stretch>"Hold... on..." <dusk>"Night." <gradient:solstice>"Day." <kinetic:echo>"Echo." <trembling>"No." <h3>"WANTED"</h3>';
+    assert.deepEqual(postTurn(emptyState(), ch("Now: x"), C, { text, voiceOverrides: {} }).state.voices, {});
+});
+
+test("the rules tell the model how to tag a name that is an HTML tag", () => {
+    assert.match(renderRules(C), /<Mark_>/);
+});
+
+test("a model echoing the reader's colour is quietly ignored", () => {
+    const s = emptyState(); s.voices = { Jim: { colour: "#3fa7a0", source: "model" } };
+    const r = postTurn(s, ch("Voices:\n- Jim: orchid"), C, { text: "", voiceOverrides: { Jim: "orchid" } });
+    assert.deepEqual(r.state.voices, s.voices);
+    assert.deepEqual(r.warnings, []);
+});

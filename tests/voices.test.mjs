@@ -1,7 +1,7 @@
 // Dialogue voices: reading voice tags, the colour table, colour maths. Run: node --test tests/*.test.mjs
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readVoiceTags, voiceKey, findVoice, colourHex, PALETTE, colourDistance, NEAR, AUTO_POOL, pickColour, nearDuplicates } from "../src/model/voices.js";
+import { readVoiceTags, voiceKey, findVoice, colourHex, PALETTE, colourDistance, NEAR, AUTO_POOL, pickColour, nearDuplicates, trailingTagAt } from "../src/model/voices.js";
 
 test("readVoiceTags reads every tag form", () => {
     const one = t => readVoiceTags(t).map(({ voices, tone, quote }) => ({ voices, tone, quote }));
@@ -77,4 +77,34 @@ test("nearDuplicates names look-alike pairs", () => {
 
 test("a lone tone word is a tone tag from an old chat, never a voice", () => {
     assert.deepEqual(readVoiceTags('<whisper>"Quiet." <Bite>"Back off." <steady>"Fine."'), []);
+});
+
+test("Sola's typography tags and template placeholders are never voices", () => {
+    assert.deepEqual(readVoiceTags('<stretch>"Hold... on..." <dusk>"Night falls." <gradient:solstice>"Bright." <kinetic:tilt>"Which way?" <palette_name>"x" <trembling>"I-I can\'t." <wildwood>"y"'), []);
+});
+
+test("every HTML element and the thinking tags are never voices", () => {
+    assert.deepEqual(readVoiceTags('<h3>"WANTED"</h3> <hr>\n\n"Next morning" <pre>"x"</pre> <think>"hm"</think> <thinking>"hm"</thinking> <Mark>"Hey."</Mark>'), []);
+});
+
+test("an underscore makes an HTML-tag name a voice: <Mark_> is Mark", () => {
+    assert.deepEqual(readVoiceTags('<Mark_>"Hey."')[0].voices, ["Mark_"]);
+    assert.equal(findVoice({ Mark: 1 }, "Mark_"), "Mark");
+});
+
+test("-ing tones read as their tone", () => {
+    assert.equal(readVoiceTags('<jim:whispering>"x"')[0].tone, "whisper");
+    assert.equal(readVoiceTags('<jim:trembling>"x"')[0].tone, "tremble");
+});
+
+test("accents fold, so <Icaro> is Ícaro", () => {
+    assert.equal(voiceKey("Élodie"), "elodie");
+    assert.equal(findVoice({ "Ícaro": 1 }, "Icaro"), "Ícaro");
+});
+
+test("trailingTagAt finds a literal tag the browser left as text before a quote", () => {
+    assert.deepEqual(trailingTagAt("She said <Élodie>"), { at: 9, length: 8 });
+    assert.deepEqual(trailingTagAt("She said <Ângela:whisper> "), { at: 9, length: 16 });
+    assert.equal(trailingTagAt("plain words"), null);
+    assert.equal(trailingTagAt("a <b> then more"), null);
 });

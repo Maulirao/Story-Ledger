@@ -269,3 +269,4 @@
 .sl-voice-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .sl-voice-swatch { display: inline-block; width: 1em; height: 1em; border-radius: 3px; border: 1px solid rgba(255, 255, 255, 0.4); }
 .sl-voice-colour { width: 9em; }
+.sl-voice-tag { display: none; }

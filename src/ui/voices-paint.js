@@ -6,10 +6,11 @@
 // node tests can load it without a DOM.
 // ──────────────────────────────────────────────────────────────────────────────
 
-import { planPaint, matchQuotes } from "../model/voices.js";
+import { planPaint, matchQuotes, quotesIn, trailingTagAt } from "../model/voices.js";
 
 const SHOW_TEXT = 4;   // NodeFilter.SHOW_TEXT
-const QUOTE = /[“"][^”"]{1,2000}?[”"]/g;
+// the quote kinds SillyTavern pairs, so on-screen quotes split the same way as quotesIn's
+const QUOTE = /"[^"\n]{1,2000}?"|“[^”\n]{1,2000}?”|«[^»\n]{1,2000}?»|「[^」\n]{1,2000}?」|『[^』\n]{1,2000}?』|＂[^＂\n]{1,2000}?＂/g;
 
 /** The span's class list and colour variables for one planned quote. */
 export function spanAttrs(span) {
@@ -40,23 +41,45 @@ export function unpaintVoices(el) {
     }
 }
 
-/** Colour the tagged quotes of `rawText` inside the rendered message `el`, from the chat's voices. */
+// A name the browser does not open a tag on (<Élodie>, <Аня>) stays on screen as text right
+// before its quote: hide it (display only; unpaintVoices puts it back).
+function hideLiteralTag(doc, node) {
+    if (!node || node.nodeType !== 3) return;
+    const t = trailingTagAt(node.data);
+    if (!t) return;
+    const tag = node.splitText(t.at);
+    tag.splitText(t.length);
+    const hide = doc.createElement("span");
+    hide.className = "sl-voice-tag";
+    hide.setAttribute("data-sl-voice", "");
+    tag.parentNode.insertBefore(hide, tag);
+    hide.appendChild(tag);
+}
+
+/**
+ * Colour the tagged quotes of `rawText` inside the rendered message `el`, from the chat's voices.
+ * Every quote of the raw text, tagged or not, is lined up with the rendered ones in order, so an
+ * untagged quote with the same words as a tagged one is never painted in its place.
+ */
 export function paintVoices(el, rawText, list) {
     unpaintVoices(el);
-    const plan = planPaint(rawText, list);
+    const plan = planPaint(rawText, list).filter(p => p.index >= 0);
     if (!plan.length) return;
-    const planned = plan.map(p => p.quote);
+    const all = quotesIn(rawText);
     const doc = el.ownerDocument;
 
     // SillyTavern wraps every quote in <q>
     const qs = [...el.querySelectorAll("q")].filter(q => !inBlock(q));
     if (qs.length) {
-        matchQuotes(planned, qs.map(q => q.textContent)).forEach((at, i) => {
-            if (at < 0) return;
-            const span = voiceSpan(doc, plan[i]);
+        const aligned = matchQuotes(all, qs.map(q => q.textContent));
+        for (const p of plan) {
+            const at = aligned[p.index];
+            if (at < 0) continue;
+            const span = voiceSpan(doc, p);
             while (qs[at].firstChild) span.appendChild(qs[at].firstChild);
             qs[at].appendChild(span);
-        });
+            hideLiteralTag(doc, qs[at].previousSibling);
+        }
         return;
     }
 
@@ -67,14 +90,16 @@ export function paintVoices(el, rawText, list) {
         if (inBlock(node)) continue;
         for (const m of node.data.matchAll(QUOTE)) found.push({ node, start: m.index, end: m.index + m[0].length, text: m[0] });
     }
-    const hits = matchQuotes(planned, found.map(f => f.text)).map((at, i) => ({ at, i })).filter(h => h.at >= 0);
+    const aligned = matchQuotes(all, found.map(f => f.text));
+    const hits = plan.map(p => ({ at: aligned[p.index], p })).filter(h => h.at >= 0).sort((a, b) => b.at - a.at);
     // back to front, so splitting a text node never moves a match still to come
-    for (const { at, i } of hits.reverse()) {
+    for (const { at, p } of hits) {
         const { node, start, end } = found[at];
         const quote = node.splitText(start);
         quote.splitText(end - start);
-        const span = voiceSpan(doc, plan[i]);
+        const span = voiceSpan(doc, p);
         quote.parentNode.insertBefore(span, quote);
         span.appendChild(quote);
+        hideLiteralTag(doc, node);
     }
 }

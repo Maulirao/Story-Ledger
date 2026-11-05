@@ -312,16 +312,14 @@ export function setVoice(chatData, name, colour) {
     const n = String(name ?? "").trim();
     if (!n) return { ok: false, error: "Give the voice a name." };
     if (voiceKey(n) === MIND) return { ok: false, error: '"mind" is reserved for telepathy.' };
-    const overrides = { ...(chatData.voiceOverrides || {}) };
-    const key = findVoice(overrides, n) ?? n;
-    if (colour === null || colour === undefined) {
-        delete overrides[key];
-        return { ok: true, chatDataPatch: { voiceOverrides: overrides } };
-    }
+    // every key that names this voice goes ("Jim" set while the row reads "Jim Hawkins"), so ✕ always clears it
+    const overrides = Object.fromEntries(Object.entries(chatData.voiceOverrides || {})
+        .filter(([k]) => voiceKey(k) !== voiceKey(n) && findVoice({ [n]: true }, k) === null));
+    if (colour === null || colour === undefined) return { ok: true, chatDataPatch: { voiceOverrides: overrides } };
     const written = String(colour).trim();
     const hex = colourHex(written);
     if (!hex) return { ok: false, error: `Not a colour: ${written}. Use a CSS colour name or #hex.` };
-    overrides[key] = written.startsWith("#") ? hex : written;
+    overrides[n] = written.startsWith("#") ? hex : written;
     return { ok: true, chatDataPatch: { voiceOverrides: overrides } };
 }
 

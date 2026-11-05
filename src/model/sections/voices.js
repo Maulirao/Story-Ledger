@@ -15,7 +15,7 @@ const COMMANDS = [
 const LINE = /^(.+?)\s*[:=]\s*(\S+)$/;
 const SOURCES = new Set(["model", "auto"]);
 
-const RULES = `Voices: tag every line of spoken dialogue with who says it, right before the opening quote: <Name>"…"</Name>. Two voices split each letter, the first on top and the second below: write <Speaker+Listener>"…" when it matters who is addressed, as in a group scene. Telepathy is the reserved voice mind, never a character: <Speaker+mind>"…", or <mind>"…" when the sender is unknown. Add a tone only when the delivery needs it: <Name:whisper>, <Name:shout>, <Name:measured>, <Name:tremble>, also after two voices (<Speaker+Listener:whisper>). The first time someone speaks, give them a colour under Voices: in the ledger comment: a CSS colour name or a #hex, readable on a dark background and far from the colours already taken. A speaker who already has a colour in earlier replies keeps it. A set colour never changes. These tags replace any other dialogue-colour instruction.`;
+const RULES = `Voices: tag every line of spoken dialogue with who says it, right before the opening quote: <Name>"…"</Name>. A name that is also an HTML tag (Mark, Ruby, Em) takes an underscore: <Mark_>. Two voices split each letter, the first on top and the second below: write <Speaker+Listener>"…" when it matters who is addressed, as in a group scene. Telepathy is the reserved voice mind, never a character: <Speaker+mind>"…", or <mind>"…" when the sender is unknown. Add a tone only when the delivery needs it: <Name:whisper>, <Name:shout>, <Name:measured>, <Name:tremble>, also after two voices (<Speaker+Listener:whisper>). The first time someone speaks, give them a colour under Voices: in the ledger comment: a CSS colour name or a #hex, readable on a dark background and far from the colours already taken. A speaker who already has a colour in earlier replies keeps it. A set colour never changes. These tags replace any other dialogue-colour instruction.`;
 
 const hexesOf = list => Object.values(list || {}).map(v => colourHex(typeof v === "string" ? v : v.colour)).filter(Boolean);
 
@@ -52,6 +52,9 @@ export default {
             if (!hex) { unparsed.push(line); continue; }
             const name = findVoice(state.voices, m[1]) ?? m[1].trim();
             if (voiceKey(name) === MIND) { warn(line, `"mind" is reserved for telepathy; give the character another tag name.`); continue; }
+            // the model repeating the reader's colour for this voice changes nothing
+            const o = findVoice(ctx.reply?.voiceOverrides, name);
+            if (o !== null && colourHex(ctx.reply.voiceOverrides[o]) === hex) continue;
             const had = state.voices[name];
             if (had && had.source === "model") {
                 if (colourHex(had.colour) !== hex) warn(line, `${name} already speaks in ${had.colour}; only the reader changes a set colour.`);
