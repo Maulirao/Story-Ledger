@@ -111,11 +111,15 @@ export default {
         const unparsed = [];
         for (const raw of lines.flatMap(line => fieldCommands(line, ctx.normalizedChanges))) {
             let line = String(raw).trim();   // parseChanges already removed the list bullet
-            // A comment may describe a just-completed task as new "task" → done.
+            // A comment may describe a just-completed task as new "task" → done
+            // or new "task" done → effect.
             // Require an explicit completion marker; missing progress alone is not done.
             if (ctx.normalizedChanges) {
-                const completed = line.match(/^(.+?)\s*:\s*new\s+"([^"\s][^"]*)"\s*→\s*done\s*(?:;\s*(\S.*))?$/i);
-                if (completed) line = `${completed[1]}: done "${completed[2]}"${completed[3] ? ` → ${completed[3]}` : ""}`;
+                const completed = line.match(/^(.+?)\s*:\s*new\s+"([^"\s][^"]*)"\s*(?:→\s*done\s*(?:;\s*(\S.*))?|done\s*(?:→\s*(\S.*))?)$/i);
+                if (completed) {
+                    const effect = completed[3] || completed[4];
+                    line = `${completed[1]}: done "${completed[2]}"${effect ? ` → ${effect}` : ""}`;
+                }
             }
             let m;
             if ((m = line.match(/^(.+?)\s*:\s*new\s+"([^"]+)"\s+(\d+)\s*\/\s*(\d+)\s*(?:@\s*(.+))?$/i))) {

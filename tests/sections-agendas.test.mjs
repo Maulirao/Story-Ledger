@@ -161,6 +161,22 @@ test("a new task explicitly marked done is a completion in comments", () => {
     assert.deepEqual(tagged.unparsed, [{ section: "Agendas", line }]);
 });
 
+test("a new task followed by done is a completion in comments", () => {
+    const line = 'Emilia: new "wake up wearing the ring and make Jan say lumière de ma vie as his first word" done → he said it; new agenda below';
+    for (const completion of [line, 'Emilia: new "wake up" done']) {
+        const s = emptyState();
+        s.agendas.Emilia = agenda("wake up", 0, 2, { body: "ring", aware: "the promise" });
+        const r = postTurn(s, ch(`Agendas:\n- ${completion}`), C);
+        assert.deepEqual(r.unparsed, []);
+        assert.deepEqual(r.state.agendas.Emilia, agenda("", 0, 0, { body: "ring", aware: "the promise" }));
+        assert.deepEqual(postTurn(emptyState(), ch(`Agendas:\n- ${completion}`), C).unparsed, []);
+        const replacement = postTurn(s, ch(`Agendas:\n- Emilia: new "make breakfast" 0/2\n- ${completion}`), C);
+        assert.equal(replacement.state.agendas.Emilia.task, "make breakfast");
+        assert.equal(replacement.state.agendas.Emilia.step, 0);
+        assert.deepEqual(postTurn(s, parseChanges(`<Story_Ledger>\nAgendas:\n- ${completion}\n</Story_Ledger>`), C).unparsed, [{ section: "Agendas", line: completion }]);
+    }
+});
+
 test("incomplete new agenda commands are not inferred to be completions", () => {
     const lines = ['Clerk: new "done with shopping"', 'Clerk: new "close" → done soon', 'Clerk: new "close" → store locked', 'Clerk: new "" → done', 'Clerk: new "close" 3/2 → done'];
     const r = postTurn(emptyState(), ch(`Agendas:\n${lines.map(line => `- ${line}`).join("\n")}`), C);

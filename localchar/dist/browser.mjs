@@ -331,8 +331,11 @@ var agendas_default = {
     for (const raw of lines2.flatMap((line) => fieldCommands(line, ctx.normalizedChanges))) {
       let line = String(raw).trim();
       if (ctx.normalizedChanges) {
-        const completed = line.match(/^(.+?)\s*:\s*new\s+"([^"\s][^"]*)"\s*→\s*done\s*(?:;\s*(\S.*))?$/i);
-        if (completed) line = `${completed[1]}: done "${completed[2]}"${completed[3] ? ` → ${completed[3]}` : ""}`;
+        const completed = line.match(/^(.+?)\s*:\s*new\s+"([^"\s][^"]*)"\s*(?:→\s*done\s*(?:;\s*(\S.*))?|done\s*(?:→\s*(\S.*))?)$/i);
+        if (completed) {
+          const effect = completed[3] || completed[4];
+          line = `${completed[1]}: done "${completed[2]}"${effect ? ` → ${effect}` : ""}`;
+        }
       }
       let m;
       if (m = line.match(/^(.+?)\s*:\s*new\s+"([^"]+)"\s+(\d+)\s*\/\s*(\d+)\s*(?:@\s*(.+))?$/i)) {
