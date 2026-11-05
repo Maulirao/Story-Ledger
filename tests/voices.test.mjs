@@ -1,7 +1,7 @@
 // Dialogue voices: reading voice tags, the colour table, colour maths. Run: node --test tests/*.test.mjs
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readVoiceTags, voiceKey, findVoice, colourHex, PALETTE } from "../src/model/voices.js";
+import { readVoiceTags, voiceKey, findVoice, colourHex, PALETTE, colourDistance, NEAR, AUTO_POOL, pickColour, nearDuplicates } from "../src/model/voices.js";
 
 test("readVoiceTags reads every tag form", () => {
     const one = t => readVoiceTags(t).map(({ voices, tone, quote }) => ({ voices, tone, quote }));
@@ -50,4 +50,27 @@ test("colourHex reads hex, CSS names and Sola names", () => {
     assert.equal(colourHex("notacolour"), null);
     assert.equal(colourHex("mind"), null);
     assert.equal(Object.keys(PALETTE).length, 148 + 14, "CSS names plus the 14 Sola names CSS lacks");
+});
+
+test("colourDistance is zero for one colour and large for black and white", () => {
+    assert.equal(colourDistance("#3fa7a0", "#3fa7a0"), 0);
+    assert.ok(colourDistance("#000000", "#ffffff") > 99);
+    assert.ok(colourDistance("#008080", "#008181") < NEAR);
+});
+
+test("pickColour starts at the pool and steers away from taken colours", () => {
+    assert.equal(pickColour([]), AUTO_POOL[0]);
+    const second = pickColour([AUTO_POOL[0]]);
+    assert.ok(colourDistance(second, AUTO_POOL[0]) >= NEAR);
+    assert.equal(pickColour(["#3fa7a0", "#ff0000"]), pickColour(["#3fa7a0", "#ff0000"]));
+});
+
+test("the first six picks are pairwise distinct", () => {
+    const taken = [];
+    for (let i = 0; i < 6; i++) taken.push(pickColour(taken));
+    for (const a of taken) for (const b of taken) if (a !== b) assert.ok(colourDistance(a, b) >= NEAR, `${a} ~ ${b}`);
+});
+
+test("nearDuplicates names look-alike pairs", () => {
+    assert.deepEqual(nearDuplicates([["Kael", "#c0392b"], ["Mara", "#b03a2e"], ["Jim", "#3fa7a0"]]), [["Kael", "Mara"]]);
 });

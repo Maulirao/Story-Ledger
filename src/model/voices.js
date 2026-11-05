@@ -66,6 +66,55 @@ export function colourHex(value) {
     return Object.hasOwn(PALETTE, s) ? PALETTE[s] : null;
 }
 
+// ── Colour maths ────────────────────────────────────────────────────────────
+
+const lab = hex => {
+    const lin = c => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
+    const [r, g, b] = [1, 3, 5].map(i => lin(parseInt(hex.slice(i, i + 2), 16) / 255));
+    const x = (0.4124564 * r + 0.3575761 * g + 0.1804375 * b) / 0.95047;
+    const y = 0.2126729 * r + 0.7151522 * g + 0.0721750 * b;
+    const z = (0.0193339 * r + 0.1191920 * g + 0.9503041 * b) / 1.08883;
+    const f = t => (t > (6 / 29) ** 3 ? Math.cbrt(t) : t / (3 * (6 / 29) ** 2) + 4 / 29);
+    return [116 * f(y) - 16, 500 * (f(x) - f(y)), 200 * (f(y) - f(z))];
+};
+
+/** How different two colours look: CIE76 ΔE between their Lab values. */
+export function colourDistance(a, b) {
+    const [p, q] = [lab(colourHex(a)), lab(colourHex(b))];
+    return Math.hypot(p[0] - q[0], p[1] - q[1], p[2] - q[2]);
+}
+
+/** Colours closer than this read as the same voice. */
+export const NEAR = 12;
+
+/** The colours Story Ledger hands out by itself, in order of preference: FF's ten, then Sola's. */
+export const AUTO_POOL = ["cyan", "pink", "teal", "orange", "gold", "violet", "salmon", "orchid", "yellow", "plum"]
+    .map(n => PALETTE[n]).concat(Object.values(SOLA));
+
+/** The pool colour that sits farthest from every taken one (ties: pool order). Deterministic. */
+export function pickColour(taken) {
+    const hexes = (taken || []).map(colourHex).filter(Boolean);
+    let best = AUTO_POOL[0], bestGap = -1;
+    for (const c of AUTO_POOL) {
+        const gap = hexes.length ? Math.min(...hexes.map(t => colourDistance(c, t))) : Infinity;
+        if (gap > bestGap) { best = c; bestGap = gap; }
+    }
+    return best;
+}
+
+/** [name, name] pairs, in input order, whose colours are closer than NEAR. */
+export function nearDuplicates(entries) {
+    const out = [];
+    for (let i = 0; i < entries.length; i++) {
+        for (let j = i + 1; j < entries.length; j++) {
+            if (colourDistance(entries[i][1], entries[j][1]) < NEAR) out.push([entries[i][0], entries[j][0]]);
+        }
+    }
+    return out;
+}
+
+// ── Names ───────────────────────────────────────────────────────────────────
+
 /** A voice name for comparing: lower-case, spaces, `_` and `-` folded to one space. */
 export const voiceKey = name => String(name ?? "").toLowerCase().replace(/[\s_-]+/g, " ").trim();
 
