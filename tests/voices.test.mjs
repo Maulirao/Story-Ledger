@@ -74,3 +74,7 @@ test("the first six picks are pairwise distinct", () => {
 test("nearDuplicates names look-alike pairs", () => {
     assert.deepEqual(nearDuplicates([["Kael", "#c0392b"], ["Mara", "#b03a2e"], ["Jim", "#3fa7a0"]]), [["Kael", "Mara"]]);
 });
+
+test("a lone tone word is a tone tag from an old chat, never a voice", () => {
+    assert.deepEqual(readVoiceTags('<whisper>"Quiet." <Bite>"Back off." <steady>"Fine."'), []);
+});

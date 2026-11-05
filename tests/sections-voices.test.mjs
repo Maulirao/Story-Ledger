@@ -86,3 +86,7 @@ test("the template, rules and prompt carry Voices", () => {
     assert.equal(sec.prompt({ Jim: { colour: "#3fa7a0", source: "model" }, Anna: { colour: "orchid", source: "you" } }),
         "Voices (each speaker keeps their colour; give a new speaker one far from these): Jim #3fa7a0 · Anna orchid");
 });
+
+test("a lone tone tag is never filled in as a character", () => {
+    assert.deepEqual(postTurn(emptyState(), ch("Now: x"), C, { text: '<whisper>"Quiet."', voiceOverrides: {} }).state.voices, {});
+});

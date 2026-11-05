@@ -202,7 +202,9 @@ export function readVoiceTags(text) {
     const out = [];
     for (const m of String(text ?? "").matchAll(TAG)) {
         const voices = m[1].split("+").map(v => v.trim()).filter(Boolean);
-        if (!voices.length || HTML_TAGS.has(voiceKey(voices[0]))) continue;
+        // formatting is not a voice; nor is a lone tone (Sola's standalone <whisper>"…" in old chats)
+        const first = voiceKey(voices[0]);
+        if (!voices.length || HTML_TAGS.has(first) || TONES.includes(first) || Object.hasOwn(TONE_ALIASES, first)) continue;
         out.push({ voices, tone: toneOf(m[2] || ""), quote: m[3], at: m.index });
     }
     return out;
