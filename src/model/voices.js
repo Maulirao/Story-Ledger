@@ -131,6 +131,18 @@ export function findVoice(list, name) {
     return byFirst.length === 1 ? byFirst[0] : null;
 }
 
+/**
+ * The block's voices with the reader's overrides ({ name: colour }) on top: an override
+ * replaces the voice it names (source "you"), or adds one the block does not have yet.
+ */
+export function withVoiceOverrides(voices, overrides) {
+    const out = { ...(voices || {}) };
+    for (const [name, colour] of Object.entries(overrides || {})) out[findVoice(out, name) ?? name] = { colour, source: "you" };
+    return out;
+}
+
+// ── Tags ────────────────────────────────────────────────────────────────────
+
 const NAME = String.raw`[\p{L}\p{N}][\p{L}\p{N} '’_-]{0,39}`;
 const TAG = new RegExp(String.raw`<\s*(?:color\s*:\s*)?(${NAME}(?:\s*\+\s*${NAME})*)((?:\s*:\s*[a-z][a-z0-9_-]{0,24})*)\s*>\s*([“"][^”"]{1,2000}?[”"])(?:\s*<\s*\/[^<>\n\r]{0,40}>)?`, "giu");
 

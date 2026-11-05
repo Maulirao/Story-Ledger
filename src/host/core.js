@@ -32,6 +32,7 @@ import { importForeign, proposeImportedRules } from "../model/import/index.js";
 import { SECTIONS } from "../model/sections/registry.js";
 import { rollTurnDice, withFudges, fudgesForGeneration, diceFromBlock } from "../model/dice.js";
 import { withRelationshipOverrides, filterPrunedRelationEvents, restoredReplyInputs } from "../model/relationship-pruning.js";
+import { MIND, colourHex, findVoice, voiceKey, withVoiceOverrides } from "../model/voices.js";
 
 export { generationBase, importFromLegacyNotebook };
 
@@ -145,7 +146,8 @@ export function ledgerPromptParts(c, config, chatData, settings) {
     const state = stateBefore(c, c.length, config, chatData);
     const time = storyTime(c, nb);
     if (state.scene.now && (!time.now || time.now.source !== "reader")) time.now = { text: state.scene.now, source: "notebook" };
-    const statePrompt = renderStatePrompt(state, {
+    // the reader's voice colours reach the model, but never a block (✕ restores the block's colour)
+    const statePrompt = renderStatePrompt({ ...state, voices: withVoiceOverrides(state.voices || {}, chatData.voiceOverrides || {}) }, {
         notebook: nb.enabled === false ? { ...nb, rules: [], inbox: [] } : nb, config, sections: settings.sections, time,
     });
     return { state, statePrompt, rules: renderRules(config), template: buildTemplate(config), facts: renderTurnFacts(state, config) };
@@ -252,7 +254,7 @@ export function rebuildMessage({ chat: c, index, settings: s, chatData, userName
     const parsed = parseChanges(stripBlocks(msg.mes));
     const restored = restoredReplyInputs(filterPrunedRelationEvents(parsed?.relations, prev, chatData.relationshipOverrides, config), chatData.relationshipOverrides, index, config, relationshipReplySource(msg));
     const changes = parsed ? { ...parsed, relations: restored.events } : null;
-    const { state, log, unparsed, warnings } = postTurn(prev, changes, restored.config);
+    const { state, log, unparsed, warnings } = postTurn(prev, changes, restored.config, { text: withoutLedger(msg.mes), voiceOverrides: chatData.voiceOverrides || {} });
     const mes = writeBlockInto(msg.mes, blockFor(state, { settings: s, chatData, userName }));
 
     const notices = [];
@@ -288,6 +290,39 @@ export function rebuildMessage({ chat: c, index, settings: s, chatData, userName
         if (cannot.length) note("info", "📜 Story Ledger", `Could not apply: ${cannot.map(x => `${x.section}: "${x.line}" (${x.reason})`).join("; ")}`);
     }
     return { mes, notices, chatDataPatch };
+}
+
+// ── Dialogue voices ─────────────────────────────────────────────────────────
+
+/**
+ * Every voice the chat knows, for painting and the Voices tab: the newest block's voices
+ * with the reader's overrides on top. { name: { colour (as written), hex, source } }.
+ */
+export function voiceList({ chat, settings, chatData, userName }) {
+    const found = latestState(chat || [], (chat || []).length, engineConfig(settings, userName));
+    const merged = withVoiceOverrides(found?.state.voices || {}, chatData.voiceOverrides || {});
+    return Object.fromEntries(Object.entries(merged).map(([name, v]) => [name, { colour: v.colour, hex: colourHex(v.colour), source: v.source }]));
+}
+
+/**
+ * The reader sets (or, with colour null, clears) a voice's colour:
+ * { ok: true, chatDataPatch: { voiceOverrides } } or { ok: false, error }.
+ */
+export function setVoice(chatData, name, colour) {
+    const n = String(name ?? "").trim();
+    if (!n) return { ok: false, error: "Give the voice a name." };
+    if (voiceKey(n) === MIND) return { ok: false, error: '"mind" is reserved for telepathy.' };
+    const overrides = { ...(chatData.voiceOverrides || {}) };
+    const key = findVoice(overrides, n) ?? n;
+    if (colour === null || colour === undefined) {
+        delete overrides[key];
+        return { ok: true, chatDataPatch: { voiceOverrides: overrides } };
+    }
+    const written = String(colour).trim();
+    const hex = colourHex(written);
+    if (!hex) return { ok: false, error: `Not a colour: ${written}. Use a CSS colour name or #hex.` };
+    overrides[key] = written.startsWith("#") ? hex : written;
+    return { ok: true, chatDataPatch: { voiceOverrides: overrides } };
 }
 
 // ── Ledger fix-up ───────────────────────────────────────────────────────────
