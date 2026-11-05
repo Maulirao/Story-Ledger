@@ -266,3 +266,45 @@ test("every message is painted, and the Voices switch turns painting off", async
         cleanup();
     }
 });
+
+// a rendered message holding one <q>, enough for the painter: the span it wraps the quote in is kept
+function quoteEl(text) {
+    const q = { textContent: text, firstChild: null, previousSibling: null, closest: () => null, appendChild(span) { q.painted = span; } };
+    const doc = { createElement: () => ({ className: "", setAttribute(k, v) { this[k] = v; }, appendChild() {} }), createTreeWalker: () => ({ nextNode: () => false }) };
+    return { q, el: { querySelectorAll: s => (s === "q" ? [q] : []), addEventListener() {}, removeEventListener() {}, ownerDocument: doc } };
+}
+const tick = () => new Promise(r => setTimeout(r, 0));
+
+test("LocalChar paints with the open chat's colours, fetched again after a chat switch", async () => {
+    const { host, log } = fakeHost();
+    let branch = "br_1";
+    const data = { br_1: { voiceOverrides: { Jim: "orchid" } }, br_2: { voiceOverrides: { Jim: "red" } } };
+    const fetched = [];
+    host.chat.branchId = () => branch;
+    host.chat.refreshChatData = async () => { fetched.push(branch); return { data: data[branch], revision: 1 }; };
+    register(host);
+    await tick();
+    const paint = () => { const { q, el } = quoteEl('"Hi."'); log.hooks.at(-1)(el, { id: "m1", revision: "r", content: '<jim>"Hi."' }); return q.painted?.style || ""; };
+    assert.match(paint(), /--sl-top:#da70d6/);
+    branch = "br_2";
+    assert.doesNotMatch(paint(), /#da70d6/, "never chat 1's colours in chat 2");
+    await tick();
+    assert.match(paint(), /--sl-top:#ff0000/);
+    assert.deepEqual(fetched, ["br_1", "br_2"]);
+});
+
+test("LocalChar builds the voice list once, not once per painted message", async () => {
+    const { host, log } = fakeHost();
+    let reads = 0;
+    const messages = Array.from({ length: 50 }, (_, i) => ({ id: `m${i}`, revision: "r", role: "assistant", get content() { reads++; return `Line ${i}.`; } }));
+    host.chat.messages = () => messages;
+    register(host);
+    await tick();
+    const paint = () => { const { el } = quoteEl('"Hi."'); log.hooks.at(-1)(el, { id: "x", revision: "r", content: '<jim>"Hi."' }); };
+    reads = 0;
+    paint();
+    const once = reads;
+    for (let i = 0; i < 4; i++) paint();
+    assert.ok(once > 0);
+    assert.equal(reads, once, "four more paints of the same chat read nothing more");
+});

@@ -127,16 +127,34 @@ export default function register(host) {
         offHook = host.onMessageRendered(decorate);
     }
 
-    /** Fetch the chat data again (the reader's voice colours live there), then redraw. */
+    // The reader's voice colours live in the chat data, fetched per chat: data fetched for one
+    // chat is never used for another, and a chat switch fetches the new chat's.
+    let voiceData = { branch: undefined, data: null };
+    /** Fetch the open chat's data again, then redraw. */
     function refreshVoices() {
-        Promise.resolve(host.chat.refreshChatData?.()).catch(noop).then(refreshDecorations);
+        const branch = host.chat.branchId();
+        voiceData = { branch, data: null };
+        Promise.resolve(host.chat.refreshChatData?.())
+            .then(got => { if (voiceData.branch === branch && host.chat.branchId() === branch) voiceData = { branch, data: got?.data ?? null }; })
+            .catch(noop)
+            .then(refreshDecorations);
     }
 
-    // The chat's voices: the newest block's, with the reader's colours from the chat data on top.
-    const voiceList = () => core.voiceList({
-        chat: stChat(), settings, userName,
-        chatData: core.normalizeChatData({ storyLedger: host.chat.chatData()?.data }),
-    });
+    // The chat's voices: the newest block's, with the reader's colours on top. Built once per state
+    // of the chat (message ids and revisions), not once per painted message.
+    let voiceCache = null;
+    function voiceList() {
+        const branch = host.chat.branchId();
+        if (voiceData.branch !== branch) refreshVoices();
+        const data = voiceData.data;
+        const messages = host.chat.messages();
+        const key = `${branch}|${messages.map(m => `${m.id}:${m.revision}`).join(",")}`;
+        const c = voiceCache;
+        if (c && c.key === key && c.data === data && c.settings === settings && c.userName === userName) return c.list;
+        const list = core.voiceList({ chat: stChat(), settings, userName, chatData: core.normalizeChatData({ storyLedger: data ? { ...data } : undefined }) });
+        voiceCache = { key, data, settings, userName, list };
+        return list;
+    }
 
     // The host does not hand an extension the reader's name; the server knows it. Learned once, quietly.
     function learnUserName() {

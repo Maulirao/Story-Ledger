@@ -5833,15 +5833,27 @@ ${body}`) : true);
     offHook();
     offHook = host.onMessageRendered(decorate4);
   }
+  let voiceData = { branch: void 0, data: null };
   function refreshVoices() {
-    Promise.resolve(host.chat.refreshChatData?.()).catch(noop).then(refreshDecorations);
+    const branch = host.chat.branchId();
+    voiceData = { branch, data: null };
+    Promise.resolve(host.chat.refreshChatData?.()).then((got) => {
+      if (voiceData.branch === branch && host.chat.branchId() === branch) voiceData = { branch, data: got?.data ?? null };
+    }).catch(noop).then(refreshDecorations);
   }
-  const voiceList2 = () => voiceList({
-    chat: stChat(),
-    settings,
-    userName,
-    chatData: normalizeChatData({ storyLedger: host.chat.chatData()?.data })
-  });
+  let voiceCache = null;
+  function voiceList2() {
+    const branch = host.chat.branchId();
+    if (voiceData.branch !== branch) refreshVoices();
+    const data = voiceData.data;
+    const messages = host.chat.messages();
+    const key2 = `${branch}|${messages.map((m) => `${m.id}:${m.revision}`).join(",")}`;
+    const c = voiceCache;
+    if (c && c.key === key2 && c.data === data && c.settings === settings && c.userName === userName) return c.list;
+    const list = voiceList({ chat: stChat(), settings, userName, chatData: normalizeChatData({ storyLedger: data ? { ...data } : void 0 }) });
+    voiceCache = { key: key2, data, settings, userName, list };
+    return list;
+  }
   function learnUserName() {
     if (userName || learningUser || !host.chat.branchId()) return;
     learningUser = true;
