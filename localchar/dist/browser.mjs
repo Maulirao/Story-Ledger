@@ -495,6 +495,199 @@ var factions_default = {
   template: (ctx) => commandTemplate("Factions", COMMANDS4, ctx)
 };
 
+// src/model/voices.js
+var MIND = "mind";
+var TONES = ["whisper", "measured", "shout", "tremble"];
+var TONE_ALIASES = { steady: "measured", heavy: "shout", bite: "shout" };
+var SOLA = {
+  marigold: "#f4a261",
+  amber: "#f3b74b",
+  cider: "#e9a036",
+  coral: "#ee6c4d",
+  copper: "#e07a5f",
+  terracotta: "#c06c54",
+  sage: "#9aa87a",
+  rose: "#f4845f",
+  denim: "#7a8b99",
+  slate: "#8fa4b2",
+  indigo: "#8592e6",
+  heather: "#b08ea2",
+  ash: "#bac3c7",
+  mist: "#98b9c7",
+  pine: "#789e8a",
+  obsidian: "#a3948a"
+};
+var CSS_COLOURS = `aliceblue f0f8ff antiquewhite faebd7 aqua 00ffff aquamarine 7fffd4 azure f0ffff beige f5f5dc
+bisque ffe4c4 black 000000 blanchedalmond ffebcd blue 0000ff blueviolet 8a2be2 brown a52a2a burlywood deb887
+cadetblue 5f9ea0 chartreuse 7fff00 chocolate d2691e coral ff7f50 cornflowerblue 6495ed cornsilk fff8dc
+crimson dc143c cyan 00ffff darkblue 00008b darkcyan 008b8b darkgoldenrod b8860b darkgray a9a9a9
+darkgreen 006400 darkgrey a9a9a9 darkkhaki bdb76b darkmagenta 8b008b darkolivegreen 556b2f darkorange ff8c00
+darkorchid 9932cc darkred 8b0000 darksalmon e9967a darkseagreen 8fbc8f darkslateblue 483d8b
+darkslategray 2f4f4f darkslategrey 2f4f4f darkturquoise 00ced1 darkviolet 9400d3 deeppink ff1493
+deepskyblue 00bfff dimgray 696969 dimgrey 696969 dodgerblue 1e90ff firebrick b22222 floralwhite fffaf0
+forestgreen 228b22 fuchsia ff00ff gainsboro dcdcdc ghostwhite f8f8ff gold ffd700 goldenrod daa520
+gray 808080 green 008000 greenyellow adff2f grey 808080 honeydew f0fff0 hotpink ff69b4 indianred cd5c5c
+indigo 4b0082 ivory fffff0 khaki f0e68c lavender e6e6fa lavenderblush fff0f5 lawngreen 7cfc00
+lemonchiffon fffacd lightblue add8e6 lightcoral f08080 lightcyan e0ffff lightgoldenrodyellow fafad2
+lightgray d3d3d3 lightgreen 90ee90 lightgrey d3d3d3 lightpink ffb6c1 lightsalmon ffa07a lightseagreen 20b2aa
+lightskyblue 87cefa lightslategray 778899 lightslategrey 778899 lightsteelblue b0c4de lightyellow ffffe0
+lime 00ff00 limegreen 32cd32 linen faf0e6 magenta ff00ff maroon 800000 mediumaquamarine 66cdaa
+mediumblue 0000cd mediumorchid ba55d3 mediumpurple 9370db mediumseagreen 3cb371 mediumslateblue 7b68ee
+mediumspringgreen 00fa9a mediumturquoise 48d1cc mediumvioletred c71585 midnightblue 191970 mintcream f5fffa
+mistyrose ffe4e1 moccasin ffe4b5 navajowhite ffdead navy 000080 oldlace fdf5e6 olive 808000
+olivedrab 6b8e23 orange ffa500 orangered ff4500 orchid da70d6 palegoldenrod eee8aa palegreen 98fb98
+paleturquoise afeeee palevioletred db7093 papayawhip ffefd5 peachpuff ffdab9 peru cd853f pink ffc0cb
+plum dda0dd powderblue b0e0e6 purple 800080 rebeccapurple 663399 red ff0000 rosybrown bc8f8f
+royalblue 4169e1 saddlebrown 8b4513 salmon fa8072 sandybrown f4a460 seagreen 2e8b57 seashell fff5ee
+sienna a0522d silver c0c0c0 skyblue 87ceeb slateblue 6a5acd slategray 708090 slategrey 708090 snow fffafa
+springgreen 00ff7f steelblue 4682b4 tan d2b48c teal 008080 thistle d8bfd8 tomato ff6347 turquoise 40e0d0
+violet ee82ee wheat f5deb3 white ffffff whitesmoke f5f5f5 yellow ffff00 yellowgreen 9acd32`;
+var pairs = CSS_COLOURS.trim().split(/\s+/);
+var PALETTE = {
+  ...Object.fromEntries(Array.from({ length: pairs.length / 2 }, (_, i) => [pairs[2 * i], `#${pairs[2 * i + 1]}`])),
+  ...SOLA
+};
+var HTML_TAGS = new Set("a abbr b bdi bdo big blockquote br center cite code data del details dfn div em font i img ins kbd label li mark p q rp rt ruby s samp small span strike strong sub summary sup td th time tt u var wbr".split(" "));
+function colourHex(value2) {
+  const s = String(value2 ?? "").trim().toLowerCase();
+  if (/^#[0-9a-f]{6}$/.test(s)) return s;
+  if (/^#[0-9a-f]{3}$/.test(s)) return `#${[...s.slice(1)].map((c) => c + c).join("")}`;
+  return Object.hasOwn(PALETTE, s) ? PALETTE[s] : null;
+}
+var lab = (hex) => {
+  const lin = (c) => c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  const [r, g, b] = [1, 3, 5].map((i) => lin(parseInt(hex.slice(i, i + 2), 16) / 255));
+  const x = (0.4124564 * r + 0.3575761 * g + 0.1804375 * b) / 0.95047;
+  const y = 0.2126729 * r + 0.7151522 * g + 0.072175 * b;
+  const z = (0.0193339 * r + 0.119192 * g + 0.9503041 * b) / 1.08883;
+  const f = (t) => t > (6 / 29) ** 3 ? Math.cbrt(t) : t / (3 * (6 / 29) ** 2) + 4 / 29;
+  return [116 * f(y) - 16, 500 * (f(x) - f(y)), 200 * (f(y) - f(z))];
+};
+function colourDistance(a, b) {
+  const [p, q] = [lab(colourHex(a)), lab(colourHex(b))];
+  return Math.hypot(p[0] - q[0], p[1] - q[1], p[2] - q[2]);
+}
+var NEAR = 12;
+var AUTO_POOL = ["cyan", "pink", "teal", "orange", "gold", "violet", "salmon", "orchid", "yellow", "plum"].map((n) => PALETTE[n]).concat(Object.values(SOLA));
+function pickColour(taken) {
+  const hexes = (taken || []).map(colourHex).filter(Boolean);
+  let best = AUTO_POOL[0], bestGap = -1;
+  for (const c of AUTO_POOL) {
+    const gap = hexes.length ? Math.min(...hexes.map((t) => colourDistance(c, t))) : Infinity;
+    if (gap > bestGap) {
+      best = c;
+      bestGap = gap;
+    }
+  }
+  return best;
+}
+var voiceKey = (name) => String(name ?? "").toLowerCase().replace(/[\s_-]+/g, " ").trim();
+function findVoice(list, name) {
+  const keys = Object.keys(list || {});
+  const k = voiceKey(name);
+  const exact = keys.find((x) => voiceKey(x) === k);
+  if (exact !== void 0) return exact;
+  const byFirst = keys.filter((x) => voiceKey(x).split(" ")[0] === k);
+  return byFirst.length === 1 ? byFirst[0] : null;
+}
+var NAME = String.raw`[\p{L}\p{N}][\p{L}\p{N} '’_-]{0,39}`;
+var TAG2 = new RegExp(String.raw`<\s*(?:color\s*:\s*)?(${NAME}(?:\s*\+\s*${NAME})*)((?:\s*:\s*[a-z][a-z0-9_-]{0,24})*)\s*>\s*([“"][^”"]{1,2000}?[”"])(?:\s*<\s*\/[^<>\n\r]{0,40}>)?`, "giu");
+var toneOf = (segments) => {
+  for (const raw of segments.split(":").map((s) => s.trim().toLowerCase()).filter(Boolean)) {
+    if (TONES.includes(raw)) return raw;
+    if (Object.hasOwn(TONE_ALIASES, raw)) return TONE_ALIASES[raw];
+  }
+  return null;
+};
+function readVoiceTags(text) {
+  const out = [];
+  for (const m of String(text ?? "").matchAll(TAG2)) {
+    const voices = m[1].split("+").map((v) => v.trim()).filter(Boolean);
+    if (!voices.length || HTML_TAGS.has(voiceKey(voices[0]))) continue;
+    out.push({ voices, tone: toneOf(m[2] || ""), quote: m[3], at: m.index });
+  }
+  return out;
+}
+
+// src/model/sections/voices.js
+var COMMANDS5 = [
+  { id: "voices.set", form: "Name: colour", example: "Ana: #3fa7a0", keywords: [] }
+];
+var LINE = /^(.+?)\s*[:=]\s*(\S+)$/;
+var SOURCES = /* @__PURE__ */ new Set(["model", "auto"]);
+var RULES = `Voices: tag every line of spoken dialogue with who says it, right before the opening quote: <Name>"…"</Name>. Two voices split each letter, the first on top and the second below: write <Speaker+Listener>"…" when it matters who is addressed, as in a group scene. Telepathy is the reserved voice mind, never a character: <Speaker+mind>"…", or <mind>"…" when the sender is unknown. Add a tone only when the delivery needs it: <Name:whisper>, <Name:shout>, <Name:measured>, <Name:tremble>, also after two voices (<Speaker+Listener:whisper>). The first time someone speaks, give them a colour under Voices: in the ledger comment: a CSS colour name or a #hex, readable on a dark background and far from the colours already taken. A speaker who already has a colour in earlier replies keeps it. A set colour never changes. These tags replace any other dialogue-colour instruction.`;
+var hexesOf = (list) => Object.values(list || {}).map((v) => colourHex(typeof v === "string" ? v : v.colour)).filter(Boolean);
+var voices_default = {
+  key: "voices",
+  title: "🎨 VOICES",
+  match: /^VOICES$/,
+  change: "Voices",
+  aliases: ["Voice"],
+  carried: true,
+  empty: () => ({}),
+  render: (value2) => Object.entries(value2).map(([n, v]) => `- <b>${esc(n)}</b> | ${esc(v.colour)} | ${v.source}`),
+  parse(rows, prevValue) {
+    const value2 = {}, errors = [];
+    for (const row of rows) {
+      const m = row.match(ROW);
+      const parts = m ? m[2].split("|").map((p) => p.trim()).filter(Boolean) : [];
+      const colour = unesc(parts[0] ?? "");
+      if (m && colourHex(colour)) value2[unesc(m[1])] = { colour, source: SOURCES.has(parts[1]) ? parts[1] : "model" };
+      else {
+        errors.push(row);
+        const name = m && unesc(m[1]);
+        if (name && prevValue && prevValue[name]) value2[name] = prevValue[name];
+      }
+    }
+    return { value: value2, errors };
+  },
+  apply(state, lines2, ctx) {
+    const unparsed = [];
+    const warn = (line, text) => ctx.warnings.push({ section: "Voices", line, text });
+    for (const line of lines2) {
+      const m = closedForm(unbullet(line)).match(LINE);
+      const hex = m && colourHex(m[2]);
+      if (!hex) {
+        unparsed.push(line);
+        continue;
+      }
+      const name = findVoice(state.voices, m[1]) ?? m[1].trim();
+      if (voiceKey(name) === MIND) {
+        warn(line, `"mind" is reserved for telepathy; give the character another tag name.`);
+        continue;
+      }
+      const had = state.voices[name];
+      if (had && had.source === "model") {
+        if (colourHex(had.colour) !== hex) warn(line, `${name} already speaks in ${had.colour}; only the reader changes a set colour.`);
+        continue;
+      }
+      const colour = m[2].toLowerCase();
+      state.voices[name] = { colour, source: "model" };
+      for (const [other, v] of Object.entries(state.voices)) {
+        if (other !== name && colourDistance(hex, v.colour) < NEAR) warn(line, `${name}'s ${colour} looks like ${other}'s ${v.colour}.`);
+      }
+    }
+    return unparsed;
+  },
+  after(state, ctx) {
+    const reply = ctx.reply || {};
+    const overrides = reply.voiceOverrides || {};
+    for (const tag2 of readVoiceTags(reply.text || "")) {
+      for (const v of tag2.voices.slice(0, 2)) {
+        if (colourHex(v) || voiceKey(v) === MIND || findVoice(state.voices, v) !== null || findVoice(overrides, v) !== null) continue;
+        state.voices[v] = { colour: pickColour([...hexesOf(state.voices), ...hexesOf(overrides)]), source: "auto" };
+      }
+    }
+  },
+  prompt(value2) {
+    const rows = Object.entries(value2 || {}).map(([n, v]) => `${n} ${v.colour}`);
+    return rows.length ? `Voices (each speaker keeps their colour; give a new speaker one far from these): ${rows.join(" · ")}` : "";
+  },
+  rules: () => RULES,
+  commands: COMMANDS5,
+  template: (ctx) => commandTemplate("Voices", COMMANDS5, ctx)
+};
+
 // src/model/ids.js
 function nextId(state, kind, existing = []) {
   state.ids = state.ids || {};
@@ -511,7 +704,7 @@ var read4 = (v) => {
   return t === "—" ? "" : t;
 };
 var byId = (state, id) => state.quests.find((q) => q.id.toLowerCase() === String(id).toLowerCase());
-var COMMANDS5 = [
+var COMMANDS6 = [
   { id: "quests.add-main", form: "+ Main: objective (reward)", example: "+ Main: find the missing ferryman (the title Harbour Friend)", keywords: ["Main"] },
   { id: "quests.add-side", form: "+ Side: objective (reward)", example: "+ Side: return the lost dog (a free meal)", keywords: ["Side"] },
   { id: "quests.progress", form: "Q# progress: text", example: "Q1 progress: the ferryman was seen at the mill", keywords: ["progress"] },
@@ -592,8 +785,8 @@ var quests_default = {
     return parts.join("\n");
   },
   rules: () => "Quests: a Main quest is the story's spine, Side quests are optional; rewards are new titles or items. Mark progress when the story moves a quest, done or drop when it ends.",
-  commands: COMMANDS5,
-  template: (ctx) => commandTemplate("Quests", COMMANDS5, ctx)
+  commands: COMMANDS6,
+  template: (ctx) => commandTemplate("Quests", COMMANDS6, ctx)
 };
 
 // src/model/decimal.js
@@ -1026,7 +1219,7 @@ function effectLines(titles, status) {
   if (needs) lines2.push(`needs effect: ${needs}`);
   return lines2;
 }
-var COMMANDS6 = [
+var COMMANDS7 = [
   { id: "inv.add", form: "+ item", example: "+ brass key", keywords: [] },
   { id: "inv.remove", form: "- item", example: "- brass key", keywords: [] },
   { id: "inv.remove-id", form: "- I# (why)", example: "- I1 (left behind)", keywords: [] },
@@ -1476,12 +1669,12 @@ var inventory_default = {
     "Supplies are counted or measured stacks (ammo, food, batteries, water), each with an I# ID. Create a new stack with `supply: amount unit | item`; convert an existing item or explicitly correct its count with `I# quantity: amount unit`. For partial use or replenishment, write a signed delta such as `I# adjust: -3 (used)` or `I# adjust: +5 (restocked)`; the ledger does the arithmetic. Reuse an existing ID rather than creating a new stack every turn. Keep ammo types, units and other distinct supplies separate. Quantity metadata is authoritative; a number in an item's description does not set its count. Zero balances and stacks retain identity for replenishment; adjustments cannot overdraw known amounts. A `- I#` line removes the whole entry.",
     "Inventory is {{user}}'s alone: add items with `+ item` when found; the ledger assigns their I# IDs. Prefer `- I# (why)` when lost or used, and `I# update: description` when an item's description or holder changes; copy an existing ID from the inventory, never invent one. Name removals also work: full name first, otherwise a unique base name ignoring trailing parenthetical notes; ambiguous items need an ID. IDs are not unit counts. Every new title needs at least one effect, written `title: Name | effects`, with effects separated by `;`: a numeric `±1 or ±2 category: focus`, such as `+2 social: Emilia` (negative for a penalty) where category is physical, social or mental and focus names what it applies to; `proficiency: skill` for a trained skill; or plain narrative text when it only changes how the story treats {{user}}. Example: `title: Mon Ancre | +2 social: Emilia; proficiency: diving`. Re-sending `title: Name | effects` for an existing title replaces its effects. Numeric effects are ±1 or ±2 only, and only in the category and focus they fit. Award a title for a real accomplishment. Track temporary conditions (Injured, Tired, Inspired) and clear them with time or action; a condition may carry the same effects: `status + Condition | effects`. Active conditions are in Status; condition text inside items or titles does not create a Status entry. For status removals, copy the existing condition name exactly, without explanations; clearing an already-absent condition is harmless. A changed condition needs two lines: `status - old condition` and `status + new condition`. Never put stats, modifiers or title names in prose."
   ].join("\n"),
-  commands: COMMANDS6,
-  template: (ctx) => commandTemplate("Inventory", COMMANDS6, ctx)
+  commands: COMMANDS7,
+  template: (ctx) => commandTemplate("Inventory", COMMANDS7, ctx)
 };
 
 // src/model/sections/last.js
-var COMMANDS7 = [
+var COMMANDS8 = [
   { id: "last.beat", form: "a beat later turns must honour", example: "Mara promised to meet Jan at the mill at dawn", keywords: [], freeText: true }
 ];
 var last_default = {
@@ -1504,12 +1697,12 @@ var last_default = {
   },
   prompt: (value2) => value2.length ? `Last beats: ${value2.join(" / ")}` : "",
   rules: () => "Last: one line per concrete event or line of dialogue from this reply that later turns must honour.",
-  commands: COMMANDS7,
-  template: (ctx) => commandTemplate("Last", COMMANDS7, ctx)
+  commands: COMMANDS8,
+  template: (ctx) => commandTemplate("Last", COMMANDS8, ctx)
 };
 
 // src/model/sections/chekhov.js
-var COMMANDS8 = [
+var COMMANDS9 = [
   { id: "chekhov.load", form: "load: setup (w2, hot, at 18:00)", example: "load: the locked cellar door (w2, hot, at 18:00)", keywords: ["load", "hot", "at"] },
   { id: "chekhov.fire", form: "fire B#: how it paid off", example: "fire B1: the cellar held the missing ledgers", keywords: ["fire"] },
   { id: "chekhov.lock", form: "lock B#: why", example: "lock B1: Mara has the only key", keywords: ["lock"] },
@@ -1734,8 +1927,8 @@ var chekhov_default = {
       fateFiring(ctx) ? "Firing: a bullet fires only when the turn says so (Fate's pick), or when it is due; pay it off naturally and never narrate the mechanics." : "Firing: you judge the moment — fire an eligible bullet when the story offers a natural opening, never forced; a due bullet fires when its hour comes. Pay it off naturally and never narrate the mechanics."
     ].join("\n");
   },
-  commands: COMMANDS8,
-  template: (ctx) => commandTemplate("Chekhov", COMMANDS8, ctx)
+  commands: COMMANDS9,
+  template: (ctx) => commandTemplate("Chekhov", COMMANDS9, ctx)
 };
 
 // src/model/fate-engine.js
@@ -2379,7 +2572,7 @@ var worldsim_default = {
 };
 
 // src/model/sections/thoughts.js
-var COMMANDS9 = [
+var COMMANDS10 = [
   { id: "thoughts.thought", form: "Name: this reply's raw thoughts", example: "Mara: he knows. he has to know. keep smiling.", keywords: [], freeText: true }
 ];
 function parseThoughtLine(line) {
@@ -2408,8 +2601,8 @@ var thoughts_default = {
   },
   prompt: () => "",
   rules: () => "Thoughts: include 1–3 NPCs whenever NPCs are involved in this reply, on-screen first (an off-screen one names where they are and what they are doing); 1–3 lines each, fragmented, impulsive and raw but true to the person, their mood and instincts. These are fictional character thoughts, written anew for this reply. Let them drive what the NPC does next.",
-  commands: COMMANDS9,
-  template: (ctx) => commandTemplate("Thoughts", COMMANDS9, ctx)
+  commands: COMMANDS10,
+  template: (ctx) => commandTemplate("Thoughts", COMMANDS10, ctx)
 };
 
 // src/model/check-line.js
@@ -2586,7 +2779,7 @@ function verifyCheck(parsed, { die, inv, user, caps }) {
 var arrow = (ctx) => ctx && ctx.checkStyle === "arrow";
 var signed2 = (n) => n < 0 ? `-${-n}` : `+${n}`;
 var capsOf = (ctx) => ctx?.config?.sectionConfig?.titles || DEFAULT_SECTION_CONFIG.titles;
-var COMMANDS10 = [
+var COMMANDS11 = [
   {
     id: "checks.check",
     form: (ctx) => arrow(ctx) ? "Actor, gamble · d20 n ±m · Trajectory · the price" : "Actor, action · category · DC n · d20 n + Title ±n … = ±sum · total t · Outcome",
@@ -2654,12 +2847,12 @@ var checks_default = {
   },
   prompt: () => "",
   rules: (ctx) => arrow(ctx) ? "Checks (Wind's Arrow): only uncertain, high-stakes kinetic gambles roll; mundane or conversational actions auto-pass. Commit to the outcome before writing: Wind Drift fails or is intercepted with a real setback, Grazing Shot succeeds at an immediate physical or tactical cost, Bullseye is clean. Under `Check:`, one line per roll used: `Actor, gamble · d20 n ±m · Trajectory · the price`." : dndRules(capsOf(ctx)),
-  commands: COMMANDS10,
-  template: (ctx) => commandTemplate("Check", COMMANDS10, ctx)
+  commands: COMMANDS11,
+  template: (ctx) => commandTemplate("Check", COMMANDS11, ctx)
 };
 
 // src/model/sections/physics.js
-var COMMANDS11 = [
+var COMMANDS12 = [
   { id: "physics.env", form: "Env: …", example: "Env: steady rain, lamplight, slick cobbles", keywords: ["Env"] },
   { id: "physics.scene", form: "Scene: …", example: "Scene: Mara at the door, Jan three paces back, the alley out of sight", keywords: ["Scene"] }
 ];
@@ -2687,12 +2880,12 @@ var physics_default = {
   },
   prompt: () => "",
   rules: () => "Physics: Env is this reply's hazards, weather and light; Scene is positions, distances and line of sight.",
-  commands: COMMANDS11,
-  template: (ctx) => commandTemplate("Physics", COMMANDS11, ctx)
+  commands: COMMANDS12,
+  template: (ctx) => commandTemplate("Physics", COMMANDS12, ctx)
 };
 
 // src/model/sections/registry.js
-var SECTIONS = [cast_default, agendas_default, locations_default, factions_default, quests_default, inventory_default, chekhov_default, fate_default, worldsim_default, last_default, thoughts_default, checks_default, physics_default];
+var SECTIONS = [cast_default, agendas_default, locations_default, factions_default, voices_default, quests_default, inventory_default, chekhov_default, fate_default, worldsim_default, last_default, thoughts_default, checks_default, physics_default];
 var enabledSections = (sections = {}) => SECTIONS.filter((s) => (sections || {})[s.key] !== false);
 var CORE_KEYS = ["scene", "relationships", "notebook"];
 var NEEDS_PRESENT = ["cast", "agendas", "locations", "chekhov"];
@@ -3526,7 +3719,7 @@ function parseScene(rows, base, errors) {
   }
 }
 function parseRelations(rows, base, prev, config, errors) {
-  const pairs = {}, selves = {}, awaiting = {}, pending = [];
+  const pairs2 = {}, selves = {}, awaiting = {}, pending = [];
   let pendingError = false;
   for (const row of rows) {
     const m = row.match(ROW);
@@ -3592,10 +3785,10 @@ function parseRelations(rows, base, prev, config, errors) {
         axes[t[1]] = Number(t[2]);
         acc[t[1]] = Number(t[3]);
       }
-      if (config.axes.every((a) => a.key in axes)) pairs[key2] = { from, to, axes, acc, ...note ? { note } : {} };
+      if (config.axes.every((a) => a.key in axes)) pairs2[key2] = { from, to, axes, acc, ...note ? { note } : {} };
       else {
         errors.push({ section: "RELATIONSHIPS", row });
-        if (prev?.rel?.pairs?.[key2]) pairs[key2] = clone2(prev.rel.pairs[key2]);
+        if (prev?.rel?.pairs?.[key2]) pairs2[key2] = clone2(prev.rel.pairs[key2]);
       }
     } else {
       const phi = fields.match(/Φ\s*(-?\d+)·(-?\d+)/);
@@ -3607,7 +3800,7 @@ function parseRelations(rows, base, prev, config, errors) {
     }
   }
   const savedPending = pendingError && prev?.rel?.pending ? clone2(prev.rel.pending) : pending;
-  base.rel = { pairs, selves, awaiting, ...savedPending.length ? { pending: savedPending } : {} };
+  base.rel = { pairs: pairs2, selves, awaiting, ...savedPending.length ? { pending: savedPending } : {} };
 }
 function parseBlock(text, { prev = null, config }) {
   const t = String(text || "");
@@ -4165,7 +4358,7 @@ function parseSola(mes, config = {}) {
 
 // src/model/import/index.js
 var FF = /<internal_states>|<!--\s*GFX_START\s*-->/i;
-var SOURCES = [
+var SOURCES2 = [
   ["ff", (mes) => FF.test(mes), parseFf],
   ["aa", (mes) => /<ledger\b/i.test(mes), parseAa],
   ["sola", (mes) => /<sola_hud\b|<story_notes>|<scene_cast>|<wardrobe>|<inventory>/i.test(mes), parseSola]
@@ -4178,7 +4371,7 @@ function importForeign(chat, config) {
     const m = msgs[i];
     if (!m || m.is_user || m.is_system) continue;
     const mes = String(m.mes || "");
-    const hit = SOURCES.find(([, test]) => test(mes));
+    const hit = SOURCES2.find(([, test]) => test(mes));
     if (hit) return { source: hit[0], index: i, ...hit[2](mes, config) };
   }
   return { source: null, index: -1, state: null, imported: [], rules: [], unread: [] };
@@ -4192,8 +4385,9 @@ var under = (lists, heading) => {
 };
 var linesUnder = (changes, heading) => under(changes && changes.sections, heading);
 var rawLinesUnder = (changes, heading) => changes && changes.raw ? under(changes.raw, heading) : linesUnder(changes, heading);
-function sectionContext(state, prevPresent, config, prevNow = "", changes = null) {
+function sectionContext(state, prevPresent, config, prevNow = "", changes = null, reply = null) {
   return {
+    reply: { text: "", voiceOverrides: {}, ...reply || {} },
     config,
     userName: config.userName,
     present: state.scene.present,
@@ -4657,14 +4851,14 @@ function popupHtml(tab, view, previewBaseDice = null) {
     }
   } else if (tab === "rel") {
     const here = /* @__PURE__ */ new Set([...state.scene.present, config.userName]);
-    const pairs = Object.values(state.rel.pairs).sort((a, b) => (here.has(b.from) || here.has(b.to)) - (here.has(a.from) || here.has(a.to)));
+    const pairs2 = Object.values(state.rel.pairs).sort((a, b) => (here.has(b.from) || here.has(b.to)) - (here.has(a.from) || here.has(a.to)));
     const awaiting = Object.entries(state.rel.awaiting || {}).map(([key2, note]) => `<div class="sl-item"><b>${esc2(key2.replace("→", " → "))}</b> · Awaiting NEW${note ? ` — ${esc2(note)}` : ""} <button class="menu_button" data-rel-prune="${esc2(key2)}">Prune</button></div>`).join("");
     const pruned = Object.entries(chatData.relationshipOverrides || {}).filter(([, entry2]) => entry2.pruned);
     const archived = pruned.length ? `<details class="sl-pruned"><summary>Pruned relationships (${pruned.length})</summary><p class="sl-meta">Saved for you; not sent or updated. Restore a tracker to resume it from its saved values.</p>${pruned.map(([key2, entry2]) => `<div class="sl-item"><b>${esc2(entry2.from)} → ${esc2(entry2.to)}</b> <button class="menu_button" data-rel-restore="${esc2(key2)}">Restore</button></div>`).join("")}</details>` : "";
     body = `<div class="sl-meta">Turn ${state.ct} · present: ${state.scene.present.map(esc2).join(", ") || "—"}</div>
             <p class="sl-meta">Edit the numbers in the newest reply's block to correct them; the next turn starts from your edit.</p>
             <p class="sl-meta">Prune a one-time relationship to stop sending and tracking it. Its saved values can be restored below. This applies only to the selected direction; the next reply's block reflects your choice.</p>
-            ${pairs.map((p) => pairCard(state, p.from, p.to, config)).join("") || (!awaiting ? "<p><i>No active relationships. The model creates them with NEW lines; on a chat that ran another preset, the first reply calibrates them from its old state.</i></p>" : "")}${awaiting}${archived}`;
+            ${pairs2.map((p) => pairCard(state, p.from, p.to, config)).join("") || (!awaiting ? "<p><i>No active relationships. The model creates them with NEW lines; on a chat that ran another preset, the first reply calibrates them from its old state.</i></p>" : "")}${awaiting}${archived}`;
   } else {
     const cf = config;
     const axisRows = cf.axes.map((a) => `<tr><td title="${esc2(a.meaning)}">${esc2(a.name)} (${a.key})</td><td><input type="number" class="text_pole sl-num" data-cfg-axis="${a.key}" data-field="period" value="${a.period}"></td><td><input type="number" class="text_pole sl-num" data-cfg-axis="${a.key}" data-field="threshold" value="${a.threshold}"></td></tr>`).join("");
@@ -4774,7 +4968,7 @@ function hudChips({ now = "", present = "", tier = "", source = "" } = {}) {
 }
 var TABS = [
   ["Scene", (k) => /^SCENE( CAST)?$/.test(k)],
-  ["People", (k) => /AGENDAS|LOCATIONS|FACTIONS/.test(k)],
+  ["People", (k) => /AGENDAS|LOCATIONS|FACTIONS|VOICES/.test(k)],
   ["Relationships", (k) => /RELATIONSHIPS/.test(k)],
   ["Story", (k) => /QUESTS|CHEKHOV|^LAST$|THOUGHTS/.test(k)],
   ["Fate", (k) => /FATE|WORLD|DND|ARROW|PHYSICS/.test(k)]
@@ -4803,7 +4997,7 @@ function pairRows(lines2) {
 
 // src/ui/themes/frankenstein.js
 var GROUPS = [
-  [/SCENE|AGENDAS|LOCATIONS|RELATIONSHIPS|FACTIONS|CAST/i, "sl-grp-people"],
+  [/SCENE|AGENDAS|LOCATIONS|RELATIONSHIPS|FACTIONS|CAST|VOICES/i, "sl-grp-people"],
   [/NOTEBOOK|QUESTS|CHEKHOV|THOUGHTS|INV|LAST/i, "sl-grp-memory"],
   [/FATE|WORLD|DND|PHYSICS|ARROW/i, "sl-grp-sim"]
 ];
@@ -5058,18 +5252,18 @@ function fudgeFromControls({ dice = {}, checks = { locked: false, values: [] }, 
   return fudge;
 }
 function configFormFromControls({ cfg = [], gate = [], phi = [], axes = [], decay = [], skip = void 0, chekhov: chekhov2 = [], firing = "model", fate: fate2 = [], titles = [], threadLimit = void 0 } = {}) {
-  const pairs = (list) => Object.fromEntries(list);
+  const pairs2 = (list) => Object.fromEntries(list);
   const nested = {};
   for (const [key2, field3, value2] of axes) (nested[key2] ||= {})[field3] = value2;
   const form = {
-    cfg: pairs(cfg),
-    gate: pairs(gate),
-    phi: pairs(phi),
+    cfg: pairs2(cfg),
+    gate: pairs2(gate),
+    phi: pairs2(phi),
     axes: nested,
-    decay: pairs(decay),
-    chekhov: { ...pairs(chekhov2), firing },
-    fate: pairs(fate2),
-    titles: pairs(titles)
+    decay: pairs2(decay),
+    chekhov: { ...pairs2(chekhov2), firing },
+    fate: pairs2(fate2),
+    titles: pairs2(titles)
   };
   if (skip !== void 0) form.skip = skip;
   if (threadLimit !== void 0) form.threadLimit = threadLimit;

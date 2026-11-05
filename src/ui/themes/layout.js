@@ -16,7 +16,7 @@ export function hudChips({ now = "", present = "", tier = "", source = "" } = {}
 
 const TABS = [
     ["Scene", k => /^SCENE( CAST)?$/.test(k)],
-    ["People", k => /AGENDAS|LOCATIONS|FACTIONS/.test(k)],
+    ["People", k => /AGENDAS|LOCATIONS|FACTIONS|VOICES/.test(k)],
     ["Relationships", k => /RELATIONSHIPS/.test(k)],
     ["Story", k => /QUESTS|CHEKHOV|^LAST$|THOUGHTS/.test(k)],
     ["Fate", k => /FATE|WORLD|DND|ARROW|PHYSICS/.test(k)],

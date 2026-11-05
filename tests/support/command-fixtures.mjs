@@ -371,6 +371,17 @@ export const FIXTURES = {
         valid: ["Ana: the harbour"],
     },
 
+    // ── Voices. Misspelling is inapplicable: the command has no keyword.
+    "voices.set": {
+        heading: "Voices",
+        expect(r) {
+            clean(r);
+            assert.deepEqual(r.state.voices, { Ana: { colour: "#3fa7a0", source: "model" } });
+        },
+        malformed: ["Ana: notacolour", "Ana:", ": #3fa7a0"],
+        valid: ["Ana = #3fa7a0", "Ana: orchid"],
+    },
+
     // ── Factions
     "factions.goal": factionFixture("goal", "control the docks", "gaol", ["Harbour Guild: goal | intel: control the docks"]),
     "factions.intel": factionFixture("intel", "knows about the smuggling", "intle", ["Harbour Guild: intel knows about the smuggling"]),

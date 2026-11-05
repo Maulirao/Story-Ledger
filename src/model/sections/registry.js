@@ -8,6 +8,7 @@ import cast from "./cast.js";
 import agendas from "./agendas.js";
 import locations from "./locations.js";
 import factions from "./factions.js";
+import voices from "./voices.js";
 import quests from "./quests.js";
 import inventory from "./inventory.js";
 import last from "./last.js";
@@ -18,7 +19,7 @@ import thoughts from "./thoughts.js";
 import checks from "./checks.js";
 import physics from "./physics.js";
 
-export const SECTIONS = [cast, agendas, locations, factions, quests, inventory, chekhov, fate, worldsim, last, thoughts, checks, physics];
+export const SECTIONS = [cast, agendas, locations, factions, voices, quests, inventory, chekhov, fate, worldsim, last, thoughts, checks, physics];
 
 /** Sections switched on in `sections` (a key that is missing counts as on). */
 export const enabledSections = (sections = {}) => SECTIONS.filter(s => (sections || {})[s.key] !== false);

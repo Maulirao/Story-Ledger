@@ -44,8 +44,9 @@ function removeThreads(threads, remove, rawRemove) {
 }
 
 /** The context every section hook receives. */
-export function sectionContext(state, prevPresent, config, prevNow = "", changes = null) {
+export function sectionContext(state, prevPresent, config, prevNow = "", changes = null, reply = null) {
     return {
+        reply: { text: "", voiceOverrides: {}, ...(reply || {}) },
         config, userName: config.userName, present: state.scene.present, prevPresent: prevPresent || [], prevNow,
         touched: new Set(), warnings: [], turn: {}, linesUnder: heading => linesUnder(changes, heading),
         // Comments preserve source order across headings; legacy/tagged inputs keep their grouped reading.
@@ -57,8 +58,11 @@ export function sectionContext(state, prevPresent, config, prevNow = "", changes
     };
 }
 
-/** `prev` + this reply's changes (null when the reply has none) → { state, log, unparsed, warnings }. */
-export function postTurn(prev, changes, config) {
+/**
+ * `prev` + this reply's changes (null when the reply has none) → { state, log, unparsed, warnings }.
+ * `reply` is the reply's prose ({ text, voiceOverrides }), read by sections that look at the prose itself.
+ */
+export function postTurn(prev, changes, config, reply = null) {
     const s = clone(prev);
     // a switched-off section ignores its lines (Present stays while a section needs it)
     const coreOn = k => (config.sections || {})[k] !== false;
@@ -77,7 +81,7 @@ export function postTurn(prev, changes, config) {
     s.ct = rel.state.ct;
     s.rel = { pairs: rel.state.pairs, selves: rel.state.selves, awaiting: rel.state.awaiting, ...(rel.state.pending?.length ? { pending: rel.state.pending } : {}) };
     s.perTurn = {};
-    const ctx = sectionContext(s, prev.scene.present, config, prev.scene.now, changes);
+    const ctx = sectionContext(s, prev.scene.present, config, prev.scene.now, changes, reply);
     const unparsed = [];
     const on = enabledSections(config.sections);
     for (const sec of on) if (sec.decide) ctx.turn[sec.key] = sec.decide(prev, ctx);

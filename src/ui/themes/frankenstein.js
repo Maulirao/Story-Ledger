@@ -6,7 +6,7 @@
 // ──────────────────────────────────────────────────────────────────────────────
 
 const GROUPS = [
-    [/SCENE|AGENDAS|LOCATIONS|RELATIONSHIPS|FACTIONS|CAST/i, "sl-grp-people"],
+    [/SCENE|AGENDAS|LOCATIONS|RELATIONSHIPS|FACTIONS|CAST|VOICES/i, "sl-grp-people"],
     [/NOTEBOOK|QUESTS|CHEKHOV|THOUGHTS|INV|LAST/i, "sl-grp-memory"],
     [/FATE|WORLD|DND|PHYSICS|ARROW/i, "sl-grp-sim"],
 ];
