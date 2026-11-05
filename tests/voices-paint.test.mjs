@@ -7,6 +7,7 @@ import { emptyState } from "../src/model/state.js";
 import { parseChanges } from "../src/model/changes.js";
 import { postTurn } from "../src/model/turn.js";
 import { planPaint, matchQuotes, pickColour, MIND_FILL } from "../src/model/voices.js";
+import { spanAttrs } from "../src/ui/voices-paint.js";
 
 const C = { ...resolveConfig(), userName: "Jan", sections: {} };
 
@@ -37,4 +38,9 @@ test("matchQuotes skips untagged quotes and ignores markdown", () => {
 });
 test("matchQuotes never matches backwards", () => {
     assert.deepEqual(matchQuotes(['"A"', '"B"'], ['"B"', '"A"']), [1, -1]);
+});
+
+test("spanAttrs builds the classes and colour variables", () => {
+    assert.deepEqual(spanAttrs({ top: "#3fa7a0", bottom: null, tone: null, mind: false }), { className: "sl-voice", style: "--sl-top:#3fa7a0;--sl-bottom:#3fa7a0" });
+    assert.deepEqual(spanAttrs({ top: "#3fa7a0", bottom: "#111111", tone: "whisper", mind: true }), { className: "sl-voice sl-voice-two sl-voice-mind sl-tone-whisper", style: "--sl-top:#3fa7a0;--sl-bottom:#111111" });
 });

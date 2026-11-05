@@ -250,3 +250,16 @@
     --sl-fk-fond: #f38ba8; --sl-fk-friction: #89b4fa;
 }
 .sl-theme-sola { --sl-fk-fond: #E07A5F; --sl-fk-gold: #F4A261; }
+
+/* ── Dialogue voices: <Name>"…" painted by Story Ledger. Two voices split each letter
+   (top / bottom); mind outlines the letter. Filters, not text-shadow: a text-shadow paints
+   over text whose colour is a clipped background. ── */
+.sl-voice { color: var(--sl-top); filter: var(--sl-f-tone,) var(--sl-f-mind,); }
+.sl-voice-two { background: linear-gradient(to bottom, var(--sl-top) 0 var(--sl-split, 55%), var(--sl-bottom) var(--sl-split, 55%) 100%);
+    -webkit-background-clip: text; background-clip: text; color: transparent; text-shadow: none;
+    -webkit-box-decoration-break: clone; box-decoration-break: clone; }
+.sl-voice-mind { --sl-f-mind: drop-shadow(0 0 0.6px #fff) drop-shadow(0 0 0.6px #fff); }
+.sl-tone-whisper { font-size: 0.85em; opacity: 0.75; font-style: italic; }
+.sl-tone-measured { font-weight: bold; letter-spacing: 0.8px; --sl-f-tone: drop-shadow(1px 1px 1px #000); }
+.sl-tone-shout { font-size: 1.15em; font-weight: 900; --sl-f-tone: drop-shadow(0 0 4px var(--sl-top)); }
+.sl-tone-tremble { letter-spacing: 1.5px; opacity: 0.85; font-style: italic; }
