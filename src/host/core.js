@@ -32,7 +32,7 @@ import { importForeign, proposeImportedRules } from "../model/import/index.js";
 import { SECTIONS } from "../model/sections/registry.js";
 import { rollTurnDice, withFudges, fudgesForGeneration, diceFromBlock } from "../model/dice.js";
 import { withRelationshipOverrides, filterPrunedRelationEvents, restoredReplyInputs } from "../model/relationship-pruning.js";
-import { MIND, colourHex, findVoice, voiceKey, withVoiceOverrides } from "../model/voices.js";
+import { MIND, MIND_FILL, colourHex, findVoice, voiceKey, withVoiceOverrides, nearDuplicates } from "../model/voices.js";
 
 export { generationBase, importFromLegacyNotebook };
 
@@ -525,6 +525,26 @@ export function popupHtml(tab, view, previewBaseDice = null) {
             <p class="sl-meta">Edit the numbers in the newest reply's block to correct them; the next turn starts from your edit.</p>
             <p class="sl-meta">Prune a one-time relationship to stop sending and tracking it. Its saved values can be restored below. This applies only to the selected direction; the next reply's block reflects your choice.</p>
             ${pairs.map(p => pairCard(state, p.from, p.to, config)).join("") || (!awaiting ? "<p><i>No active relationships. The model creates them with NEW lines; on a chat that ran another preset, the first reply calibrates them from its old state.</i></p>" : "")}${awaiting}${archived}`;
+    } else if (tab === "voices") {
+        const list = voiceList(view);
+        const sample = (cls, top, bottom = top, text = "Over here.") => `<span class="${cls}" style="--sl-top:${esc(top)};--sl-bottom:${esc(bottom)}">"${text}"</span>`;
+        const rows = Object.entries(list).map(([name, v]) => `<div class="sl-item sl-voice-row">
+            <span class="sl-voice-swatch" style="background:${esc(v.hex)}"></span> <b>${esc(name)}</b>
+            <input type="text" class="text_pole sl-voice-colour" data-voice-colour="${esc(name)}" value="${esc(v.colour)}">
+            <input type="color" data-voice-pick="${esc(name)}" value="${esc(v.hex)}">
+            <small>${esc(v.source)}</small> ${sample("sl-voice", v.hex)}
+            <span class="sl-btns"><button class="menu_button" data-voice-save="${esc(name)}">Save</button>${v.source === "you" ? `<button class="menu_button" data-voice-reset="${esc(name)}" title="Back to the block's colour">✕</button>` : ""}</span>
+        </div>`).join("") || "<p><i>No voices yet. They appear once the model tags a line of dialogue.</i></p>";
+        const mind = `<div class="sl-item sl-voice-row"><span class="sl-voice-swatch" style="background:${MIND_FILL}"></span> <b>mind</b> <small>reserved for telepathy</small> ${sample("sl-voice sl-voice-mind", MIND_FILL, MIND_FILL, "Can you hear me?")}</div>`;
+        const alike = nearDuplicates(Object.entries(list).map(([n, v]) => [n, v.hex]))
+            .map(([a, b]) => `<p class="sl-meta">⚠ ${esc(a)} and ${esc(b)} look alike (${esc(list[a].hex)} / ${esc(list[b].hex)})</p>`).join("");
+        body = `${s.sections.voices === false ? `<p class="sl-meta"><b>The 🎨 Voices section is switched off in Settings: colours are not painted or sent.</b></p>` : ""}
+            <p class="sl-meta">Each speaker's dialogue colour. The model picks one the first time someone speaks. A colour you set here wins on screen and in what the model is told, and is never written into a block; ✕ goes back to the block's colour.</p>
+            ${rows}${mind}${alike}
+            <h4>Add a voice</h4>
+            <div class="sl-btns"><input type="text" class="text_pole" id="sl-voice-new-name" placeholder="Name">
+                <input type="text" class="text_pole" id="sl-voice-new-colour" placeholder="colour name or #hex">
+                <button class="menu_button" id="sl-voice-add">Add</button></div>`;
     } else {
         const cf = config;
         const axisRows = cf.axes.map(a => `<tr><td title="${esc(a.meaning)}">${esc(a.name)} (${a.key})</td><td><input type="number" class="text_pole sl-num" data-cfg-axis="${a.key}" data-field="period" value="${a.period}"></td><td><input type="number" class="text_pole sl-num" data-cfg-axis="${a.key}" data-field="threshold" value="${a.threshold}"></td></tr>`).join("");
@@ -576,7 +596,7 @@ export function popupHtml(tab, view, previewBaseDice = null) {
     }
     return `<div class="sl-popup">
         <h3>📒 Story Ledger</h3>
-        <div class="sl-tabs sl-popup-tabs">${T("rules", "📜 Rules")}${T("threads", "🧵 Threads")}${T("clock", "🕰️ Clock")}${T("quests", "🗺️ Quests")}${T("rel", "💞 Relationships")}${T("dice", "🎲 Next turn")}${T("settings", "⚙️ Settings")}</div>
+        <div class="sl-tabs sl-popup-tabs">${T("rules", "📜 Rules")}${T("threads", "🧵 Threads")}${T("clock", "🕰️ Clock")}${T("quests", "🗺️ Quests")}${T("rel", "💞 Relationships")}${T("voices", "🎨 Voices")}${T("dice", "🎲 Next turn")}${T("settings", "⚙️ Settings")}</div>
         <div class="sl-popup-body">${body}</div>
     </div>`;
 }

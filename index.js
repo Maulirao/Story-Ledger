@@ -430,6 +430,17 @@ export async function openLedgerPopup(startTab = "rules") {
         done("Story time corrected.");
     });
     $root.on("click", "#sl-clock-clear", async () => { await saveChatData(d => { delete d.notebook.clockOverride; }); done(); });
+    const saveVoice = async (name, colour) => {
+        const out = core.setVoice(chatData(), name, colour);
+        if (!out.ok) { notice("warning", out.error, "🎨 Story Ledger"); return; }
+        await saveChatData(d => Object.assign(d, out.chatDataPatch));
+        done();
+        decorateAll();
+    };
+    $root.on("input", "[data-voice-pick]", e => { $(e.currentTarget).closest(".sl-voice-row").find("[data-voice-colour]").val(e.currentTarget.value); });
+    $root.on("click", "[data-voice-save]", e => saveVoice(e.currentTarget.dataset.voiceSave, $(e.currentTarget).closest(".sl-voice-row").find("[data-voice-colour]").val()));
+    $root.on("click", "[data-voice-reset]", e => saveVoice(e.currentTarget.dataset.voiceReset, null));
+    $root.on("click", "#sl-voice-add", () => saveVoice($root.find("#sl-voice-new-name").val(), $root.find("#sl-voice-new-colour").val()));
     $root.on("input", "[data-fudge-value]", e => {
         const key = e.currentTarget.dataset.fudgeValue;
         $root.find(`[data-fudge-lock="${key}"]`).prop("checked", true);

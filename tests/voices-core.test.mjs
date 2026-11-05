@@ -40,3 +40,18 @@ test("setVoice refuses mind, blanks and non-colours", () => {
     assert.equal(core.setVoice(d, " ", "red").error, "Give the voice a name.");
     assert.equal(core.setVoice(d, "Jim", "blurple").error, "Not a colour: blurple. Use a CSS colour name or #hex.");
 });
+
+test("the Voices tab lists voices, the reserved mind and look-alikes", () => {
+    const s = emptyState();
+    s.voices = { Kael: { colour: "#c0392b", source: "model" }, Mara: { colour: "#b03a2e", source: "model" } };
+    const chat = [reply(`Hi.\n\n${core.blockFor(s, { settings, chatData: core.normalizeChatData({}), userName: "Jan" })}`)];
+    const html = core.popupHtml("voices", { chat, settings, userName: "Jan",
+        chatData: core.normalizeChatData({ storyLedger: { voiceOverrides: { Jim: "orchid" } } }) });
+    for (const bit of ['data-voice-colour="Jim"', 'data-voice-reset="Jim"', "reserved for telepathy", "⚠ Kael and Mara look alike (#c0392b / #b03a2e)"]) assert.ok(html.includes(bit), bit);
+    assert.ok(!html.includes('data-voice-reset="Kael"'));
+});
+
+test("the Voices tab says when the section is switched off", () => {
+    const off = core.normalizeSettings({ sections: { voices: false } });
+    assert.match(core.popupHtml("voices", { chat: [], settings: off, userName: "Jan", chatData: core.normalizeChatData({}) }), /switched off in Settings/);
+});

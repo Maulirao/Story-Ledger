@@ -204,3 +204,6 @@
 .sl-tone-measured { font-weight: bold; letter-spacing: 0.8px; --sl-f-tone: drop-shadow(1px 1px 1px #000); }
 .sl-tone-shout { font-size: 1.15em; font-weight: 900; --sl-f-tone: drop-shadow(0 0 4px var(--sl-top)); }
 .sl-tone-tremble { letter-spacing: 1.5px; opacity: 0.85; font-style: italic; }
+.sl-voice-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.sl-voice-swatch { display: inline-block; width: 1em; height: 1em; border-radius: 3px; border: 1px solid rgba(255, 255, 255, 0.4); }
+.sl-voice-colour { width: 9em; }

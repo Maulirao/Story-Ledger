@@ -193,6 +193,12 @@ const setClock = act(async (args, snapshot, ctx) => {
     return answer({ ok: true }, [withData(snapshot, ctx, d => { d.notebook.clockOverride = { text, atLength: ctx.chat.length }; })]);
 });
 
+const setVoice = act(async (args, snapshot, ctx) => {
+    const out = core.setVoice(ctx.doc, args.name, args.colour ?? null);
+    if (!out.ok) return answer({ ok: false, error: out.error });
+    return answer({ ok: true }, [withData(snapshot, ctx, d => Object.assign(d, out.chatDataPatch))]);
+});
+
 const clearClock = act(async (args, snapshot, ctx) =>
     answer(null, [withData(snapshot, ctx, d => { delete d.notebook.clockOverride; })]));
 
@@ -306,6 +312,7 @@ export const actions = {
     save_threads: saveThreads,
     set_clock: setClock,
     clear_clock: clearClock,
+    set_voice: setVoice,
     save_fudges: saveFudges,
     clear_fudges: clearFudges,
     quests_send: questsSend,

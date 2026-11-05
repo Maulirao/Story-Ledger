@@ -46,7 +46,7 @@ function readConfigControls(root) {
  * Fill `body` with the ledger panel and wire it. `fixedTab` shows one tab with no tab strip (the page
  * under Settings → Extensions). Returns the cleanup the host runs when the panel closes.
  */
-export function mountLedger({ host, body, startTab = "rules", fixedTab = null, ready = async () => {}, getSettings, setSettings }) {
+export function mountLedger({ host, body, startTab = "rules", fixedTab = null, ready = async () => {}, getSettings, setSettings, voicesChanged = () => {} }) {
     let tab = fixedTab || startTab;
     let previewBaseDice = rollTurnDice();
     let view = null;
@@ -147,6 +147,17 @@ export function mountLedger({ host, body, startTab = "rules", fixedTab = null, r
             return;
         }
         if (on("#sl-clock-clear")) { await run("clear_clock", {}); return; }
+        if ((hit = on("[data-voice-save], [data-voice-reset], #sl-voice-add"))) {
+            const row = hit.closest(".sl-voice-row");
+            const args = hit.id === "sl-voice-add"
+                ? { name: body.querySelector("#sl-voice-new-name").value, colour: body.querySelector("#sl-voice-new-colour").value }
+                : hit.dataset.voiceReset !== undefined ? { name: hit.dataset.voiceReset, colour: null }
+                    : { name: hit.dataset.voiceSave, colour: row.querySelector("[data-voice-colour]").value };
+            const out = await run("set_voice", args);
+            if (out && out.ok === false) notify("warning", out.error);
+            else voicesChanged();
+            return;
+        }
         if (on("#sl-reroll-unlocked")) {
             previewBaseDice = rollTurnDice();
             for (const key of ["fate.a", "fate.b", "fate.c", "world"]) {
@@ -214,6 +225,11 @@ export function mountLedger({ host, body, startTab = "rules", fixedTab = null, r
 
     function onInput(event) {
         const el = event.target;
+        if (el.matches?.("[data-voice-pick]")) {
+            const text = el.closest(".sl-voice-row")?.querySelector("[data-voice-colour]");
+            if (text) text.value = el.value;
+            return;
+        }
         if (el.matches?.("[data-fudge-value]")) {
             const lock = body.querySelector(`[data-fudge-lock="${el.dataset.fudgeValue}"]`);
             if (lock) lock.checked = true;

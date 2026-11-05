@@ -195,7 +195,7 @@ export default function register(host) {
         refreshDecorations();
     }
 
-    const panelArgs = body => ({ host, body, ready: loadSettings, getSettings: () => settings, setSettings });
+    const panelArgs = body => ({ host, body, ready: loadSettings, getSettings: () => settings, setSettings, voicesChanged: refreshVoices });
     function openPanel(startTab = "rules") {
         host.openPanel({ title: TITLE, render: body => mountLedger({ ...panelArgs(body), startTab }) });
     }

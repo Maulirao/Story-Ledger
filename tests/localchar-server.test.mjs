@@ -484,3 +484,11 @@ test("the server entry imports no host and no DOM", () => {
         for (const forbidden of [/SillyTavern/, /\bdocument\b/, /\bwindow\b/, /toastr/, /\bjQuery\b/]) assert.doesNotMatch(code, forbidden, `${file} ${forbidden}`);
     }
 });
+
+test("voices: the reader sets a colour, and mind is refused", async () => {
+    const snap = await snapshotOf();
+    assert.deepEqual(dataOf(await act("set_voice", { name: "Jim", colour: "orchid" }, snap)).voiceOverrides, { Jim: "orchid" });
+    const refused = await act("set_voice", { name: "mind", colour: "red" }, snap);
+    assert.deepEqual(refused.result, { ok: false, error: '"mind" is reserved for telepathy.' });
+    assert.deepEqual(refused.effects, []);
+});
