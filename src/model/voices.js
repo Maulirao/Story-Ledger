@@ -141,6 +141,46 @@ export function withVoiceOverrides(voices, overrides) {
     return out;
 }
 
+// ── Painting ────────────────────────────────────────────────────────────────
+
+/**
+ * What to paint for each tagged quote in `text`, given the chat's voices ({ name: { hex } }):
+ * { quote, top, bottom (null for one voice), tone, mind }. A voice resolves to the list, then
+ * a palette name, then mind; a voice nobody named yet gets the colour the fill-in will give it.
+ */
+export function planPaint(text, list) {
+    const taken = Object.values(list || {}).map(v => v.hex).filter(Boolean);
+    const picks = new Map();
+    const resolve = v => {
+        const k = findVoice(list, v);
+        if (k !== null && list[k].hex) return { hex: list[k].hex, mind: false };
+        const named = colourHex(v);
+        if (named) return { hex: named, mind: false };
+        if (voiceKey(v) === MIND) return { hex: MIND_FILL, mind: true };
+        if (!picks.has(voiceKey(v))) picks.set(voiceKey(v), pickColour([...taken, ...picks.values()]));
+        return { hex: picks.get(voiceKey(v)), mind: false };
+    };
+    return readVoiceTags(text).map(tag => {
+        const [a, b] = tag.voices.slice(0, 2).map(resolve);
+        return { quote: tag.quote, top: a.hex, bottom: b ? b.hex : null, tone: tag.tone, mind: a.mind || Boolean(b && b.mind) };
+    });
+}
+
+/** A quote reduced to its letters and digits, lower-cased: markdown and quote marks drop out. */
+export const quoteKey = s => String(s ?? "").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
+
+/** For each planned quote, in order, the index of the next on-screen quote with the same words, or -1. */
+export function matchQuotes(planned, onScreen) {
+    let from = 0;
+    return planned.map(q => {
+        const k = quoteKey(q);
+        for (let i = from; i < onScreen.length; i++) {
+            if (quoteKey(onScreen[i]) === k) { from = i + 1; return i; }
+        }
+        return -1;
+    });
+}
+
 // ── Tags ────────────────────────────────────────────────────────────────────
 
 const NAME = String.raw`[\p{L}\p{N}][\p{L}\p{N} '’_-]{0,39}`;
