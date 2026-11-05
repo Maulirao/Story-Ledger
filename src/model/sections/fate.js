@@ -5,7 +5,7 @@
 // ──────────────────────────────────────────────────────────────────────────────
 
 import { esc, unesc, ROW, closedForm } from "../text.js";
-import { nextId } from "../state.js";
+import { nextId } from "../ids.js";
 import { computeFate, reachFor } from "../fate-engine.js";
 import { commandTemplate } from "../commands.js";
 import { DEFAULT_SECTION_CONFIG } from "../config.js";

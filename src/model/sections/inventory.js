@@ -8,7 +8,7 @@
 import { esc, unesc, ROW, nameMatches, closedForm } from "../text.js";
 import { commandTemplate } from "../commands.js";
 import { foldQuotes } from "../normalize.js";
-import { nextId } from "../state.js";
+import { nextId } from "../ids.js";
 import { decimal, adjustDecimal } from "../decimal.js";
 import { parseEffects, formatEffects, readLegacyList, mergeEntries } from "../effects.js";
 import { resolveConfig } from "../config.js";

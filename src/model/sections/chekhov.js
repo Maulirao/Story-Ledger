@@ -6,7 +6,7 @@
 // ──────────────────────────────────────────────────────────────────────────────
 
 import { esc, unesc, ROW, closedForm } from "../text.js";
-import { nextId } from "../state.js";
+import { nextId } from "../ids.js";
 import { parseStoryTime, lockTime, isAtOrPast } from "../storytime.js";
 import { commandTemplate } from "../commands.js";
 

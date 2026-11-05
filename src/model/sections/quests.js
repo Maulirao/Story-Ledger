@@ -4,7 +4,7 @@
 // ──────────────────────────────────────────────────────────────────────────────
 
 import { esc, unesc, ROW, fieldsOf, closedForm } from "../text.js";
-import { nextId } from "../state.js";
+import { nextId } from "../ids.js";
 import { commandTemplate } from "../commands.js";
 
 const STATUS = ["active", "done", "dropped"];

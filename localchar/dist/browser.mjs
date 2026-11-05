@@ -495,18 +495,7 @@ var factions_default = {
   template: (ctx) => commandTemplate("Factions", COMMANDS4, ctx)
 };
 
-// src/model/state.js
-function emptyState() {
-  const s = {
-    ct: 0,
-    scene: { now: "", present: [], public: false },
-    threads: [],
-    rel: { pairs: {}, selves: {}, awaiting: {} },
-    perTurn: {}
-  };
-  for (const sec of SECTIONS) if (sec.carried) s[sec.key] = sec.empty();
-  return s;
-}
+// src/model/ids.js
 function nextId(state, kind, existing = []) {
   state.ids = state.ids || {};
   const seen = existing.map((id) => Number(String(id).slice(kind.length))).filter(Number.isFinite);
@@ -3484,6 +3473,19 @@ function parseLegacyLines(body, mes) {
   out.relations = parseRelationLines(raw.Relationships || raw.relationships || [], { legacy: true });
   out.proposals = parseNotebookBlock(mes).proposals;
   return out;
+}
+
+// src/model/state.js
+function emptyState() {
+  const s = {
+    ct: 0,
+    scene: { now: "", present: [], public: false },
+    threads: [],
+    rel: { pairs: {}, selves: {}, awaiting: {} },
+    perTurn: {}
+  };
+  for (const sec of SECTIONS) if (sec.carried) s[sec.key] = sec.empty();
+  return s;
 }
 
 // src/model/block.js

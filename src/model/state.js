@@ -19,14 +19,4 @@ export function emptyState() {
     return s;
 }
 
-/**
- * The next id of `kind` ("Q1", "Q2", …). Ids are counted, so one is never handed out
- * twice; `existing` are ids already in the state (a row the reader added by hand), which
- * the count also skips past. Mutates.
- */
-export function nextId(state, kind, existing = []) {
-    state.ids = state.ids || {};
-    const seen = existing.map(id => Number(String(id).slice(kind.length))).filter(Number.isFinite);
-    state.ids[kind] = Math.max(state.ids[kind] || 0, ...seen) + 1;
-    return `${kind}${state.ids[kind]}`;
-}
+export { nextId } from "./ids.js";
