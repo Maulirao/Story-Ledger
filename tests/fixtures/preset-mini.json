@@ -1,5 +1,6 @@
 {
   "temperature": 1,
+  "extensions": { "regex_scripts": [ { "scriptName": "Shout Dialogue Regex ", "disabled": false }, { "scriptName": "FF5 UI - Menu Teal", "disabled": false } ] },
   "prompts": [
     { "identifier": "main", "name": "Main Prompt", "content": "Be good.\nStep 2. Update the internal states block." },
     { "identifier": "p-states", "name": "👾Internal States 💾🎮", "content": "Write the block." },

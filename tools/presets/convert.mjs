@@ -19,13 +19,14 @@ const LINGERING = /<internal_states>|<ledger>/i;
 const findPrompt = (preset, key) => (preset.prompts || []).find(p => p.name === key || p.identifier === key || (p.name || "").trim() === String(key).trim());
 
 /**
- * Apply `recipe` ({ add: [{ after, enabled, prompt }], off: string[], edits: [{ prompt, find, replace }] }) to a preset object.
- * Returns { preset, report: { added: [{ name, after, enabled }], off: [{ name, identifier, was }], edits: [{ prompt, find, replace }], missing: string[] } };
+ * Apply `recipe` ({ add: [{ after, enabled, prompt }], off: string[], regexOff: string[], edits: [{ prompt, find, replace }] }) to a preset object.
+ * `regexOff` names regex scripts (by name, trimmed) in extensions.regex_scripts to disable.
+ * Returns { preset, report: { added: [{ name, after, enabled }], off: [{ name, identifier, was }], regexOff: [{ name, was }], edits: [{ prompt, find, replace }], missing: string[] } };
  * when `missing` is non-empty the returned preset is the untouched input.
  */
 export function applyRecipe(input, recipe) {
     const preset = JSON.parse(JSON.stringify(input));
-    const report = { added: [], off: [], edits: [], missing: [], warnings: [] };
+    const report = { added: [], off: [], regexOff: [], edits: [], missing: [], warnings: [] };
     // a new prompt goes in right after its anchor, in the prompt list and in every order that holds the anchor
     for (const { after, enabled, prompt } of recipe.add || []) {
         if (findPrompt(preset, prompt.identifier) || findPrompt(preset, prompt.name)) { report.missing.push(`prompt exists: ${prompt.name}`); continue; }
@@ -44,6 +45,12 @@ export function applyRecipe(input, recipe) {
         const entries = (preset.prompt_order || []).flatMap(o => o.order || []).filter(e => e.identifier === p.identifier);
         report.off.push({ name: p.name, identifier: p.identifier, was: entries.map(e => e.enabled) });
         for (const e of entries) e.enabled = false;
+    }
+    const scripts = preset.extensions?.regex_scripts || [];
+    for (const name of recipe.regexOff || []) {
+        const hits = scripts.filter(sc => String(sc.scriptName || "").trim() === String(name).trim());
+        if (!hits.length) { report.missing.push(`regex: ${name}`); continue; }
+        for (const sc of hits) { report.regexOff.push({ name: String(name).trim(), was: Boolean(sc.disabled) }); sc.disabled = true; }
     }
     for (const edit of recipe.edits || []) {
         const p = findPrompt(preset, edit.prompt);
@@ -71,6 +78,7 @@ export function formatReport(recipe, report, target, exists) {
     if (report.added.length) out.push("Added:", ...report.added.map(a => `  - ${a.name.trim()}  (after ${a.after.trim()}, ${a.enabled ? "on" : "off"})`), "");
     out.push("Switched off:");
     for (const o of report.off) out.push(`  - ${o.name.trim()}  (${o.was.map(w => (w ? "on" : "off")).join("/") || "not in any order"} → off)`);
+    if (report.regexOff && report.regexOff.length) out.push("", "Regex off:", ...report.regexOff.map(r => `  - ${r.name}  (${r.was ? "already off" : "on → off"})`));
     out.push("", "Text edits:");
     for (const e of report.edits) out.push(`  - ${e.prompt.trim()}`, `      before: ${short(e.find)}`, `      after:  ${short(e.replace)}`);
     if (report.warnings && report.warnings.length) out.push("", "WARNING — still on and still mention <internal_states> or <ledger>:", ...report.warnings.map(w => `  - ${w.trim()}`));

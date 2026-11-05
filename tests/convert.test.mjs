@@ -69,3 +69,15 @@ test("prompts left on that still order the old block are reported as warnings", 
     assert.deepEqual(report.warnings, ["Post-History Instructions"]);
     assert.deepEqual(report.missing, []);
 });
+
+test("regexOff disables exactly the named scripts and reports them", () => {
+    const { preset, report } = applyRecipe(mini(), { off: [], edits: [], regexOff: ["Shout Dialogue Regex"] });
+    assert.deepEqual(preset.extensions.regex_scripts.map(s => s.disabled), [true, false]);
+    assert.deepEqual(report.regexOff, [{ name: "Shout Dialogue Regex", was: false }]);
+});
+
+test("a regexOff name that is missing aborts the preset", () => {
+    const { preset, report } = applyRecipe(mini(), { off: [], edits: [], regexOff: ["nope"] });
+    assert.deepEqual(report.missing, ["regex: nope"]);
+    assert.deepEqual(preset, mini());
+});
