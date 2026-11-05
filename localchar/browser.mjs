@@ -12,6 +12,7 @@ import * as frankensteinTheme from "../src/ui/themes/frankenstein.js";
 import * as solaTheme from "../src/ui/themes/sola.js";
 import * as meguminTheme from "../src/ui/themes/megumin.js";
 import { undecorate } from "../src/ui/themes/common.js";
+import { paintVoices, unpaintVoices } from "../src/ui/voices-paint.js";
 import { mountLedger } from "./panel.mjs";
 
 const THEMES = { frankenstein: frankensteinTheme, sola: solaTheme, megumin: meguminTheme };
@@ -126,6 +127,17 @@ export default function register(host) {
         offHook = host.onMessageRendered(decorate);
     }
 
+    /** Fetch the chat data again (the reader's voice colours live there), then redraw. */
+    function refreshVoices() {
+        Promise.resolve(host.chat.refreshChatData?.()).catch(noop).then(refreshDecorations);
+    }
+
+    // The chat's voices: the newest block's, with the reader's colours from the chat data on top.
+    const voiceList = () => core.voiceList({
+        chat: stChat(), settings, userName,
+        chatData: core.normalizeChatData({ storyLedger: host.chat.chatData()?.data }),
+    });
+
     // The host does not hand an extension the reader's name; the server knows it. Learned once, quietly.
     function learnUserName() {
         if (userName || learningUser || !host.chat.branchId()) return;
@@ -137,7 +149,10 @@ export default function register(host) {
     }
 
     function decorate(el, message) {
-        if (!settings.enabled || !String(message.content ?? "").includes(BLOCK_MARK)) { undecorate(el); return noop; }
+        // every message's dialogue is painted, block or not, user or AI
+        if (settings.enabled && settings.sections.voices !== false) paintVoices(el, String(message.content ?? ""), voiceList());
+        else unpaintVoices(el);
+        if (!settings.enabled || !String(message.content ?? "").includes(BLOCK_MARK)) { undecorate(el); return () => unpaintVoices(el); }
         learnUserName();
         const theme = THEMES[settings.theme] || THEMES.frankenstein;
         const config = core.engineConfig(settings, userName);
@@ -158,7 +173,7 @@ export default function register(host) {
             nextTurn: () => openPanel("dice"),
         });
         el.addEventListener("click", onClick);
-        return () => { el.removeEventListener("click", onClick); undecorate(el); };
+        return () => { el.removeEventListener("click", onClick); undecorate(el); unpaintVoices(el); };
     }
 
     // The stored settings arrive after register (and again after every update reloads the bundle).
@@ -191,6 +206,7 @@ export default function register(host) {
     const offPage = host.settingsPanel(body => mountLedger({ ...panelArgs(body), fixedTab: "settings" }));
 
     loadSettings().catch(noop);
+    refreshVoices();
 
     return () => {
         disposed = true;

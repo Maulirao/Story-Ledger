@@ -24,6 +24,7 @@ import * as frankensteinTheme from "./src/ui/themes/frankenstein.js";
 import * as solaTheme from "./src/ui/themes/sola.js";
 import * as meguminTheme from "./src/ui/themes/megumin.js";
 import { undecorate } from "./src/ui/themes/common.js";
+import { paintVoices, unpaintVoices } from "./src/ui/voices-paint.js";
 
 const THEMES = { frankenstein: frankensteinTheme, sola: solaTheme, megumin: meguminTheme };
 
@@ -302,9 +303,23 @@ function decorateMessage(i, newestIndex = newestBlockIndex()) {
     const theme = THEMES[s.theme] || THEMES.frankenstein;   // display only: the message text never changes
     theme.decorate(el, { config: engineConfig(), mesIndex: i, isNewest: i === newestIndex, fixup: i === newestIndex ? fixupCaseFor(i) : null });
 }
+// Dialogue voices on every message, block or not, user or AI. `voices` null: painting is off.
+function paintMessage(i, voices) {
+    const el = document.querySelector(`#chat .mes[mesid="${i}"] .mes_text`);
+    if (!el) return;
+    if (!voices) { unpaintVoices(el); return; }
+    paintVoices(el, String(((ctx().chat || [])[i] || {}).mes || ""), voices);
+}
 const decorateAll = () => {
     const newestIndex = newestBlockIndex();
-    document.querySelectorAll("#chat .mes[mesid]").forEach(el => decorateMessage(Number(el.getAttribute("mesid")), newestIndex));
+    const s = settings();
+    const voices = s.enabled && s.sections.voices !== false
+        ? core.voiceList({ chat: ctx().chat || [], settings: s, chatData: chatData(), userName: ctx().name1 }) : null;
+    document.querySelectorAll("#chat .mes[mesid]").forEach(el => {
+        const i = Number(el.getAttribute("mesid"));
+        decorateMessage(i, newestIndex);
+        paintMessage(i, voices);
+    });
 };
 
 // While a reply streams, the unfinished comment is shown as text until "-->"
@@ -591,7 +606,7 @@ function init() {
     if (t.GENERATE_AFTER_COMBINE_PROMPTS) c.eventSource.on(t.GENERATE_AFTER_COMBINE_PROMPTS, data => {
         if (data && typeof data.prompt === "string" && settings().enabled) data.prompt = stripPromptText(data.prompt);
     });
-    for (const ev of [t.CHARACTER_MESSAGE_RENDERED, t.MESSAGE_UPDATED, t.MESSAGE_SWIPED, t.MESSAGE_EDITED]) {
+    for (const ev of [t.CHARACTER_MESSAGE_RENDERED, t.USER_MESSAGE_RENDERED, t.MESSAGE_UPDATED, t.MESSAGE_SWIPED, t.MESSAGE_EDITED]) {
         if (ev) c.eventSource.on(ev, () => setTimeout(decorateAll, 0));
     }
     for (const ev of [t.CHAT_CHANGED, t.MORE_MESSAGES_LOADED]) if (ev) c.eventSource.on(ev, () => setTimeout(decorateAll, 0));

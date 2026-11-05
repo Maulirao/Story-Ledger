@@ -251,3 +251,18 @@ test("settings that could not be read are never saved over", async () => {
     await assert.rejects(body.fire("change", setControl("fixupMode", "lean")));
     assert.equal(log.settingsSaved, undefined);
 });
+
+test("every message is painted, and the Voices switch turns painting off", async () => {
+    for (const [settings, paints] of [[{}, true], [{ sections: { voices: false } }, false]]) {
+        const { host, log } = fakeHost({ settings });
+        register(host);
+        await new Promise(r => setTimeout(r, 0));
+        const asked = [];
+        const el = { querySelectorAll: s => (asked.push(s), []), addEventListener() {}, removeEventListener() {},
+            ownerDocument: { createTreeWalker: () => ({ nextNode: () => false }) } };
+        const cleanup = log.hooks.at(-1)(el, { id: "m1", revision: "r", content: '<jim>"Hi."', isUser: false, isSystem: false, depth: 0 });
+        assert.equal(asked.includes("q"), paints);
+        assert.equal(typeof cleanup, "function");
+        cleanup();
+    }
+});

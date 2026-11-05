@@ -497,6 +497,7 @@ var factions_default = {
 
 // src/model/voices.js
 var MIND = "mind";
+var MIND_FILL = "#111111";
 var TONES = ["whisper", "measured", "shout", "tremble"];
 var TONE_ALIASES = { steady: "measured", heavy: "shout", bite: "shout" };
 var SOLA = {
@@ -589,6 +590,42 @@ function findVoice(list, name) {
   if (exact !== void 0) return exact;
   const byFirst = keys.filter((x) => voiceKey(x).split(" ")[0] === k);
   return byFirst.length === 1 ? byFirst[0] : null;
+}
+function withVoiceOverrides(voices, overrides) {
+  const out = { ...voices || {} };
+  for (const [name, colour] of Object.entries(overrides || {})) out[findVoice(out, name) ?? name] = { colour, source: "you" };
+  return out;
+}
+function planPaint(text, list) {
+  const taken = Object.values(list || {}).map((v) => v.hex).filter(Boolean);
+  const picks = /* @__PURE__ */ new Map();
+  const resolve = (v) => {
+    const k = findVoice(list, v);
+    if (k !== null && list[k].hex) return { hex: list[k].hex, mind: false };
+    const named = colourHex(v);
+    if (named) return { hex: named, mind: false };
+    if (voiceKey(v) === MIND) return { hex: MIND_FILL, mind: true };
+    if (!picks.has(voiceKey(v))) picks.set(voiceKey(v), pickColour([...taken, ...picks.values()]));
+    return { hex: picks.get(voiceKey(v)), mind: false };
+  };
+  return readVoiceTags(text).map((tag2) => {
+    const [a, b] = tag2.voices.slice(0, 2).map(resolve);
+    return { quote: tag2.quote, top: a.hex, bottom: b ? b.hex : null, tone: tag2.tone, mind: a.mind || Boolean(b && b.mind) };
+  });
+}
+var quoteKey = (s) => String(s ?? "").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
+function matchQuotes(planned, onScreen) {
+  let from = 0;
+  return planned.map((q) => {
+    const k = quoteKey(q);
+    for (let i = from; i < onScreen.length; i++) {
+      if (quoteKey(onScreen[i]) === k) {
+        from = i + 1;
+        return i;
+      }
+    }
+    return -1;
+  });
 }
 var NAME = String.raw`[\p{L}\p{N}][\p{L}\p{N} '’_-]{0,39}`;
 var TAG2 = new RegExp(String.raw`<\s*(?:color\s*:\s*)?(${NAME}(?:\s*\+\s*${NAME})*)((?:\s*:\s*[a-z][a-z0-9_-]{0,24})*)\s*>\s*([“"][^”"]{1,2000}?[”"])(?:\s*<\s*\/[^<>\n\r]{0,40}>)?`, "giu");
@@ -4729,6 +4766,11 @@ function startOf(chat, index, config, chatData, rebuilding = false) {
   return { state: withRelationshipOverrides(withClockOverride(s, d.notebook.clockOverride, -1), d.relationshipOverrides, -1, config, rebuilding ? index : null), errors: [] };
 }
 var stateBefore = (chat, index, config, chatData) => startOf(chat, index, config, chatData).state;
+function voiceList({ chat, settings, chatData, userName }) {
+  const found = latestState(chat || [], (chat || []).length, engineConfig(settings, userName));
+  const merged = withVoiceOverrides(found?.state.voices || {}, chatData.voiceOverrides || {});
+  return Object.fromEntries(Object.entries(merged).map(([name, v]) => [name, { colour: v.colour, hex: colourHex(v.colour), source: v.source }]));
+}
 function fixupCaseFor({ chat, index, settings, busy }) {
   const msg = chat[index];
   if (busy || !settings.enabled || !msg || index !== chat.length - 1 || msg.is_user || msg.is_system) return null;
@@ -5217,6 +5259,63 @@ function decorate3(root, ctx) {
   show5(groups[0].tab);
 }
 
+// src/ui/voices-paint.js
+var SHOW_TEXT = 4;
+var QUOTE = /[“"][^”"]{1,2000}?[”"]/g;
+function spanAttrs(span) {
+  const className = ["sl-voice", span.bottom ? "sl-voice-two" : "", span.mind ? "sl-voice-mind" : "", span.tone ? `sl-tone-${span.tone}` : ""].filter(Boolean).join(" ");
+  return { className, style: `--sl-top:${span.top};--sl-bottom:${span.bottom ?? span.top}` };
+}
+function voiceSpan(doc, span) {
+  const el = doc.createElement("span");
+  const { className, style } = spanAttrs(span);
+  el.className = className;
+  el.setAttribute("style", style);
+  el.setAttribute("data-sl-voice", "");
+  return el;
+}
+var inBlock = (node) => Boolean((node.nodeType === 1 ? node : node.parentElement)?.closest?.("details, .sl-ui"));
+function unpaintVoices(el) {
+  for (const span of [...el.querySelectorAll("[data-sl-voice]")]) {
+    const parent = span.parentNode;
+    while (span.firstChild) parent.insertBefore(span.firstChild, span);
+    parent.removeChild(span);
+    parent.normalize?.();
+  }
+}
+function paintVoices(el, rawText, list) {
+  unpaintVoices(el);
+  const plan = planPaint(rawText, list);
+  if (!plan.length) return;
+  const planned = plan.map((p) => p.quote);
+  const doc = el.ownerDocument;
+  const qs = [...el.querySelectorAll("q")].filter((q) => !inBlock(q));
+  if (qs.length) {
+    matchQuotes(planned, qs.map((q) => q.textContent)).forEach((at, i) => {
+      if (at < 0) return;
+      const span = voiceSpan(doc, plan[i]);
+      while (qs[at].firstChild) span.appendChild(qs[at].firstChild);
+      qs[at].appendChild(span);
+    });
+    return;
+  }
+  const found = [];
+  const walker = doc.createTreeWalker(el, SHOW_TEXT);
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    if (inBlock(node)) continue;
+    for (const m of node.data.matchAll(QUOTE)) found.push({ node, start: m.index, end: m.index + m[0].length, text: m[0] });
+  }
+  const hits = matchQuotes(planned, found.map((f) => f.text)).map((at, i) => ({ at, i })).filter((h) => h.at >= 0);
+  for (const { at, i } of hits.reverse()) {
+    const { node, start, end } = found[at];
+    const quote = node.splitText(start);
+    quote.splitText(end - start);
+    const span = voiceSpan(doc, plan[i]);
+    quote.parentNode.insertBefore(span, quote);
+    span.appendChild(quote);
+  }
+}
+
 // localchar/st-chat.mjs
 function toStChat(history, { userName = "", charName = "" } = {}) {
   return (history || []).map((m) => {
@@ -5631,6 +5730,15 @@ ${body}`) : true);
     offHook();
     offHook = host.onMessageRendered(decorate4);
   }
+  function refreshVoices() {
+    Promise.resolve(host.chat.refreshChatData?.()).catch(noop).then(refreshDecorations);
+  }
+  const voiceList2 = () => voiceList({
+    chat: stChat(),
+    settings,
+    userName,
+    chatData: normalizeChatData({ storyLedger: host.chat.chatData()?.data })
+  });
   function learnUserName() {
     if (userName || learningUser || !host.chat.branchId()) return;
     learningUser = true;
@@ -5644,9 +5752,11 @@ ${body}`) : true);
     });
   }
   function decorate4(el, message) {
+    if (settings.enabled && settings.sections.voices !== false) paintVoices(el, String(message.content ?? ""), voiceList2());
+    else unpaintVoices(el);
     if (!settings.enabled || !String(message.content ?? "").includes(BLOCK_MARK)) {
       undecorate(el);
-      return noop;
+      return () => unpaintVoices(el);
     }
     learnUserName();
     const theme = THEMES[settings.theme] || THEMES.frankenstein;
@@ -5673,6 +5783,7 @@ ${body}`) : true);
     return () => {
       el.removeEventListener("click", onClick);
       undecorate(el);
+      unpaintVoices(el);
     };
   }
   let settingsLoaded = false;
@@ -5703,6 +5814,7 @@ ${body}`) : true);
   const offMenu = host.addChatMenuItem("Story Ledger", () => openPanel("rules"));
   const offPage = host.settingsPanel((body) => mountLedger({ ...panelArgs(body), fixedTab: "settings" }));
   loadSettings().catch(noop);
+  refreshVoices();
   return () => {
     disposed = true;
     offHook();
