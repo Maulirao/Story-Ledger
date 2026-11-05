@@ -25,6 +25,7 @@ import * as solaTheme from "./src/ui/themes/sola.js";
 import * as meguminTheme from "./src/ui/themes/megumin.js";
 import { undecorate } from "./src/ui/themes/common.js";
 import { paintVoices, unpaintVoices } from "./src/ui/voices-paint.js";
+import { colourPieces, isColourScript } from "./src/model/preset-colours.js";
 
 const THEMES = { frankenstein: frankensteinTheme, sola: solaTheme, megumin: meguminTheme };
 
@@ -303,6 +304,41 @@ function decorateMessage(i, newestIndex = newestBlockIndex()) {
     const theme = THEMES[s.theme] || THEMES.frankenstein;   // display only: the message text never changes
     theme.decorate(el, { config: engineConfig(), mesIndex: i, isNewest: i === newestIndex, fixup: i === newestIndex ? fixupCaseFor(i) : null });
 }
+// A preset's own dialogue colours fight Story Ledger's: offer, once per preset per session, to turn
+// them off. Nothing changes without the reader's click.
+const checkedPresets = new Set();
+function checkPresetColours() {
+    const s = settings();
+    if (!s.enabled || s.sections.voices === false) return;
+    const c = ctx();
+    const pm = c.getPresetManager?.();
+    const cc = c.chatCompletionSettings || {};
+    const name = pm?.getSelectedPresetName?.() ?? cc.preset_settings_openai ?? "";
+    if (checkedPresets.has(name)) return;
+    checkedPresets.add(name);
+    const found = colourPieces({
+        prompts: cc.prompts, order: cc.prompt_order,
+        presetRegex: pm?.readPresetExtensionField?.({ path: "regex_scripts" }) || [],
+        globalRegex: c.extensionSettings?.regex || [],
+    });
+    if (!found.prompts.length && !found.presetRegex.length && !found.globalRegex.length) return;
+    const turnOff = async () => {
+        const ids = new Set(found.prompts.map(p => p.identifier));
+        for (const o of cc.prompt_order || []) for (const e of o.order || []) if (ids.has(e.identifier)) e.enabled = false;
+        if (found.presetRegex.length && pm) {
+            const scripts = pm.readPresetExtensionField({ path: "regex_scripts" }) || [];
+            for (const sc of scripts) if (isColourScript(sc.scriptName)) sc.disabled = true;
+            await pm.writePresetExtensionField({ path: "regex_scripts", value: scripts });
+        }
+        for (const sc of c.extensionSettings?.regex || []) if (isColourScript(sc.scriptName)) sc.disabled = true;
+        c.saveSettingsDebounced();
+        toastr.success("The preset's own dialogue colours are off.", "🎨 Story Ledger");
+        await c.reloadCurrentChat?.();
+    };
+    toastr.info("This preset has its own dialogue colours. Story Ledger handles them now. Click to turn them off.", "🎨 Story Ledger",
+        { ...STICKY, onclick: () => { turnOff().catch(err => console.error("[Story Ledger] turning the preset's colours off failed", err)); } });
+}
+
 // Dialogue voices on every message, block or not, user or AI. `voices` null: painting is off.
 function paintMessage(i, voices) {
     const el = document.querySelector(`#chat .mes[mesid="${i}"] .mes_text`);
@@ -622,6 +658,7 @@ function init() {
     }
     for (const ev of [t.CHAT_CHANGED, t.MORE_MESSAGES_LOADED]) if (ev) c.eventSource.on(ev, () => setTimeout(decorateAll, 0));
     if (t.CHAT_CHANGED) c.eventSource.on(t.CHAT_CHANGED, () => { pendingTurn = null; if (fixupRun) fixupRun.abandoned = true; });
+    for (const ev of [t.CHAT_CHANGED, t.OAI_PRESET_CHANGED_AFTER]) if (ev) c.eventSource.on(ev, () => setTimeout(checkPresetColours, 0));
     if (t.GENERATION_STOPPED) c.eventSource.on(t.GENERATION_STOPPED, () => { if (fixupRun?.mode === "full") fixupRun.stopped = true; });
     if (t.STREAM_TOKEN_RECEIVED) c.eventSource.on(t.STREAM_TOKEN_RECEIVED, () => hideStreamingLedger());
 
