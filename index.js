@@ -332,7 +332,11 @@ function checkPresetColours() {
         }
         for (const sc of c.extensionSettings?.regex || []) if (isColourScript(sc.scriptName)) sc.disabled = true;
         c.saveSettingsDebounced();
-        toastr.success("The preset's own dialogue colours are off.", "🎨 Story Ledger");
+        // prompt toggles live in the preset file: save it, or selecting the preset again undoes them
+        if (found.prompts.length && pm && name) await pm.savePreset?.(name);
+        // check this preset afresh next time, in case its file still has them on
+        checkedPresets.delete(name);
+        toastr.success("The preset's own dialogue colours are off, and the preset is saved.", "🎨 Story Ledger");
         await c.reloadCurrentChat?.();
     };
     toastr.info("This preset has its own dialogue colours. Story Ledger handles them now. Click to turn them off.", "🎨 Story Ledger",
