@@ -118,3 +118,49 @@ Concealed: lockpicks
 Sola: *sneaky*
 </inventory>
 </sola_hud>`;
+
+// Sola V4 heads its wardrobe and inventory rows "Name · Wardrobe:" and "Name · Inventory:".
+export const SOLA_V4_REPLY = `Prose under Sola V4.
+
+<sola_hud digest="Day 9 · Dusk · STEADY · Mara: T1 F2 D3 Y2">
+<date>
+Day: Day 9
+Calendar: Mid-Autumn
+Time: Dusk
+Elapsed: ~20 minutes
+Sola: *the light goes amber*
+</date>
+<scene_cast>
+Location: the café, back room
+Active Speakers: Mara
+Ambient NPCs: Ana
+Observable Facts: Mara limping
+Sola: *tight room*
+</scene_cast>
+<wardrobe>
+Mara · Wardrobe:
+Layers: grey coat over a wool dress, boots
+Condition: Soaked
+Tells: heavy damp wool
+Sola: *drenched*
+
+Jan · Wardrobe:
+Layers: rain jacket, jeans
+Condition: Damp
+Tells: dripping hood
+Sola: *hm*
+</wardrobe>
+<inventory>
+Mara · Inventory:
+In-Hand: a mug
+Carried: a ring of keys
+Concealed: None
+Sola: *hm*
+
+Jan · Inventory:
+In-Hand: Empty
+Carried: umbrella
+Concealed: lockpicks
+Sola: *sneaky*
+</inventory>
+</sola_hud>`;

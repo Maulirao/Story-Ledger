@@ -4385,7 +4385,7 @@ function people(body) {
     if (!line) continue;
     const head = line.match(/^([^:]{1,40}):\s*$/);
     if (head) {
-      who = head[1].trim();
+      who = head[1].replace(/\s*·\s*(?:wardrobe|inventory)\s*$/i, "").trim();
       out[who] = {};
       continue;
     }

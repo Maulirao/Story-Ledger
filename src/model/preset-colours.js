@@ -7,12 +7,20 @@
 /** The families' colour prompts, by name. */
 export const COLOUR_PROMPTS = new Set([
     "🌈 Colored Dialogue 2.0 VN🖍️", "🌈 Colored Dialogue VN🖍️ copy", "🌈 Colored Dialogue VN🖍️", "🌈 Colored Dialogue",
-    "[Module] Default Voice: NPC Dialogue Colors (Pick 1)🎨",
+    "[Module] Default Voice: NPC Dialogue Colors (Pick 1)🎨", "[PICK 1: ↓] NPC Dialogue Colors 🎨",
 ]);
 
 const FF5 = ["Tremble Dialogue Regex", "Measured Dialogue Regex", "Whisper Dialogue Regex", "Shout Dialogue Regex", "FF5 - Universal Dialogue Colorizer"];
 
-/** The families' colour regexes, by name (Sola's are every "Sola Voice:" script, see isColourScript). */
+/**
+ * Sola V4 numbers its scripts ("07.05 Voice: Copper"). Its colours, its tones (which also
+ * catch any `<name:whisper>`, Story Ledger's tags included), its voice-only kinetics, and the
+ * prompt-side remover that strips colour and tone tags from the history. Gradients and the
+ * "(Voice & Standalone)" kinetics stay on: they are typography, as Sola V2's were.
+ */
+const SOLA_V4 = /^\d{2}\.\d{2}[a-z]?\s+(?:(?:Voice|Tone|Voice Kinetic):|HTML Font Tag Remover\s*$)/;
+
+/** The families' colour regexes, by name (Sola's are every "Sola Voice:" script and SOLA_V4's, see isColourScript). */
 export const COLOUR_REGEX = new Set([
     ...FF5,
     ...FF5.map(n => `[FF history] ${n}`),
@@ -24,7 +32,7 @@ export const COLOUR_REGEX = new Set([
 /** True for a regex script that colours or styles dialogue tags. */
 export function isColourScript(name) {
     const n = String(name ?? "").trim();
-    return COLOUR_REGEX.has(n) || n.startsWith("Sola Voice:");
+    return COLOUR_REGEX.has(n) || n.startsWith("Sola Voice:") || SOLA_V4.test(n);
 }
 
 /**

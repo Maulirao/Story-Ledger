@@ -12,7 +12,7 @@ import { value, listOf, nowResolved, nowUnread, sameName } from "./util.js";
 const tag = (mes, name) => (String(mes).match(new RegExp(`<${name}\\b[^>]*>([\\s\\S]*?)<\\/${name}>`, "i")) || [])[1] || "";
 const field = (body, key) => { const m = String(body).match(new RegExp(`^\\s*${key}\\s*:\\s*(.*)$`, "im")); return m ? value(m[1]) : ""; };
 
-/** "Name:" headed groups of "Key: value" lines (wardrobe, inventory). */
+/** "Name:" headed groups of "Key: value" lines (wardrobe, inventory). Sola V4 heads them "Name · Wardrobe:" and "Name · Inventory:". */
 function people(body) {
     const out = {};
     let who = null;
@@ -20,7 +20,7 @@ function people(body) {
         const line = raw.trim();
         if (!line) continue;
         const head = line.match(/^([^:]{1,40}):\s*$/);
-        if (head) { who = head[1].trim(); out[who] = {}; continue; }
+        if (head) { who = head[1].replace(/\s*·\s*(?:wardrobe|inventory)\s*$/i, "").trim(); out[who] = {}; continue; }
         const kv = line.match(/^([A-Za-z-]+)\s*:\s*(.*)$/);
         if (who && kv) out[who][kv[1].toLowerCase()] = kv[2];
     }

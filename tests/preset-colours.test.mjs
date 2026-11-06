@@ -20,6 +20,22 @@ test("isColourScript knows every family's colour regexes and nothing else", () =
     for (const n of ["FF5 UI - Menu Teal", "Hapuppy Hide Thoughts", ""]) assert.ok(!isColourScript(n), n);
 });
 
+test("Sola V4's colour prompt is found and its gradient prompt is left alone", () => {
+    const got = colourPieces({
+        prompts: [{ identifier: "c", name: "[PICK 1: ↓] NPC Dialogue Colors 🎨" }, { identifier: "g", name: "[PICK 1: ↑] Gradient ALL The Time 🎨" }],
+        order: [{ order: [{ identifier: "c", enabled: true }, { identifier: "g", enabled: true }] }],
+    });
+    assert.deepEqual(got.prompts, [{ identifier: "c", name: "[PICK 1: ↓] NPC Dialogue Colors 🎨" }]);
+});
+
+test("isColourScript knows Sola V4's numbered voice and tone regexes, and leaves its typography on", () => {
+    for (const n of ["07.01 Voice: Palette & Fallback Tag Close", "07.05 Voice: Copper", "07.17 Voice: Obsidian",
+        "07.18 Tone: Whisper (Voice & Standalone)", "07.21 Tone: Steady & Default (Voice & Standalone)", "07.22 Tone: Fallback Whisper",
+        "09.07 Voice Kinetic: Echo", "09.12 Voice Kinetic: Ember", "00.02 HTML Font Tag Remover"]) assert.ok(isColourScript(n), n);
+    for (const n of ["08.02 Gradient: Dusk", "08.08 Gradient Mod: Whisper", "09.01 Kinetic: Heavy (Voice & Standalone)",
+        "09.22 Kinetic: Tone, Gradient & Kinetic Tag Close", "06.01 Easel: Vault Voice", "01.10 Scene: Strip HTML Markers", "Voice: Copper"]) assert.ok(!isColourScript(n), n);
+});
+
 test("turning a preset's colours off saves the preset, and a preset that has them on again is asked about again", async () => {
     const h = await harness("preset-colours");
     const tick = () => new Promise(r => setTimeout(r, 0));
