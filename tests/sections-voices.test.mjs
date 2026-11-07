@@ -106,3 +106,11 @@ test("a model echoing the reader's colour is quietly ignored", () => {
     assert.deepEqual(r.state.voices, s.voices);
     assert.deepEqual(r.warnings, []);
 });
+
+test("the rules say what mind means, not how the letters look", () => {
+    const rules = sectionByKey("voices").rules({});
+    assert.doesNotMatch(rules, /split each letter|on top|below/, "the model never sees the paint");
+    assert.match(rules, /<Speaker\+Listener>"…"/);
+    assert.match(rules, /telepath/i);
+    assert.match(rules, /unspoken thoughts/, "private thoughts are not mind lines");
+});
