@@ -196,13 +196,29 @@
    (top / bottom); mind outlines the letter. Filters, not text-shadow: a text-shadow paints
    over text whose colour is a clipped background. The split sits at 59% of the line's
    content box: measured on Noto Sans and Georgia, that halves lowercase letters (x-height
-   spans ~40–81%) and cuts capitals near 60/40. Mind's white ring has a thin dark ring
-   outside it, so the outline also reads on a light theme. ── */
-.sl-voice { color: var(--sl-top); filter: var(--sl-f-tone,) var(--sl-f-mind,); }
+   spans ~40–81%) and cuts capitals near 60/40. Mind lines ("Eclipse"): a starry band behind,
+   bold letters, and the page's #sl-mind-eclipse SVG filter (src/ui/voices-paint.js), which
+   rims the black mind half white with a corona and the coloured half black. It runs before
+   any tone shadow, so a shout's glow is not rimmed. ── */
+.sl-voice { color: var(--sl-top); filter: var(--sl-f-mind,) var(--sl-f-tone,); }
 .sl-voice-two { background: linear-gradient(to bottom, var(--sl-top) 0 var(--sl-split, 59%), var(--sl-bottom) var(--sl-split, 59%) 100%);
     -webkit-background-clip: text; background-clip: text; color: transparent; text-shadow: none;
     -webkit-box-decoration-break: clone; box-decoration-break: clone; }
-.sl-voice-mind { --sl-f-mind: drop-shadow(0 0 0.6px #fff) drop-shadow(0 0 0.6px #fff) drop-shadow(0 0 0.8px rgba(0, 0, 0, 0.85)); }
+.sl-voice-mind { font-weight: 700; --sl-f-mind: url(#sl-mind-eclipse); }
+.sl-voice-band { border-radius: 0.4em; padding: 0.1em 0.36em; -webkit-box-decoration-break: clone; box-decoration-break: clone;
+    background:
+        radial-gradient(1.2px 1.2px at 12% 30%, #fff 60%, transparent 62%),
+        radial-gradient(1px 1px at 33% 72%, #cfe8ff 60%, transparent 62%),
+        radial-gradient(1.4px 1.4px at 58% 22%, #fff 60%, transparent 62%),
+        radial-gradient(1px 1px at 81% 64%, #ffe8ff 60%, transparent 62%),
+        radial-gradient(1px 1px at 93% 18%, #fff 60%, transparent 62%),
+        radial-gradient(120% 140% at 20% 50%, rgba(120, 60, 200, 0.55), transparent 60%),
+        radial-gradient(120% 140% at 85% 50%, rgba(30, 120, 190, 0.5), transparent 60%),
+        #0b0818;
+    background-size: 90px 100%, 70px 100%, 110px 100%, 80px 100%, 60px 100%, 100% 100%, 100% 100%, auto;
+    animation: sl-mind-drift 14s linear infinite; }
+@keyframes sl-mind-drift { to { background-position: 90px 0, -70px 0, 110px 0, -80px 0, 60px 0, 0 0, 0 0, 0 0; } }
+@media (prefers-reduced-motion: reduce) { .sl-voice-band { animation: none; } }
 .sl-tone-whisper { font-size: 0.85em; opacity: 0.75; font-style: italic; }
 .sl-tone-measured { font-weight: bold; letter-spacing: 0.8px; --sl-f-tone: drop-shadow(1px 1px 1px #000); }
 .sl-tone-shout { font-size: 1.15em; font-weight: 900; --sl-f-tone: drop-shadow(0 0 4px var(--sl-top)); }

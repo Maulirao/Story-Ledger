@@ -533,7 +533,7 @@ export function popupHtml(tab, view, previewBaseDice = null) {
             <small>${esc(v.source)}</small> ${sample("sl-voice", v.hex)}
             <span class="sl-btns"><button class="menu_button" data-voice-save="${esc(name)}">Save</button>${v.source === "you" ? `<button class="menu_button" data-voice-reset="${esc(name)}" title="Back to the block's colour">✕</button>` : ""}</span>
         </div>`).join("") || "<p><i>No voices yet. They appear once the model tags a line of dialogue.</i></p>";
-        const mind = `<div class="sl-item sl-voice-row"><span class="sl-voice-swatch" style="background:${MIND_FILL}"></span> <b>mind</b> <small>reserved for telepathy</small> ${sample("sl-voice sl-voice-mind", MIND_FILL, MIND_FILL, "Can you hear me?")}</div>`;
+        const mind = `<div class="sl-item sl-voice-row"><span class="sl-voice-swatch" style="background:${MIND_FILL}"></span> <b>mind</b> <small>reserved for telepathy</small> <span class="sl-voice-band">${sample("sl-voice sl-voice-mind", MIND_FILL, MIND_FILL, "Can you hear me?")}</span></div>`;
         const alike = nearDuplicates(Object.entries(list).map(([n, v]) => [n, v.hex]))
             .map(([a, b]) => `<p class="sl-meta">⚠ ${esc(a)} and ${esc(b)} look alike (${esc(list[a].hex)} / ${esc(list[b].hex)})</p>`).join("");
         body = `${s.sections.voices === false ? `<p class="sl-meta"><b>The 🎨 Voices section is switched off in Settings: colours are not painted or sent.</b></p>` : ""}

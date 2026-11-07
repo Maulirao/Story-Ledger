@@ -12,7 +12,7 @@ import * as frankensteinTheme from "../src/ui/themes/frankenstein.js";
 import * as solaTheme from "../src/ui/themes/sola.js";
 import * as meguminTheme from "../src/ui/themes/megumin.js";
 import { undecorate } from "../src/ui/themes/common.js";
-import { paintVoices, unpaintVoices } from "../src/ui/voices-paint.js";
+import { paintVoices, unpaintVoices, ensureMindFilter } from "../src/ui/voices-paint.js";
 import { mountLedger } from "./panel.mjs";
 
 const THEMES = { frankenstein: frankensteinTheme, sola: solaTheme, megumin: meguminTheme };
@@ -225,6 +225,7 @@ export default function register(host) {
 
     loadSettings().catch(noop);
     refreshVoices();
+    ensureMindFilter(globalThis.document);   // mind lines and the Voices tab's sample use it
 
     return () => {
         disposed = true;

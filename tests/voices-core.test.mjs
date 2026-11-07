@@ -61,3 +61,8 @@ test("✕ removes an override however its key is spelled", () => {
     assert.deepEqual(core.setVoice(d, "Jim Hawkins", null), { ok: true, chatDataPatch: { voiceOverrides: {} } });
     assert.deepEqual(core.setVoice(d, "Jim Hawkins", "red"), { ok: true, chatDataPatch: { voiceOverrides: { "Jim Hawkins": "red" } } });
 });
+
+test("the Voices tab shows the mind sample on its starry band", () => {
+    const html = core.popupHtml("voices", { chat: [], settings, userName: "Jan", chatData: core.normalizeChatData({}) });
+    assert.match(html, /<span class="sl-voice-band"><span class="sl-voice sl-voice-mind"/);
+});

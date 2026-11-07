@@ -24,7 +24,7 @@ import * as frankensteinTheme from "./src/ui/themes/frankenstein.js";
 import * as solaTheme from "./src/ui/themes/sola.js";
 import * as meguminTheme from "./src/ui/themes/megumin.js";
 import { undecorate } from "./src/ui/themes/common.js";
-import { paintVoices, unpaintVoices } from "./src/ui/voices-paint.js";
+import { paintVoices, unpaintVoices, ensureMindFilter } from "./src/ui/voices-paint.js";
 import { colourPieces, isColourScript } from "./src/model/preset-colours.js";
 
 const THEMES = { frankenstein: frankensteinTheme, sola: solaTheme, megumin: meguminTheme };
@@ -647,6 +647,7 @@ function registerSlashCommands() {
 function init() {
     const c = ctx();
     const t = c.eventTypes;
+    ensureMindFilter(globalThis.document);   // mind lines and the Voices tab's sample use it
     registerSlashCommands();
     c.eventSource.on(t.MESSAGE_RECEIVED, onMessageReceived);
     c.eventSource.on(t.CHAT_COMPLETION_PROMPT_READY, data => {
