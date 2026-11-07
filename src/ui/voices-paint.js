@@ -19,6 +19,45 @@ export function spanAttrs(span) {
     return { className, style: `--sl-top:${span.top};--sl-bottom:${span.bottom ?? span.top}` };
 }
 
+/** The page-wide SVG filter mind lines use (style.css: .sl-voice-mind). */
+export const MIND_FILTER_ID = "sl-mind-eclipse";
+
+// "Eclipse": a white rim, a white corona and a faint violet glow around the dark (mind) pixels
+// only, and a thin black rim around the coloured ones, so the speaker's colour is never washed
+// out. Dark and bright are told apart by luminance (feColorMatrix), then each mask is grown or
+// blurred; the letters themselves go on top unchanged.
+const MIND_FILTER_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false"><defs>
+<filter id="${MIND_FILTER_ID}" x="-20%" y="-80%" width="140%" height="260%" color-interpolation-filters="sRGB">
+<feColorMatrix in="SourceGraphic" type="matrix" values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  -0.9 -1.77 -0.33 1 0" result="dark"/>
+<feMorphology in="dark" operator="dilate" radius="0.6" result="rim"/>
+<feGaussianBlur in="dark" stdDeviation="2" result="corona"/>
+<feGaussianBlur in="dark" stdDeviation="6" result="haloA"/>
+<feFlood flood-color="#cdb9ff" flood-opacity="0.55"/><feComposite in2="haloA" operator="in" result="halo"/>
+<feColorMatrix in="SourceGraphic" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0.9 1.77 0.33 0 -0.6" result="brightRaw"/>
+<feComposite in="brightRaw" in2="SourceAlpha" operator="in" result="bright"/>
+<feMorphology in="bright" operator="dilate" radius="0.9" result="blackRim"/>
+<feMerge><feMergeNode in="halo"/><feMergeNode in="corona"/><feMergeNode in="rim"/><feMergeNode in="blackRim"/><feMergeNode in="SourceGraphic"/></feMerge>
+</filter></defs></svg>`;
+
+/** Put the mind filter on the page once. A no-op without a real document (node tests, stubs). */
+export function ensureMindFilter(doc) {
+    if (!doc || typeof doc.getElementById !== "function" || !doc.body || doc.getElementById(MIND_FILTER_ID)) return;
+    const box = doc.createElement("div");
+    box.innerHTML = MIND_FILTER_SVG;
+    doc.body.appendChild(box.firstChild);
+}
+
+// A mind quote sits on a starry band: its own span, since the letters' background is the
+// two-colour split. Marked data-sl-voice, so unpaintVoices takes it away too.
+function inBand(doc, span, voice) {
+    if (!span.mind) return voice;
+    const band = doc.createElement("span");
+    band.className = "sl-voice-band";
+    band.setAttribute("data-sl-voice", "");
+    band.appendChild(voice);
+    return band;
+}
+
 function voiceSpan(doc, span) {
     const el = doc.createElement("span");
     const { className, style } = spanAttrs(span);
@@ -67,6 +106,7 @@ export function paintVoices(el, rawText, list) {
     if (!plan.length) return;
     const all = quotesIn(rawText);
     const doc = el.ownerDocument;
+    if (plan.some(p => p.mind)) ensureMindFilter(doc);
 
     // SillyTavern wraps every quote in <q>
     const qs = [...el.querySelectorAll("q")].filter(q => !inBlock(q));
@@ -77,7 +117,7 @@ export function paintVoices(el, rawText, list) {
             if (at < 0) continue;
             const span = voiceSpan(doc, p);
             while (qs[at].firstChild) span.appendChild(qs[at].firstChild);
-            qs[at].appendChild(span);
+            qs[at].appendChild(inBand(doc, p, span));
             hideLiteralTag(doc, qs[at].previousSibling);
         }
         return;
@@ -98,7 +138,7 @@ export function paintVoices(el, rawText, list) {
         const quote = node.splitText(start);
         quote.splitText(end - start);
         const span = voiceSpan(doc, p);
-        quote.parentNode.insertBefore(span, quote);
+        quote.parentNode.insertBefore(inBand(doc, p, span), quote);
         span.appendChild(quote);
         hideLiteralTag(doc, node);
     }

@@ -7,7 +7,7 @@ import { emptyState } from "../src/model/state.js";
 import { parseChanges } from "../src/model/changes.js";
 import { postTurn } from "../src/model/turn.js";
 import { planPaint, matchQuotes, pickColour, MIND_FILL, quotesIn, readVoiceTags } from "../src/model/voices.js";
-import { spanAttrs } from "../src/ui/voices-paint.js";
+import { spanAttrs, paintVoices, ensureMindFilter, MIND_FILTER_ID } from "../src/ui/voices-paint.js";
 
 const C = { ...resolveConfig(), userName: "Jan", sections: {} };
 
@@ -56,4 +56,56 @@ test("a tagged quote is placed among all the quotes, so an earlier twin stays pl
 test("quotes pair straight with straight and curly with curly, as SillyTavern pairs them", () => {
     assert.equal(readVoiceTags('<jim>"She said “no” to me."')[0].quote, '"She said “no” to me."');
     assert.deepEqual(quotesIn('<span class="x">"a"</span> “b” «c» <!-- Story_Ledger "hidden" -->'), ['"a"', "“b”", "«c»"]);
+});
+
+
+// a tiny stand-in for the page: elements keep their children and attributes
+function fakeDoc() {
+    const made = [], ids = new Set();
+    const createElement = tag => {
+        const e = { tag, children: [], attrs: {}, className: "", parentNode: null, firstChild: null,
+            setAttribute(k, v) { this.attrs[k] = v; },
+            appendChild(c) { this.children.push(c); c.parentNode = this; return c; },
+            set innerHTML(h) { this.html = h; this.firstChild = { svg: h }; } };
+        made.push(e);
+        return e;
+    };
+    return { made, createElement, createTreeWalker: () => ({ nextNode: () => false }),
+        getElementById: id => (ids.has(id) ? {} : null),
+        body: { appended: [], appendChild(n) { this.appended.push(n); ids.add(MIND_FILTER_ID); } } };
+}
+function rendered(doc, text) {
+    const q = { textContent: text, firstChild: null, previousSibling: null, closest: () => null, children: [],
+        appendChild(c) { q.children.push(c); c.parentNode = q; return c; } };
+    return { q, el: { querySelectorAll: sel => (sel === "q" ? [q] : []), ownerDocument: doc } };
+}
+
+test("a mind quote is painted inside the starry band; a plain one is not", () => {
+    const doc = fakeDoc();
+    const a = rendered(doc, '"Listen."');
+    paintVoices(a.el, '<jim+mind>"Listen."', L);
+    const band = a.q.children[0];
+    assert.equal(band.className, "sl-voice-band");
+    assert.ok("data-sl-voice" in band.attrs, "the band is undone with the paint");
+    assert.match(band.children[0].className, /sl-voice-mind/);
+    const b = rendered(doc, '"Hi."');
+    paintVoices(b.el, '<jim>"Hi."', L);
+    assert.equal(b.q.children[0].className, "sl-voice");
+});
+
+test("ensureMindFilter adds the eclipse filter once, and does nothing without a real page", () => {
+    const doc = fakeDoc();
+    ensureMindFilter(doc);
+    ensureMindFilter(doc);
+    assert.equal(doc.body.appended.length, 1);
+    assert.match(doc.made.find(e => e.html).html, new RegExp(`<filter id="${MIND_FILTER_ID}"`));
+    assert.doesNotThrow(() => ensureMindFilter({ querySelectorAll: () => [] }));
+    assert.doesNotThrow(() => ensureMindFilter(undefined));
+});
+
+test("painting a mind quote makes sure the filter is on the page", () => {
+    const doc = fakeDoc();
+    const a = rendered(doc, '"Listen."');
+    paintVoices(a.el, '<mind>"Listen."', {});
+    assert.equal(doc.body.appended.length, 1);
 });
