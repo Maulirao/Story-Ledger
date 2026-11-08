@@ -163,14 +163,17 @@ export const mergeTurnDice = (shown, fallback) => ({
  * This generation's dice and the fudge lifecycle. `pendingSame` is the host's pending turn
  * for this chat and reply index, if it has one (a continue reuses its dice). Returns the
  * pending record to keep, and the fudges to store (`fudgesChanged` says whether they differ).
+ * `inheritedDice` are the dice of a reply the reader cut to interject (LocalChar's Interject,
+ * SillyTavern's Intercede): the rewrite is the same turn, so it keeps them the way a continue
+ * keeps its block's dice, with a fresh roll only for any part they lack.
  * Call only for a generation that gets ledger work (not SKIP_TYPES, ledger on).
  */
-export function prepareTurn({ chat, type, settings, chatData, pendingSame = null, rng }) {
+export function prepareTurn({ chat, type, settings, chatData, pendingSame = null, rng, inheritedDice = null }) {
     const index = generationBase(chat.length, type);
     const fresh = rollTurnDice(rng);
     const baseDice = type === "continue"
         ? mergeTurnDice(diceFromBlock(chat[index]?.mes), pendingSame?.dice || fresh)
-        : fresh;
+        : inheritedDice ? mergeTurnDice(inheritedDice, fresh) : fresh;
     const stored = chatData.fudges;
     const lifecycle = fudgesForGeneration(stored, index);
     const applied = withFudges(baseDice, lifecycle.active);
