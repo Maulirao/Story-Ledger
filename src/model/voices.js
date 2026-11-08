@@ -164,7 +164,8 @@ export function withVoiceOverrides(voices, overrides) {
 
 /**
  * What to paint for each tagged quote in `text`, given the chat's voices ({ name: { hex } }):
- * { quote, index (its place among quotesIn(text)), top, bottom (null for one voice), tone, mind }.
+ * { quote, index (its place among quotesIn(text)), top, bottom (null for one voice), tone, mind,
+ * listener (telepathy naming both sender and receiver) }.
  * A voice resolves to the list, then a palette name, then mind; a voice nobody named yet gets
  * the colour the fill-in will give it.
  */
@@ -182,8 +183,12 @@ export function planPaint(text, list) {
         return { hex: picks.get(voiceKey(v)), mind: false };
     };
     return readVoiceTags(text).map(tag => {
-        const [a, b] = tag.voices.slice(0, 2).map(resolve);
-        return { quote: tag.quote, index: positions.indexOf(tag.quoteAt), top: a.hex, bottom: b ? b.hex : null, tone: tag.tone, mind: a.mind || Boolean(b && b.mind) };
+        // mind is a marker: with two names it is telepathy from the first to the second (both
+        // colours, on the band); with one name or none it still fills its half in black
+        const named = tag.voices.filter(v => voiceKey(v) !== MIND);
+        const listener = named.length >= 2 && named.length < tag.voices.length;
+        const [a, b] = (listener ? named : tag.voices).slice(0, 2).map(resolve);
+        return { quote: tag.quote, index: positions.indexOf(tag.quoteAt), top: a.hex, bottom: b ? b.hex : null, tone: tag.tone, mind: listener || a.mind || Boolean(b && b.mind), listener };
     });
 }
 

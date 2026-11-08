@@ -651,8 +651,10 @@ function planPaint(text, list) {
     return { hex: picks.get(voiceKey(v)), mind: false };
   };
   return readVoiceTags(text).map((tag2) => {
-    const [a, b] = tag2.voices.slice(0, 2).map(resolve);
-    return { quote: tag2.quote, index: positions.indexOf(tag2.quoteAt), top: a.hex, bottom: b ? b.hex : null, tone: tag2.tone, mind: a.mind || Boolean(b && b.mind) };
+    const named = tag2.voices.filter((v) => voiceKey(v) !== MIND);
+    const listener = named.length >= 2 && named.length < tag2.voices.length;
+    const [a, b] = (listener ? named : tag2.voices).slice(0, 2).map(resolve);
+    return { quote: tag2.quote, index: positions.indexOf(tag2.quoteAt), top: a.hex, bottom: b ? b.hex : null, tone: tag2.tone, mind: listener || a.mind || Boolean(b && b.mind), listener };
   });
 }
 var ANY_QUOTE = /"[^"\n]{1,2000}?"|“[^”\n]{1,2000}?”|«[^»\n]{1,2000}?»|「[^」\n]{1,2000}?」|『[^』\n]{1,2000}?』|＂[^＂\n]{1,2000}?＂/g;
@@ -703,7 +705,7 @@ var COMMANDS5 = [
 ];
 var LINE = /^(.+?)\s*[:=]\s*(\S+)$/;
 var SOURCES = /* @__PURE__ */ new Set(["model", "auto"]);
-var RULES = `Voices: tag every line of spoken dialogue with who says it, right before the opening quote: <Name>"…"</Name>. A name that is also an HTML tag (Mark, Ruby, Em) takes an underscore: <Mark_>. When it matters who is addressed, as in a group scene, name the speaker first and the listener second: <Speaker+Listener>"…". Telepathy uses the reserved voice mind, never a character's name: it marks words sent silently from one mind straight into another, heard only by the receiver and by no one else present. Write <Speaker+mind>"…", or <mind>"…" when the sender is unknown. A character's own unspoken thoughts, which nobody receives, are not mind lines. Add a tone only when the delivery needs it: <Name:whisper>, <Name:shout>, <Name:measured>, <Name:tremble>, also after two voices (<Speaker+Listener:whisper>). The first time someone speaks, give them a colour under Voices: in the ledger comment: a CSS colour name or a #hex, readable on a dark background and far from the colours already taken. A speaker who already has a colour in earlier replies keeps it. A set colour never changes. These tags replace any other dialogue-colour instruction.`;
+var RULES = `Voices: tag every line of spoken dialogue with who says it, right before the opening quote: <Name>"…"</Name>. A name that is also an HTML tag (Mark, Ruby, Em) takes an underscore: <Mark_>. When it matters who is addressed, as in a group scene, name the speaker first and the listener second: <Speaker+Listener>"…". Telepathy uses the reserved voice mind, never a character's name: it marks words sent silently from one mind straight into another, heard only by the receiver and by no one else present. Write <Speaker+mind>"…" when it is clear who receives it, <Speaker+Listener+mind>"…" to name the receiver, or <mind>"…" when the sender is unknown. A character's own unspoken thoughts, which nobody receives, are not mind lines. Add a tone only when the delivery needs it: <Name:whisper>, <Name:shout>, <Name:measured>, <Name:tremble>, also after two voices (<Speaker+Listener:whisper>). The first time someone speaks, give them a colour under Voices: in the ledger comment: a CSS colour name or a #hex, readable on a dark background and far from the colours already taken. A speaker who already has a colour in earlier replies keeps it. A set colour never changes. These tags replace any other dialogue-colour instruction.`;
 var hexesOf = (list) => Object.values(list || {}).map((v) => colourHex(typeof v === "string" ? v : v.colour)).filter(Boolean);
 var voices_default = {
   key: "voices",
@@ -763,7 +765,7 @@ var voices_default = {
     const reply = ctx.reply || {};
     const overrides = reply.voiceOverrides || {};
     for (const tag2 of readVoiceTags(reply.text || "")) {
-      for (const v of tag2.voices.slice(0, 2)) {
+      for (const v of tag2.voices.filter((x) => voiceKey(x) !== MIND).slice(0, 2)) {
         if (colourHex(v) || voiceKey(v) === MIND || findVoice(state.voices, v) !== null || findVoice(overrides, v) !== null) continue;
         state.voices[v] = { colour: pickColour([...hexesOf(state.voices), ...hexesOf(overrides)]), source: "auto" };
       }

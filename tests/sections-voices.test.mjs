@@ -114,3 +114,12 @@ test("the rules say what mind means, not how the letters look", () => {
     assert.match(rules, /telepath/i);
     assert.match(rules, /unspoken thoughts/, "private thoughts are not mind lines");
 });
+
+test("a listener named in a telepathy tag is filled in", () => {
+    const v = postTurn(emptyState(), ch("Now: x"), C, { text: '<You+mind+Jim>"Can you hear me?"', voiceOverrides: {} }).state.voices;
+    assert.deepEqual(Object.keys(v), ["You", "Jim"]);
+});
+
+test("the rules teach naming the receiver of a telepathy line", () => {
+    assert.match(sectionByKey("voices").rules({}), /<Speaker\+Listener\+mind>"…"/);
+});

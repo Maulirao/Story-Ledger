@@ -15,7 +15,7 @@ const COMMANDS = [
 const LINE = /^(.+?)\s*[:=]\s*(\S+)$/;
 const SOURCES = new Set(["model", "auto"]);
 
-const RULES = `Voices: tag every line of spoken dialogue with who says it, right before the opening quote: <Name>"…"</Name>. A name that is also an HTML tag (Mark, Ruby, Em) takes an underscore: <Mark_>. When it matters who is addressed, as in a group scene, name the speaker first and the listener second: <Speaker+Listener>"…". Telepathy uses the reserved voice mind, never a character's name: it marks words sent silently from one mind straight into another, heard only by the receiver and by no one else present. Write <Speaker+mind>"…", or <mind>"…" when the sender is unknown. A character's own unspoken thoughts, which nobody receives, are not mind lines. Add a tone only when the delivery needs it: <Name:whisper>, <Name:shout>, <Name:measured>, <Name:tremble>, also after two voices (<Speaker+Listener:whisper>). The first time someone speaks, give them a colour under Voices: in the ledger comment: a CSS colour name or a #hex, readable on a dark background and far from the colours already taken. A speaker who already has a colour in earlier replies keeps it. A set colour never changes. These tags replace any other dialogue-colour instruction.`;
+const RULES = `Voices: tag every line of spoken dialogue with who says it, right before the opening quote: <Name>"…"</Name>. A name that is also an HTML tag (Mark, Ruby, Em) takes an underscore: <Mark_>. When it matters who is addressed, as in a group scene, name the speaker first and the listener second: <Speaker+Listener>"…". Telepathy uses the reserved voice mind, never a character's name: it marks words sent silently from one mind straight into another, heard only by the receiver and by no one else present. Write <Speaker+mind>"…" when it is clear who receives it, <Speaker+Listener+mind>"…" to name the receiver, or <mind>"…" when the sender is unknown. A character's own unspoken thoughts, which nobody receives, are not mind lines. Add a tone only when the delivery needs it: <Name:whisper>, <Name:shout>, <Name:measured>, <Name:tremble>, also after two voices (<Speaker+Listener:whisper>). The first time someone speaks, give them a colour under Voices: in the ledger comment: a CSS colour name or a #hex, readable on a dark background and far from the colours already taken. A speaker who already has a colour in earlier replies keeps it. A set colour never changes. These tags replace any other dialogue-colour instruction.`;
 
 const hexesOf = list => Object.values(list || {}).map(v => colourHex(typeof v === "string" ? v : v.colour)).filter(Boolean);
 
@@ -72,7 +72,8 @@ export default {
         const reply = ctx.reply || {};
         const overrides = reply.voiceOverrides || {};
         for (const tag of readVoiceTags(reply.text || "")) {
-            for (const v of tag.voices.slice(0, 2)) {
+            // the first two named voices: mind is a marker, so a named listener gets a colour too
+            for (const v of tag.voices.filter(x => voiceKey(x) !== MIND).slice(0, 2)) {
                 if (colourHex(v) || voiceKey(v) === MIND || findVoice(state.voices, v) !== null || findVoice(overrides, v) !== null) continue;
                 state.voices[v] = { colour: pickColour([...hexesOf(state.voices), ...hexesOf(overrides)]), source: "auto" };
             }
