@@ -20,6 +20,7 @@ import { SECTIONS } from "./src/model/sections/registry.js";
 import { rollTurnDice, withFudges, parseDiceCommand, parseForceCommand } from "./src/model/dice.js";
 import { BLOCK_MARK } from "./src/model/block.js";
 import * as core from "./src/host/core.js";
+import { intercedeInheritance, tailDiceRecord } from "./src/host/intercede.js";
 import * as frankensteinTheme from "./src/ui/themes/frankenstein.js";
 import * as solaTheme from "./src/ui/themes/sola.js";
 import * as meguminTheme from "./src/ui/themes/megumin.js";
@@ -122,7 +123,13 @@ globalThis.storyLedgerInterceptor = async function (_chat, _contextSize, _abort,
         // Background generations (summaries, other extensions' tasks) get nothing.
         if (!SKIP_TYPES.has(type) && s.enabled) {
             const raw = ctx().chat || [];
-            const turn = prepareTurn({ chat: raw, type, settings: s, chatData: chatData(), pendingSame: pendingFor(generationBase(raw.length, type)) });
+            const base = generationBase(raw.length, type);
+            // A rewrite after Intercede cut the newest reply is the same turn: it keeps that reply's dice.
+            const inherited = type === "continue" ? null : intercedeInheritance(raw, base, chatData());
+            if (inherited && chatData().interjectDice?.transactionId !== inherited.interjectDice.transactionId) {
+                await saveChatData(d => { d.interjectDice = inherited.interjectDice; });
+            }
+            const turn = prepareTurn({ chat: raw, type, settings: s, chatData: chatData(), pendingSame: pendingFor(base), inheritedDice: inherited?.dice ?? null });
             if (turn.fudgesChanged) await saveChatData(d => { d.fudges = turn.fudgesNext; });
             pendingTurn = { chatId: chatId(), ...turn.pending };
         }
@@ -156,6 +163,9 @@ async function rebuildMessage(i, { collect = true, config: given = null } = {}) 
     setReply(msg, out.mes);
     ctx().updateMessageBlock(i, msg);
     await ctx().saveChat();
+    // The newest reply's dice, for a rewrite after Intercede cuts it (its block goes with the cut).
+    const tail = i === c.length - 1 ? tailDiceRecord(c, i) : null;
+    if (tail) await saveChatData(d => { d.tailDice = tail; });
     decorateAll();
     if (out.chatDataPatch) await saveChatData(d => Object.assign(d, out.chatDataPatch));
     for (const n of out.notices) notice(n.kind, n.text, n.title);

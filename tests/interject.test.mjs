@@ -5,6 +5,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import * as core from "../src/host/core.js";
 import { stripForPrompt, stripPromptText } from "../src/model/prompt.js";
+import { BLOCK_MARK } from "../src/model/block.js";
+import { intercedeInheritance, tailDiceRecord } from "../src/host/intercede.js";
 
 const settings = core.normalizeSettings({});
 const INHERITED = { fate: { a: 3, b: 9, c: 14 }, world: 7, checks: [20, 3, 11] };
@@ -74,4 +76,47 @@ test("voices from the start of a cut reply are read", () => {
     const chat = [user("go"), reply('<mira>"Wait."'), user('"Stop."'), reply('<kael>"Fine."\n\n<!-- Story_Ledger\nNow: Day 1\n-->')];
     const out = core.rebuildMessage({ chat, index: 3, settings, chatData: core.normalizeChatData({}), userName: "Jan" });
     assert.match(out.mes, /<b>mira<\/b>/);
+});
+
+// ── SillyTavern: a reply Intercede cut keeps its dice ───────────────────────
+
+const OTHER = { fate: { a: 1, b: 2, c: 3 }, world: 4, checks: [5, 6, 7] };
+const prefix = (transactionId = "t1", mes = "Start.") => ({ mes, is_user: false, is_system: false, swipe_id: 0, extra: { intercede: { transactionId, role: "prefix" } } });
+
+test("Intercede's prefix inherits the tail reply's dice", () => {
+    const chat = [user("go"), prefix(), user('"Stop."')];
+    const r = intercedeInheritance(chat, 3, { tailDice: { index: 1, swipeId: 0, dice: INHERITED } });
+    assert.deepEqual(r.dice, INHERITED);
+    assert.equal(r.interjectDice.transactionId, "t1");
+    assert.equal(r.interjectDice.index, 1);
+});
+
+test("a swipe of Intercede's rewrite keeps the same dice after the tail moved", () => {
+    const chat = [user("go"), prefix(), user('"Stop."'), reply("Rewrite.")];
+    const r = intercedeInheritance(chat, 3, {
+        tailDice: { index: 3, swipeId: 0, dice: OTHER },
+        interjectDice: { transactionId: "t1", index: 1, dice: INHERITED },
+    });
+    assert.deepEqual(r.dice, INHERITED);
+});
+
+test("no Intercede marker means no inheritance", () => {
+    const chat = [user("go"), reply("Start."), user('"Stop."')];
+    assert.equal(intercedeInheritance(chat, 3, { tailDice: { index: 1, swipeId: 0, dice: INHERITED } }), null);
+});
+
+test("a prefix that still has a ledger block is not an interjection", () => {
+    const chat = [user("go"), prefix("t1", `Start.\n\n${BLOCK_MARK}`), user('"Stop."')];
+    assert.equal(intercedeInheritance(chat, 3, { tailDice: { index: 1, swipeId: 0, dice: INHERITED } }), null);
+});
+
+test("tailDiceRecord reads the dice from the reply's block", () => {
+    const chatData = core.normalizeChatData({});
+    const built = core.rebuildMessage({
+        chat: [reply('"Hi."\n\n<!-- Story_Ledger\nNow: Day 1 08:00\n-->')], index: 0, settings, chatData, userName: "Jan",
+        pending: { index: 0, dice: INHERITED, fudges: null, fudged: [] },
+    });
+    const record = tailDiceRecord([reply(built.mes)], 0);
+    assert.deepEqual(record, { index: 0, swipeId: 0, dice: INHERITED });
+    assert.equal(tailDiceRecord([reply("No block.")], 0), null);
 });

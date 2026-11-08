@@ -100,6 +100,23 @@ After installing an update, reload SillyTavern. To apply newly supported command
 an existing reply, edit its hidden comment if needed and click **↻** on that reply's
 block. A rebuild starts from the previous block and reuses the reply's saved dice.
 
+## Interjections
+
+Answering inside a finished reply — [Intercede](https://github.com/TesterBender/Intercede) in
+SillyTavern, **Interject** in LocalChar — cuts the reply, keeps its start, adds your line as a
+user message and rewrites the rest. The ledger treats that as **one turn**:
+
+- The rewrite keeps the cut reply's dice (Fate, World Sim, checks); armed fudges still apply.
+  In SillyTavern the ledger remembers the newest reply's dice when its block is written, and
+  reuses them when Intercede's marker is on the cut reply — swipes of the rewrite included.
+  In LocalChar, Interject hands the original reply to the ledger directly.
+- The state is the one before the cut reply: its block went with the cut-away rest, so the
+  ledger reads the previous turn's block, and the clock moves once.
+- The old ledger comment and block never reach the model through the notes: anything inside
+  `<scene_notes>` is cleaned. A custom Intercede template that renames `<scene_notes>` is not
+  covered.
+- Speakers in the kept start of the reply count towards this turn's voices.
+
 ## Install
 
 Copy this folder to `data/<user>/extensions/st-story-ledger` (or install from the repo URL
