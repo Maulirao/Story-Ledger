@@ -192,8 +192,29 @@ export function buildHandover(imported = [], { hasNow = false, sections = {}, un
 
 export const HANDOVER = buildHandover([], { hasNow: false });
 
+const SCENE_NOTES_RE = /(<scene_notes\b[^>]*>)([\s\S]*?)(<\/scene_notes\s*>|$)/gi;
+
+/**
+ * Inside every <scene_notes> region — the cut-away rest of a reply that Intercede (SillyTavern)
+ * or Interject (LocalChar) hands the model as plans — remove ledger blocks and ledger comments,
+ * whatever message carries them. The old comment and block belong to text that never happened.
+ * Text outside the regions is untouched.
+ */
+export function stripSceneNotes(text) {
+    return String(text ?? "").replace(SCENE_NOTES_RE, (_all, open, body, close) => {
+        let t = body, at;
+        while ((at = findBlock(t))) t = t.slice(0, at.start) + t.slice(at.end);
+        return open + t.replace(COMMENT_RE, "") + close;
+    });
+}
+
 /** Remove every state block, and every ledger comment except the newest assistant message's own. Mutates. */
 export function stripForPrompt(messages) {
+    messages.forEach(m => {
+        if (!m || typeof m.content !== "string") return;
+        const cleaned = stripSceneNotes(m.content);
+        if (cleaned !== m.content) m.content = cleaned;
+    });
     let newest = -1;
     messages.forEach((m, i) => {
         if (m && m.role === "assistant" && typeof m.content === "string" && notebookBody(m.content) !== null) newest = i;
@@ -214,7 +235,7 @@ export function stripForPrompt(messages) {
  * <story_ledger> section, whose template looks like a comment.
  */
 export function stripPromptText(text) {
-    const parts = String(text || "").split(/(<story_ledger>[\s\S]*?<\/story_ledger>)/);
+    const parts = stripSceneNotes(String(text || "")).split(/(<story_ledger>[\s\S]*?<\/story_ledger>)/);
     const outside = i => i % 2 === 0;
     let lastPart = -1;
     parts.forEach((p, i) => { if (outside(i) && notebookBody(p) !== null) lastPart = i; });

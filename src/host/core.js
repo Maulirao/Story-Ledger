@@ -23,7 +23,7 @@ import {
 import { resolveConfig } from "../model/config.js";
 import { describePair, PATTERN_GLOSS, relationsNotice } from "../model/relations.js";
 import { parseChanges } from "../model/changes.js";
-import { renderBlock } from "../model/block.js";
+import { renderBlock, BLOCK_MARK } from "../model/block.js";
 import { postTurn, latestState, initialState, writeBlockInto, stripBlocks, generationBase, withClockOverride, unreadNotices, rewriteNewestSection } from "../model/turn.js";
 import { renderStatePrompt, needsHandover, renderRules, renderTurnFacts, buildTemplate, buildHandover } from "../model/prompt.js";
 import { buildGenerationReminder, buildLedgerDuty } from "../model/generation-reminder.js";
@@ -260,6 +260,10 @@ export function rebuildMessage({ chat: c, index, settings: s, chatData, userName
     // the voices to fill in: the reader's message(s) just before this reply, then the reply itself
     const asked = [];
     for (let j = index - 1; j >= 0 && c[j] && c[j].is_user; j--) asked.unshift(String(c[j].mes || ""));
+    // ...and, when the reader cut a reply to interject, the start of that reply: it has no block
+    // of its own (the block went with the cut-away rest), and its speakers belong to this turn.
+    const cut = asked.length ? c[index - asked.length - 1] : null;
+    if (cut && !cut.is_user && !cut.is_system && !String(cut.mes || "").includes(BLOCK_MARK)) asked.unshift(withoutLedger(cut.mes));
     const { state, log, unparsed, warnings } = postTurn(prev, changes, restored.config, { text: [...asked, withoutLedger(msg.mes)].join("\n"), voiceOverrides: chatData.voiceOverrides || {} });
     const mes = writeBlockInto(msg.mes, blockFor(state, { settings: s, chatData, userName }));
 
