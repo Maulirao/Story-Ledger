@@ -147,11 +147,11 @@ export function mountLedger({ host, body, startTab = "rules", fixedTab = null, r
             return;
         }
         if (on("#sl-clock-clear")) { await run("clear_clock", {}); return; }
-        if ((hit = on("[data-voice-save], [data-voice-reset], #sl-voice-add"))) {
+        if ((hit = on("[data-voice-save], [data-voice-delete], #sl-voice-add"))) {
             const row = hit.closest(".sl-voice-row");
             const args = hit.id === "sl-voice-add"
                 ? { name: body.querySelector("#sl-voice-new-name").value, colour: body.querySelector("#sl-voice-new-colour").value }
-                : hit.dataset.voiceReset !== undefined ? { name: hit.dataset.voiceReset, colour: null }
+                : hit.dataset.voiceDelete !== undefined ? { name: hit.dataset.voiceDelete, colour: null }
                     : { name: hit.dataset.voiceSave, colour: row.querySelector("[data-voice-colour]").value };
             const out = await run("set_voice", args);
             if (out && out.ok === false) notify("warning", out.error);

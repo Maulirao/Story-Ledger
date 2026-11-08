@@ -24,7 +24,7 @@ import { resolveConfig } from "../model/config.js";
 import { describePair, PATTERN_GLOSS, relationsNotice } from "../model/relations.js";
 import { parseChanges } from "../model/changes.js";
 import { renderBlock } from "../model/block.js";
-import { postTurn, latestState, initialState, writeBlockInto, stripBlocks, generationBase, withClockOverride, unreadNotices } from "../model/turn.js";
+import { postTurn, latestState, initialState, writeBlockInto, stripBlocks, generationBase, withClockOverride, unreadNotices, rewriteNewestSection } from "../model/turn.js";
 import { renderStatePrompt, needsHandover, renderRules, renderTurnFacts, buildTemplate, buildHandover } from "../model/prompt.js";
 import { buildGenerationReminder, buildLedgerDuty } from "../model/generation-reminder.js";
 import { needsFixup, acceptFixup, spliceMissing, spliceThoughts, fixupConfigInputs } from "../model/fixup.js";
@@ -254,7 +254,10 @@ export function rebuildMessage({ chat: c, index, settings: s, chatData, userName
     const parsed = parseChanges(stripBlocks(msg.mes));
     const restored = restoredReplyInputs(filterPrunedRelationEvents(parsed?.relations, prev, chatData.relationshipOverrides, config), chatData.relationshipOverrides, index, config, relationshipReplySource(msg));
     const changes = parsed ? { ...parsed, relations: restored.events } : null;
-    const { state, log, unparsed, warnings } = postTurn(prev, changes, restored.config, { text: withoutLedger(msg.mes), voiceOverrides: chatData.voiceOverrides || {} });
+    // the voices to fill in: the reader's message(s) just before this reply, then the reply itself
+    const asked = [];
+    for (let j = index - 1; j >= 0 && c[j] && c[j].is_user; j--) asked.unshift(String(c[j].mes || ""));
+    const { state, log, unparsed, warnings } = postTurn(prev, changes, restored.config, { text: [...asked, withoutLedger(msg.mes)].join("\n"), voiceOverrides: chatData.voiceOverrides || {} });
     const mes = writeBlockInto(msg.mes, blockFor(state, { settings: s, chatData, userName }));
 
     const notices = [];
@@ -315,12 +318,23 @@ export function setVoice(chatData, name, colour) {
     // every key that names this voice goes ("Jim" set while the row reads "Jim Hawkins"), so ✕ always clears it
     const overrides = Object.fromEntries(Object.entries(chatData.voiceOverrides || {})
         .filter(([k]) => voiceKey(k) !== voiceKey(n) && findVoice({ [n]: true }, k) === null));
-    if (colour === null || colour === undefined) return { ok: true, chatDataPatch: { voiceOverrides: overrides } };
+    // ✕: the voice is deleted, and stays gone (not filled in again) until the reader adds it back
+    if (colour === null || colour === undefined) return { ok: true, chatDataPatch: { voiceOverrides: { ...overrides, [n]: null } } };
     const written = String(colour).trim();
     const hex = colourHex(written);
     if (!hex) return { ok: false, error: `Not a colour: ${written}. Use a CSS colour name or #hex.` };
     overrides[n] = written.startsWith("#") ? hex : written;
     return { ok: true, chatDataPatch: { voiceOverrides: overrides } };
+}
+
+/**
+ * The newest block with its 🎨 VOICES rows rewritten to include the reader's list (their colours
+ * as "you" rows, their deletions gone), as a hand edit to that block would: { status, index, mes }
+ * from rewriteNewestSection ("ok" | "noblock" | "unreadable" | "nosection"). The host writes `mes`.
+ */
+export function voicesIntoNewestBlock({ chat, settings, chatData, userName }) {
+    return rewriteNewestSection(chat || [], (chat || []).length, engineConfig(settings, userName), "voices",
+        st => { st.voices = withVoiceOverrides(st.voices || {}, chatData.voiceOverrides || {}); });
 }
 
 // ── Ledger fix-up ───────────────────────────────────────────────────────────
@@ -531,13 +545,13 @@ export function popupHtml(tab, view, previewBaseDice = null) {
             <input type="text" class="text_pole sl-voice-colour" data-voice-colour="${esc(name)}" value="${esc(v.colour)}">
             <input type="color" data-voice-pick="${esc(name)}" value="${esc(v.hex)}">
             <small>${esc(v.source)}</small> ${sample("sl-voice", v.hex)}
-            <span class="sl-btns"><button class="menu_button" data-voice-save="${esc(name)}">Save</button>${v.source === "you" ? `<button class="menu_button" data-voice-reset="${esc(name)}" title="Back to the block's colour">✕</button>` : ""}</span>
+            <span class="sl-btns"><button class="menu_button" data-voice-save="${esc(name)}">Save</button><button class="menu_button" data-voice-delete="${esc(name)}" title="Delete this voice">✕</button></span>
         </div>`).join("") || "<p><i>No voices yet. They appear once the model tags a line of dialogue.</i></p>";
         const mind = `<div class="sl-item sl-voice-row"><span class="sl-voice-swatch" style="background:${MIND_FILL}"></span> <b>mind</b> <small>reserved for telepathy</small> <span class="sl-voice-band">${sample("sl-voice sl-voice-mind", MIND_FILL, MIND_FILL, "Can you hear me?")}</span></div>`;
         const alike = nearDuplicates(Object.entries(list).map(([n, v]) => [n, v.hex]))
             .map(([a, b]) => `<p class="sl-meta">⚠ ${esc(a)} and ${esc(b)} look alike (${esc(list[a].hex)} / ${esc(list[b].hex)})</p>`).join("");
         body = `${s.sections.voices === false ? `<p class="sl-meta"><b>The 🎨 Voices section is switched off in Settings: colours are not painted or sent.</b></p>` : ""}
-            <p class="sl-meta">Each speaker's dialogue colour. The model picks one the first time someone speaks. A colour you set here wins on screen and in what the model is told, and is never written into a block; ✕ goes back to the block's colour.</p>
+            <p class="sl-meta">Each speaker's dialogue colour. The model picks one the first time someone speaks. Voices you add or change here go into the block's 🎨 VOICES list straight away, and the model can't change them. ✕ deletes a voice.</p>
             ${rows}${mind}${alike}
             <h4>Add a voice</h4>
             <div class="sl-btns"><input type="text" class="text_pole" id="sl-voice-new-name" placeholder="Name">

@@ -474,12 +474,22 @@ export async function openLedgerPopup(startTab = "rules") {
         const out = core.setVoice(chatData(), name, colour);
         if (!out.ok) { notice("warning", out.error, "🎨 Story Ledger"); return; }
         await saveChatData(d => Object.assign(d, out.chatDataPatch));
+        // the newest block's VOICES list shows the change straight away (as a quests edit would)
+        const c = ctx().chat || [];
+        const r = core.voicesIntoNewestBlock({ chat: c, settings: settings(), chatData: chatData(), userName: ctx().name1 });
+        if (r.status === "ok") {
+            const msg = c[r.index];
+            msg.mes = r.mes;
+            if (Array.isArray(msg.swipes) && msg.swipe_id !== undefined && msg.swipes[msg.swipe_id] !== undefined) msg.swipes[msg.swipe_id] = msg.mes;
+            ctx().updateMessageBlock(r.index, msg);
+            await ctx().saveChat();
+        }
         done();
         decorateAll();
     };
     $root.on("input", "[data-voice-pick]", e => { $(e.currentTarget).closest(".sl-voice-row").find("[data-voice-colour]").val(e.currentTarget.value); });
     $root.on("click", "[data-voice-save]", e => saveVoice(e.currentTarget.dataset.voiceSave, $(e.currentTarget).closest(".sl-voice-row").find("[data-voice-colour]").val()));
-    $root.on("click", "[data-voice-reset]", e => saveVoice(e.currentTarget.dataset.voiceReset, null));
+    $root.on("click", "[data-voice-delete]", e => saveVoice(e.currentTarget.dataset.voiceDelete, null));
     $root.on("click", "#sl-voice-add", () => saveVoice($root.find("#sl-voice-new-name").val(), $root.find("#sl-voice-new-colour").val()));
     $root.on("input", "[data-fudge-value]", e => {
         const key = e.currentTarget.dataset.fudgeValue;

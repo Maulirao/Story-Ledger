@@ -151,12 +151,16 @@ export function findVoice(list, name) {
 }
 
 /**
- * The block's voices with the reader's overrides ({ name: colour }) on top: an override
- * replaces the voice it names (source "you"), or adds one the block does not have yet.
+ * The voices with the reader's own list ({ name: colour, or null for a deleted voice }) on top:
+ * a colour replaces the voice it names (source "you") or adds it; null deletes it.
  */
 export function withVoiceOverrides(voices, overrides) {
     const out = { ...(voices || {}) };
-    for (const [name, colour] of Object.entries(overrides || {})) out[findVoice(out, name) ?? name] = { colour, source: "you" };
+    for (const [name, colour] of Object.entries(overrides || {})) {
+        const key = findVoice(out, name) ?? name;
+        if (colour === null) delete out[key];
+        else out[key] = { colour, source: "you" };
+    }
     return out;
 }
 

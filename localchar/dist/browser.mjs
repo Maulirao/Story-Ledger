@@ -634,7 +634,11 @@ function findVoice(list, name) {
 }
 function withVoiceOverrides(voices, overrides) {
   const out = { ...voices || {} };
-  for (const [name, colour] of Object.entries(overrides || {})) out[findVoice(out, name) ?? name] = { colour, source: "you" };
+  for (const [name, colour] of Object.entries(overrides || {})) {
+    const key2 = findVoice(out, name) ?? name;
+    if (colour === null) delete out[key2];
+    else out[key2] = { colour, source: "you" };
+  }
   return out;
 }
 function planPaint(text, list) {
@@ -704,9 +708,9 @@ var COMMANDS5 = [
   { id: "voices.set", form: "Name: colour", example: "Ana: #3fa7a0", keywords: [] }
 ];
 var LINE = /^(.+?)\s*[:=]\s*(\S+)$/;
-var SOURCES = /* @__PURE__ */ new Set(["model", "auto"]);
+var SOURCES = /* @__PURE__ */ new Set(["model", "auto", "you"]);
 var RULES = `Voices: tag every line of spoken dialogue with who says it, right before the opening quote: <Name>"…"</Name>. A name that is also an HTML tag (Mark, Ruby, Em) takes an underscore: <Mark_>. When it matters who is addressed, as in a group scene, name the speaker first and the listener second: <Speaker+Listener>"…". Telepathy uses the reserved voice mind, never a character's name: it marks words sent silently from one mind straight into another, heard only by the receiver and by no one else present. Write <Speaker+mind>"…" when it is clear who receives it, <Speaker+Listener+mind>"…" to name the receiver, or <mind>"…" when the sender is unknown. A character's own unspoken thoughts, which nobody receives, are not mind lines. Add a tone only when the delivery needs it: <Name:whisper>, <Name:shout>, <Name:measured>, <Name:tremble>, also after two voices (<Speaker+Listener:whisper>). The first time someone speaks, give them a colour under Voices: in the ledger comment: a CSS colour name or a #hex, readable on a dark background and far from the colours already taken. A speaker who already has a colour in earlier replies keeps it. A set colour never changes. These tags replace any other dialogue-colour instruction.`;
-var hexesOf = (list) => Object.values(list || {}).map((v) => colourHex(typeof v === "string" ? v : v.colour)).filter(Boolean);
+var hexesOf = (list) => Object.values(list || {}).filter((v) => v != null).map((v) => colourHex(typeof v === "string" ? v : v.colour)).filter(Boolean);
 var voices_default = {
   key: "voices",
   title: "🎨 VOICES",
@@ -749,7 +753,7 @@ var voices_default = {
       const o = findVoice(ctx.reply?.voiceOverrides, name);
       if (o !== null && colourHex(ctx.reply.voiceOverrides[o]) === hex) continue;
       const had = state.voices[name];
-      if (had && had.source === "model") {
+      if (had && (had.source === "model" || had.source === "you")) {
         if (colourHex(had.colour) !== hex) warn(line, `${name} already speaks in ${had.colour}; only the reader changes a set colour.`);
         continue;
       }
@@ -770,6 +774,7 @@ var voices_default = {
         state.voices[v] = { colour: pickColour([...hexesOf(state.voices), ...hexesOf(overrides)]), source: "auto" };
       }
     }
+    state.voices = withVoiceOverrides(state.voices, overrides);
   },
   prompt(value2) {
     const rows = Object.entries(value2 || {}).map(([n, v]) => `${n} ${v.colour}`);
@@ -4964,12 +4969,12 @@ function popupHtml(tab, view, previewBaseDice = null) {
             <input type="text" class="text_pole sl-voice-colour" data-voice-colour="${esc2(name)}" value="${esc2(v.colour)}">
             <input type="color" data-voice-pick="${esc2(name)}" value="${esc2(v.hex)}">
             <small>${esc2(v.source)}</small> ${sample("sl-voice", v.hex)}
-            <span class="sl-btns"><button class="menu_button" data-voice-save="${esc2(name)}">Save</button>${v.source === "you" ? `<button class="menu_button" data-voice-reset="${esc2(name)}" title="Back to the block's colour">✕</button>` : ""}</span>
+            <span class="sl-btns"><button class="menu_button" data-voice-save="${esc2(name)}">Save</button><button class="menu_button" data-voice-delete="${esc2(name)}" title="Delete this voice">✕</button></span>
         </div>`).join("") || "<p><i>No voices yet. They appear once the model tags a line of dialogue.</i></p>";
     const mind = `<div class="sl-item sl-voice-row"><span class="sl-voice-swatch" style="background:${MIND_FILL}"></span> <b>mind</b> <small>reserved for telepathy</small> <span class="sl-voice-band">${sample("sl-voice sl-voice-mind", MIND_FILL, MIND_FILL, "Can you hear me?")}</span></div>`;
     const alike = nearDuplicates(Object.entries(list).map(([n, v]) => [n, v.hex])).map(([a, b]) => `<p class="sl-meta">⚠ ${esc2(a)} and ${esc2(b)} look alike (${esc2(list[a].hex)} / ${esc2(list[b].hex)})</p>`).join("");
     body = `${s.sections.voices === false ? `<p class="sl-meta"><b>The 🎨 Voices section is switched off in Settings: colours are not painted or sent.</b></p>` : ""}
-            <p class="sl-meta">Each speaker's dialogue colour. The model picks one the first time someone speaks. A colour you set here wins on screen and in what the model is told, and is never written into a block; ✕ goes back to the block's colour.</p>
+            <p class="sl-meta">Each speaker's dialogue colour. The model picks one the first time someone speaks. Voices you add or change here go into the block's 🎨 VOICES list straight away, and the model can't change them. ✕ deletes a voice.</p>
             ${rows}${mind}${alike}
             <h4>Add a voice</h4>
             <div class="sl-btns"><input type="text" class="text_pole" id="sl-voice-new-name" placeholder="Name">
@@ -5669,9 +5674,9 @@ function mountLedger({ host, body, startTab = "rules", fixedTab = null, ready = 
       await run("clear_clock", {});
       return;
     }
-    if (hit = on("[data-voice-save], [data-voice-reset], #sl-voice-add")) {
+    if (hit = on("[data-voice-save], [data-voice-delete], #sl-voice-add")) {
       const row = hit.closest(".sl-voice-row");
-      const args = hit.id === "sl-voice-add" ? { name: body.querySelector("#sl-voice-new-name").value, colour: body.querySelector("#sl-voice-new-colour").value } : hit.dataset.voiceReset !== void 0 ? { name: hit.dataset.voiceReset, colour: null } : { name: hit.dataset.voiceSave, colour: row.querySelector("[data-voice-colour]").value };
+      const args = hit.id === "sl-voice-add" ? { name: body.querySelector("#sl-voice-new-name").value, colour: body.querySelector("#sl-voice-new-colour").value } : hit.dataset.voiceDelete !== void 0 ? { name: hit.dataset.voiceDelete, colour: null } : { name: hit.dataset.voiceSave, colour: row.querySelector("[data-voice-colour]").value };
       const out = await run("set_voice", args);
       if (out && out.ok === false) notify("warning", out.error);
       else voicesChanged();

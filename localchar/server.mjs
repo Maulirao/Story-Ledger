@@ -196,7 +196,10 @@ const setClock = act(async (args, snapshot, ctx) => {
 const setVoice = act(async (args, snapshot, ctx) => {
     const out = core.setVoice(ctx.doc, args.name, args.colour ?? null);
     if (!out.ok) return answer({ ok: false, error: out.error });
-    return answer({ ok: true }, [withData(snapshot, ctx, d => Object.assign(d, out.chatDataPatch))]);
+    // the newest block's VOICES list shows the change straight away
+    const block = core.voicesIntoNewestBlock({ chat: ctx.chat, settings: ctx.settings, chatData: { ...ctx.doc, ...out.chatDataPatch }, userName: ctx.userName });
+    return answer({ ok: true }, [withData(snapshot, ctx, d => Object.assign(d, out.chatDataPatch)),
+        ...(block.status === "ok" ? [editReply(ctx.history, block.index, block.mes)] : [])]);
 });
 
 const clearClock = act(async (args, snapshot, ctx) =>

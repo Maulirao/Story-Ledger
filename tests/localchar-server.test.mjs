@@ -492,3 +492,9 @@ test("voices: the reader sets a colour, and mind is refused", async () => {
     assert.deepEqual(refused.result, { ok: false, error: '"mind" is reserved for telepathy.' });
     assert.deepEqual(refused.effects, []);
 });
+
+test("set_voice also rewrites the newest block's VOICES rows", async () => {
+    const snap = await snapshotOf();
+    const out = await act("set_voice", { name: "Jim", colour: "orchid" }, snap);
+    assert.ok(out.effects.some(e => e.type === "edit_message" && /<b>Jim<\/b> \| orchid \| you/.test(e.content)));
+});

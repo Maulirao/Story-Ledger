@@ -63,7 +63,7 @@ test("new speakers in a reply get distinct auto colours", () => {
 });
 
 test("the fill-in skips reader-set voices and avoids their colours", () => {
-    assert.deepEqual(postTurn(emptyState(), ch("Now: x"), C, { text: '<kael>"x"', voiceOverrides: { Kael: "#c0392b" } }).state.voices, {});
+    assert.deepEqual(postTurn(emptyState(), ch("Now: x"), C, { text: '<kael>"x"', voiceOverrides: { Kael: "#c0392b" } }).state.voices, { Kael: { colour: "#c0392b", source: "you" } });
     const v = postTurn(emptyState(), ch("Now: x"), C, { text: '<jim>"x"', voiceOverrides: { Kael: AUTO_POOL[0] } }).state.voices;
     assert.notEqual(v.jim.colour, AUTO_POOL[0]);
 });
@@ -103,7 +103,7 @@ test("the rules tell the model how to tag a name that is an HTML tag", () => {
 test("a model echoing the reader's colour is quietly ignored", () => {
     const s = emptyState(); s.voices = { Jim: { colour: "#3fa7a0", source: "model" } };
     const r = postTurn(s, ch("Voices:\n- Jim: orchid"), C, { text: "", voiceOverrides: { Jim: "orchid" } });
-    assert.deepEqual(r.state.voices, s.voices);
+    assert.deepEqual(r.state.voices, { Jim: { colour: "orchid", source: "you" } });
     assert.deepEqual(r.warnings, []);
 });
 
@@ -127,4 +127,23 @@ test("the rules teach naming the receiver of a telepathy line", () => {
 test("speakers of italic-wrapped lines (*\"…\"*) are added to VOICES", () => {
     const text = 'Bob leaned close. <Bob+jan+mind:whisper>*"Papibaquígrafo".*</mind> <Ana>**"Hey!"**';
     assert.deepEqual(Object.keys(postTurn(emptyState(), ch("Now: x"), C, { text, voiceOverrides: {} }).state.voices), ["Bob", "jan", "Ana"]);
+});
+
+test("the reader's voices go into the block as you rows, and the model cannot change them", () => {
+    const fresh = postTurn(emptyState(), ch("Voices:\n- Kael: red"), C, { text: "", voiceOverrides: { Kael: "#c0392b", Anna: "orchid" } }).state.voices;
+    assert.deepEqual(fresh, { Kael: { colour: "#c0392b", source: "you" }, Anna: { colour: "orchid", source: "you" } });
+    const s = emptyState(); s.voices = { Kael: { colour: "#c0392b", source: "you" } };
+    const r = postTurn(s, ch("Voices:\n- Kael: red"), C);
+    assert.deepEqual(r.state.voices.Kael, { colour: "#c0392b", source: "you" });
+    assert.match(r.warnings[0].text, /only the reader changes a set colour/);
+});
+
+test("you rows round-trip through the block", () => {
+    const s = emptyState(); s.voices = { Kael: { colour: "#c0392b", source: "you" } };
+    assert.deepEqual(parseBlock(renderBlock(s, { rules: [], config: C, sections: {} }), { config: C }).state.voices, s.voices);
+});
+
+test("a deleted voice leaves the block and is not filled in again", () => {
+    const s = emptyState(); s.voices = { Bob: { colour: "#00ffff", source: "auto" } };
+    assert.deepEqual(postTurn(s, ch("Now: x"), C, { text: '<Bob>"Hi."', voiceOverrides: { Bob: null } }).state.voices, {});
 });
