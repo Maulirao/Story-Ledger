@@ -12,9 +12,13 @@ const SHOW_TEXT = 4;   // NodeFilter.SHOW_TEXT
 // the quote kinds SillyTavern pairs, so on-screen quotes split the same way as quotesIn's
 const QUOTE = /"[^"\n]{1,2000}?"|“[^”\n]{1,2000}?”|«[^»\n]{1,2000}?»|「[^」\n]{1,2000}?」|『[^』\n]{1,2000}?』|＂[^＂\n]{1,2000}?＂/g;
 
-/** The span's class list and colour variables for one planned quote. */
-export function spanAttrs(span) {
-    const className = ["sl-voice", span.bottom ? "sl-voice-two" : "", span.mind ? "sl-voice-mind" : "", span.tone ? `sl-tone-${span.tone}` : ""]
+/**
+ * The span's class list and colour variables for one planned quote. `options.ring` (Settings →
+ * "Telepathy with a listener: Eclipse ring") rings listener lines instead of banding them plain.
+ */
+export function spanAttrs(span, options = {}) {
+    const className = ["sl-voice", span.bottom ? "sl-voice-two" : "", span.mind ? "sl-voice-mind" : "",
+        span.listener && options.ring ? "sl-voice-ring" : "", span.tone ? `sl-tone-${span.tone}` : ""]
         .filter(Boolean).join(" ");
     return { className, style: `--sl-top:${span.top};--sl-bottom:${span.bottom ?? span.top}` };
 }
@@ -37,6 +41,16 @@ const MIND_FILTER_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="0" heigh
 <feComposite in="brightRaw" in2="SourceAlpha" operator="in" result="bright"/>
 <feMorphology in="bright" operator="dilate" radius="0.9" result="blackRim"/>
 <feMerge><feMergeNode in="halo"/><feMergeNode in="corona"/><feMergeNode in="rim"/><feMergeNode in="blackRim"/><feMergeNode in="SourceGraphic"/></feMerge>
+</filter>
+<filter id="sl-mind-ring" x="-20%" y="-80%" width="140%" height="260%" color-interpolation-filters="sRGB">
+<feMorphology in="SourceAlpha" operator="dilate" radius="1.1" result="blackRim"/>
+<feMorphology in="SourceAlpha" operator="dilate" radius="1.7" result="outerA"/>
+<feFlood flood-color="#fff"/><feComposite in2="outerA" operator="in" result="whiteRing"/>
+<feGaussianBlur in="outerA" stdDeviation="2" result="glowA"/>
+<feFlood flood-color="#fff" flood-opacity="0.85"/><feComposite in2="glowA" operator="in" result="glow"/>
+<feGaussianBlur in="outerA" stdDeviation="6" result="haloA"/>
+<feFlood flood-color="#cdb9ff" flood-opacity="0.55"/><feComposite in2="haloA" operator="in" result="halo"/>
+<feMerge><feMergeNode in="halo"/><feMergeNode in="glow"/><feMergeNode in="whiteRing"/><feMergeNode in="blackRim"/><feMergeNode in="SourceGraphic"/></feMerge>
 </filter></defs></svg>`;
 
 /** Put the mind filter on the page once. A no-op without a real document (node tests, stubs). */
@@ -58,9 +72,9 @@ function inBand(doc, span, voice) {
     return band;
 }
 
-function voiceSpan(doc, span) {
+function voiceSpan(doc, span, options) {
     const el = doc.createElement("span");
-    const { className, style } = spanAttrs(span);
+    const { className, style } = spanAttrs(span, options);
     el.className = className;
     el.setAttribute("style", style);
     el.setAttribute("data-sl-voice", "");
@@ -100,7 +114,7 @@ function hideLiteralTag(doc, node) {
  * Every quote of the raw text, tagged or not, is lined up with the rendered ones in order, so an
  * untagged quote with the same words as a tagged one is never painted in its place.
  */
-export function paintVoices(el, rawText, list) {
+export function paintVoices(el, rawText, list, options = {}) {
     unpaintVoices(el);
     const plan = planPaint(rawText, list).filter(p => p.index >= 0);
     if (!plan.length) return;
@@ -115,7 +129,7 @@ export function paintVoices(el, rawText, list) {
         for (const p of plan) {
             const at = aligned[p.index];
             if (at < 0) continue;
-            const span = voiceSpan(doc, p);
+            const span = voiceSpan(doc, p, options);
             while (qs[at].firstChild) span.appendChild(qs[at].firstChild);
             qs[at].appendChild(inBand(doc, p, span));
             hideLiteralTag(doc, qs[at].previousSibling);
@@ -137,7 +151,7 @@ export function paintVoices(el, rawText, list) {
         const { node, start, end } = found[at];
         const quote = node.splitText(start);
         quote.splitText(end - start);
-        const span = voiceSpan(doc, p);
+        const span = voiceSpan(doc, p, options);
         quote.parentNode.insertBefore(inBand(doc, p, span), quote);
         span.appendChild(quote);
         hideLiteralTag(doc, node);

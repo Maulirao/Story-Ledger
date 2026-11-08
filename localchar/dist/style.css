@@ -264,6 +264,8 @@
     -webkit-background-clip: text; background-clip: text; color: transparent; text-shadow: none;
     -webkit-box-decoration-break: clone; box-decoration-break: clone; }
 .sl-voice-mind { font-weight: 700; --sl-f-mind: url(#sl-mind-eclipse); }
+/* Settings → Telepathy with a listener: Eclipse ring — <A+B+mind> letters ringed black, then haloed white */
+.sl-voice-ring { --sl-f-mind: url(#sl-mind-ring); }
 .sl-voice-band { border-radius: 0.4em; padding: 0.1em 0.36em; -webkit-box-decoration-break: clone; box-decoration-break: clone;
     background:
         radial-gradient(1.2px 1.2px at 12% 30%, #fff 60%, transparent 62%),

@@ -66,3 +66,10 @@ test("the Voices tab shows the mind sample on its starry band", () => {
     const html = core.popupHtml("voices", { chat: [], settings, userName: "Jan", chatData: core.normalizeChatData({}) });
     assert.match(html, /<span class="sl-voice-band"><span class="sl-voice sl-voice-mind"/);
 });
+
+test("Settings has the telepathy-with-a-listener switch, band by default", () => {
+    assert.equal(core.normalizeSettings({}).mindListener, "band");
+    const html = core.popupHtml("settings", { chat: [], settings, userName: "Jan", chatData: core.normalizeChatData({}) });
+    assert.match(html, /<select class="text_pole" data-set="mindListener">/);
+    assert.match(html, /<option value="ring"[^>]*>Eclipse ring<\/option>/);
+});

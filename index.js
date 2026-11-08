@@ -348,7 +348,7 @@ function paintMessage(i, voices) {
     const el = document.querySelector(`#chat .mes[mesid="${i}"] .mes_text`);
     if (!el) return;
     if (!voices) { unpaintVoices(el); return; }
-    paintVoices(el, String(((ctx().chat || [])[i] || {}).mes || ""), voices);
+    paintVoices(el, String(((ctx().chat || [])[i] || {}).mes || ""), voices, { ring: settings().mindListener === "ring" });
 }
 const decorateAll = () => {
     const newestIndex = newestBlockIndex();

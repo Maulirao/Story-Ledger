@@ -4779,7 +4779,7 @@ function withRelationshipOverrides(state, overrides, blockIndex, config, rebuild
 
 // src/host/core.js
 var DEFAULT_SECTIONS = { scene: true, relationships: true, notebook: true, ...Object.fromEntries(SECTIONS.map((sec) => [sec.key, true])) };
-var DEFAULT_SETTINGS = { enabled: true, stickyNotices: true, fixupMode: "full", fixupHistory: 4, depth: 1, role: 0, placement: "auto", theme: "frankenstein", checkStyle: "dnd", config: {} };
+var DEFAULT_SETTINGS = { enabled: true, stickyNotices: true, fixupMode: "full", fixupHistory: 4, depth: 1, role: 0, placement: "auto", theme: "frankenstein", checkStyle: "dnd", mindListener: "band", config: {} };
 function normalizeSettings(raw) {
   const s = { ...DEFAULT_SETTINGS, config: {}, ...raw || {} };
   if (!s.sections) {
@@ -4996,7 +4996,8 @@ function popupHtml(tab, view, previewBaseDice = null) {
             ${Object.entries(sec).map(([k, label]) => `<label class="checkbox_label"><input type="checkbox" data-section="${k}" ${s.sections[k] ? "checked" : ""}> ${label}</label>`).join("")}
             <h4>Look</h4>
             <div class="sl-grid"><label>Theme <select class="text_pole" data-set="theme">${[["frankenstein", "Frankenstein"], ["sola", "Sola"], ["megumin", "Megumin"]].map(([v, l]) => `<option value="${v}" ${(s.theme || "frankenstein") === v ? "selected" : ""}>${l}</option>`).join("")}</select></label>
-                <label>Check style <select class="text_pole" data-set="checkStyle"><option value="dnd" ${s.checkStyle !== "arrow" ? "selected" : ""}>DnD (locked DC)</option><option value="arrow" ${s.checkStyle === "arrow" ? "selected" : ""}>Wind's Arrow (Sola)</option></select></label></div>
+                <label>Check style <select class="text_pole" data-set="checkStyle"><option value="dnd" ${s.checkStyle !== "arrow" ? "selected" : ""}>DnD (locked DC)</option><option value="arrow" ${s.checkStyle === "arrow" ? "selected" : ""}>Wind's Arrow (Sola)</option></select></label>
+                <label title="How a telepathy line that names its receiver looks, e.g. &lt;You+Jim+mind&gt;">Telepathy with a listener <select class="text_pole" data-set="mindListener"><option value="band" ${s.mindListener !== "ring" ? "selected" : ""}>Band</option><option value="ring" ${s.mindListener === "ring" ? "selected" : ""}>Eclipse ring</option></select></label></div>
             <h4>Prompt placement</h4>
             <div class="sl-grid">
                 <label>Placement <select class="text_pole" data-set="placement"><option value="auto" ${s.placement === "auto" ? "selected" : ""}>automatic, in chat at depth</option><option value="macro" ${s.placement === "macro" ? "selected" : ""}>only where a preset uses {{story_ledger}}</option></select></label>
@@ -5336,8 +5337,14 @@ function decorate3(root, ctx) {
 // src/ui/voices-paint.js
 var SHOW_TEXT = 4;
 var QUOTE = /"[^"\n]{1,2000}?"|“[^”\n]{1,2000}?”|«[^»\n]{1,2000}?»|「[^」\n]{1,2000}?」|『[^』\n]{1,2000}?』|＂[^＂\n]{1,2000}?＂/g;
-function spanAttrs(span) {
-  const className = ["sl-voice", span.bottom ? "sl-voice-two" : "", span.mind ? "sl-voice-mind" : "", span.tone ? `sl-tone-${span.tone}` : ""].filter(Boolean).join(" ");
+function spanAttrs(span, options = {}) {
+  const className = [
+    "sl-voice",
+    span.bottom ? "sl-voice-two" : "",
+    span.mind ? "sl-voice-mind" : "",
+    span.listener && options.ring ? "sl-voice-ring" : "",
+    span.tone ? `sl-tone-${span.tone}` : ""
+  ].filter(Boolean).join(" ");
   return { className, style: `--sl-top:${span.top};--sl-bottom:${span.bottom ?? span.top}` };
 }
 var MIND_FILTER_ID = "sl-mind-eclipse";
@@ -5352,6 +5359,16 @@ var MIND_FILTER_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="0" height=
 <feComposite in="brightRaw" in2="SourceAlpha" operator="in" result="bright"/>
 <feMorphology in="bright" operator="dilate" radius="0.9" result="blackRim"/>
 <feMerge><feMergeNode in="halo"/><feMergeNode in="corona"/><feMergeNode in="rim"/><feMergeNode in="blackRim"/><feMergeNode in="SourceGraphic"/></feMerge>
+</filter>
+<filter id="sl-mind-ring" x="-20%" y="-80%" width="140%" height="260%" color-interpolation-filters="sRGB">
+<feMorphology in="SourceAlpha" operator="dilate" radius="1.1" result="blackRim"/>
+<feMorphology in="SourceAlpha" operator="dilate" radius="1.7" result="outerA"/>
+<feFlood flood-color="#fff"/><feComposite in2="outerA" operator="in" result="whiteRing"/>
+<feGaussianBlur in="outerA" stdDeviation="2" result="glowA"/>
+<feFlood flood-color="#fff" flood-opacity="0.85"/><feComposite in2="glowA" operator="in" result="glow"/>
+<feGaussianBlur in="outerA" stdDeviation="6" result="haloA"/>
+<feFlood flood-color="#cdb9ff" flood-opacity="0.55"/><feComposite in2="haloA" operator="in" result="halo"/>
+<feMerge><feMergeNode in="halo"/><feMergeNode in="glow"/><feMergeNode in="whiteRing"/><feMergeNode in="blackRim"/><feMergeNode in="SourceGraphic"/></feMerge>
 </filter></defs></svg>`;
 function ensureMindFilter(doc) {
   if (!doc || typeof doc.getElementById !== "function" || !doc.body || doc.getElementById(MIND_FILTER_ID)) return;
@@ -5367,9 +5384,9 @@ function inBand(doc, span, voice) {
   band.appendChild(voice);
   return band;
 }
-function voiceSpan(doc, span) {
+function voiceSpan(doc, span, options) {
   const el = doc.createElement("span");
-  const { className, style } = spanAttrs(span);
+  const { className, style } = spanAttrs(span, options);
   el.className = className;
   el.setAttribute("style", style);
   el.setAttribute("data-sl-voice", "");
@@ -5396,7 +5413,7 @@ function hideLiteralTag(doc, node) {
   tag2.parentNode.insertBefore(hide, tag2);
   hide.appendChild(tag2);
 }
-function paintVoices(el, rawText, list) {
+function paintVoices(el, rawText, list, options = {}) {
   unpaintVoices(el);
   const plan = planPaint(rawText, list).filter((p) => p.index >= 0);
   if (!plan.length) return;
@@ -5409,7 +5426,7 @@ function paintVoices(el, rawText, list) {
     for (const p of plan) {
       const at = aligned2[p.index];
       if (at < 0) continue;
-      const span = voiceSpan(doc, p);
+      const span = voiceSpan(doc, p, options);
       while (qs[at].firstChild) span.appendChild(qs[at].firstChild);
       qs[at].appendChild(inBand(doc, p, span));
       hideLiteralTag(doc, qs[at].previousSibling);
@@ -5428,7 +5445,7 @@ function paintVoices(el, rawText, list) {
     const { node, start, end } = found[at];
     const quote = node.splitText(start);
     quote.splitText(end - start);
-    const span = voiceSpan(doc, p);
+    const span = voiceSpan(doc, p, options);
     quote.parentNode.insertBefore(inBand(doc, p, span), quote);
     span.appendChild(quote);
     hideLiteralTag(doc, node);
@@ -5897,7 +5914,7 @@ ${body}`) : true);
     });
   }
   function decorate4(el, message) {
-    if (settings.enabled && settings.sections.voices !== false) paintVoices(el, String(message.content ?? ""), voiceList2());
+    if (settings.enabled && settings.sections.voices !== false) paintVoices(el, String(message.content ?? ""), voiceList2(), { ring: settings.mindListener === "ring" });
     else unpaintVoices(el);
     if (!settings.enabled || !String(message.content ?? "").includes(BLOCK_MARK)) {
       undecorate(el);

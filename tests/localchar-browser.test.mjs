@@ -270,7 +270,7 @@ test("every message is painted, and the Voices switch turns painting off", async
 // a rendered message holding one <q>, enough for the painter: the span it wraps the quote in is kept
 function quoteEl(text) {
     const q = { textContent: text, firstChild: null, previousSibling: null, closest: () => null, appendChild(span) { q.painted = span; } };
-    const doc = { createElement: () => ({ className: "", setAttribute(k, v) { this[k] = v; }, appendChild() {} }), createTreeWalker: () => ({ nextNode: () => false }) };
+    const doc = { createElement: () => ({ className: "", children: [], setAttribute(k, v) { this[k] = v; }, appendChild(c) { this.children.push(c); } }), createTreeWalker: () => ({ nextNode: () => false }) };
     return { q, el: { querySelectorAll: s => (s === "q" ? [q] : []), addEventListener() {}, removeEventListener() {}, ownerDocument: doc } };
 }
 const tick = () => new Promise(r => setTimeout(r, 0));
@@ -307,4 +307,13 @@ test("LocalChar builds the voice list once, not once per painted message", async
     for (let i = 0; i < 4; i++) paint();
     assert.ok(once > 0);
     assert.equal(reads, once, "four more paints of the same chat read nothing more");
+});
+
+test("LocalChar paints listener telepathy as the eclipse ring when the setting says so", async () => {
+    const { host, log } = fakeHost({ settings: { mindListener: "ring" } });
+    register(host);
+    await tick();
+    const { q, el } = quoteEl('"Hi."');
+    log.hooks.at(-1)(el, { id: "m1", revision: "r", content: '<You+Jim+mind>"Hi."' });
+    assert.match(q.painted.children[0].className, /\bsl-voice-ring\b/);
 });

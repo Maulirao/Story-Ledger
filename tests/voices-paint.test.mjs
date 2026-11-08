@@ -126,3 +126,19 @@ test("one name with mind keeps today's look", () => {
     assert.deepEqual([b.top, b.bottom, b.listener], [MIND_FILL, "#3fa7a0", false]);
     assert.deepEqual([c.top, c.bottom, c.listener], [MIND_FILL, null, false]);
 });
+
+test("the ring class goes only on listener lines, and only when the setting asks for it", () => {
+    const listener = { top: GOLD, bottom: "#3fa7a0", tone: null, mind: true, listener: true };
+    const one = { top: "#3fa7a0", bottom: MIND_FILL, tone: null, mind: true, listener: false };
+    assert.match(spanAttrs(listener, { ring: true }).className, /\bsl-voice-ring\b/);
+    assert.doesNotMatch(spanAttrs(listener).className, /sl-voice-ring/);
+    assert.doesNotMatch(spanAttrs(one, { ring: true }).className, /sl-voice-ring/);
+});
+
+test("the painter passes the ring setting on, and the page filter carries the ring", () => {
+    const doc = fakeDoc();
+    const a = rendered(doc, '"x"');
+    paintVoices(a.el, '<You+Jim+mind>"x"', Y, { ring: true });
+    assert.match(a.q.children[0].children[0].className, /\bsl-voice-ring\b/);
+    assert.match(doc.made.find(e => e.html).html, /<filter id="sl-mind-ring"/);
+});

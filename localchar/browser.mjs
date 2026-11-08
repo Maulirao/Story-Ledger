@@ -168,7 +168,7 @@ export default function register(host) {
 
     function decorate(el, message) {
         // every message's dialogue is painted, block or not, user or AI
-        if (settings.enabled && settings.sections.voices !== false) paintVoices(el, String(message.content ?? ""), voiceList());
+        if (settings.enabled && settings.sections.voices !== false) paintVoices(el, String(message.content ?? ""), voiceList(), { ring: settings.mindListener === "ring" });
         else unpaintVoices(el);
         if (!settings.enabled || !String(message.content ?? "").includes(BLOCK_MARK)) { undecorate(el); return () => unpaintVoices(el); }
         learnUserName();

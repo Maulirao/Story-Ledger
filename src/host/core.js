@@ -41,7 +41,7 @@ export { generationBase, importFromLegacyNotebook };
 export const SKIP_TYPES = new Set(["quiet", "impersonate", "first_message"]);
 
 const DEFAULT_SECTIONS = { scene: true, relationships: true, notebook: true, ...Object.fromEntries(SECTIONS.map(sec => [sec.key, true])) };
-export const DEFAULT_SETTINGS = { enabled: true, stickyNotices: true, fixupMode: "full", fixupHistory: 4, depth: 1, role: 0, placement: "auto", theme: "frankenstein", checkStyle: "dnd", config: {} };
+export const DEFAULT_SETTINGS = { enabled: true, stickyNotices: true, fixupMode: "full", fixupHistory: 4, depth: 1, role: 0, placement: "auto", theme: "frankenstein", checkStyle: "dnd", mindListener: "band", config: {} };
 
 /** DEFAULT_SETTINGS plus the 0.1 migration. Returns a new object; the input is not touched. */
 export function normalizeSettings(raw) {
@@ -560,7 +560,8 @@ export function popupHtml(tab, view, previewBaseDice = null) {
             ${Object.entries(sec).map(([k, label]) => `<label class="checkbox_label"><input type="checkbox" data-section="${k}" ${s.sections[k] ? "checked" : ""}> ${label}</label>`).join("")}
             <h4>Look</h4>
             <div class="sl-grid"><label>Theme <select class="text_pole" data-set="theme">${[["frankenstein", "Frankenstein"], ["sola", "Sola"], ["megumin", "Megumin"]].map(([v, l]) => `<option value="${v}" ${(s.theme || "frankenstein") === v ? "selected" : ""}>${l}</option>`).join("")}</select></label>
-                <label>Check style <select class="text_pole" data-set="checkStyle"><option value="dnd" ${s.checkStyle !== "arrow" ? "selected" : ""}>DnD (locked DC)</option><option value="arrow" ${s.checkStyle === "arrow" ? "selected" : ""}>Wind's Arrow (Sola)</option></select></label></div>
+                <label>Check style <select class="text_pole" data-set="checkStyle"><option value="dnd" ${s.checkStyle !== "arrow" ? "selected" : ""}>DnD (locked DC)</option><option value="arrow" ${s.checkStyle === "arrow" ? "selected" : ""}>Wind's Arrow (Sola)</option></select></label>
+                <label title="How a telepathy line that names its receiver looks, e.g. &lt;You+Jim+mind&gt;">Telepathy with a listener <select class="text_pole" data-set="mindListener"><option value="band" ${s.mindListener !== "ring" ? "selected" : ""}>Band</option><option value="ring" ${s.mindListener === "ring" ? "selected" : ""}>Eclipse ring</option></select></label></div>
             <h4>Prompt placement</h4>
             <div class="sl-grid">
                 <label>Placement <select class="text_pole" data-set="placement"><option value="auto" ${s.placement === "auto" ? "selected" : ""}>automatic, in chat at depth</option><option value="macro" ${s.placement === "macro" ? "selected" : ""}>only where a preset uses {{story_ledger}}</option></select></label>
