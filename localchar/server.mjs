@@ -19,7 +19,7 @@ import { setSend } from "../src/model/sections/quests.js";
 import { rewriteNewestSection } from "../src/model/turn.js";
 import { stripForPrompt, stripPromptText, renderTurnFacts } from "../src/model/prompt.js";
 import { buildLeanPrompt } from "../src/model/lean-prompt.js";
-import { withFudges } from "../src/model/dice.js";
+import { withFudges, diceFromBlock } from "../src/model/dice.js";
 
 const clone = value => JSON.parse(JSON.stringify(value ?? null));
 const PROMPT_KEY = "story_ledger";
@@ -80,7 +80,12 @@ export async function prepare(payload) {
         // reminder asks for the ledger comment alone.
         givenConfig = core.fixupConfig({ chat, index: chat.length - 1, settings, chatData: doc, userName: ctx.userName });
     } else {
-        turn = core.prepareTurn({ chat, type, settings, chatData: doc, pendingSame: null });
+        // LocalChar's Interject: the rewrite of a cut reply is the same turn, so it keeps that
+        // reply's dice. The host hands over the original reply; its block holds them.
+        const source = payload.interjection && typeof payload.interjection.source_content === "string"
+            ? payload.interjection.source_content : null;
+        const inheritedDice = source !== null && type !== "continue" ? diceFromBlock(source) : null;
+        turn = core.prepareTurn({ chat, type, settings, chatData: doc, pendingSame: null, inheritedDice });
         if (turn.fudgesChanged) { doc.fudges = turn.fudgesNext; patched = true; }
     }
 

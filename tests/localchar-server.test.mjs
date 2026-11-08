@@ -498,3 +498,13 @@ test("set_voice also rewrites the newest block's VOICES rows", async () => {
     const out = await act("set_voice", { name: "Jim", colour: "orchid" }, snap);
     assert.ok(out.effects.some(e => e.type === "edit_message" && /<b>Jim<\/b> \| orchid \| you/.test(e.content)));
 });
+
+test("an interjection's prepare reuses the dice of the reply it cut", async () => {
+    const history = [message("user", "Hello.")];
+    const first = await playTurn(history, {}, 0, '"Hi."\n\n<!-- Story_Ledger\nNow: Day 1 08:00\n-->');
+    const cut = [...history, message("assistant", "Start."), message("user", "I cut in.")];
+    const prepared = await server.prepare(prepareInput(cut, {
+        chat_data: first.doc, interjection: { source_content: first.reply.content },
+    }));
+    assert.deepEqual(prepared.pending.turn.dice, first.prepared.pending.turn.dice);
+});
