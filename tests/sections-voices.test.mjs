@@ -123,3 +123,8 @@ test("a listener named in a telepathy tag is filled in", () => {
 test("the rules teach naming the receiver of a telepathy line", () => {
     assert.match(sectionByKey("voices").rules({}), /<Speaker\+Listener\+mind>"…"/);
 });
+
+test("speakers of italic-wrapped lines (*\"…\"*) are added to VOICES", () => {
+    const text = 'Bob leaned close. <Bob+jan+mind:whisper>*"Papibaquígrafo".*</mind> <Ana>**"Hey!"**';
+    assert.deepEqual(Object.keys(postTurn(emptyState(), ch("Now: x"), C, { text, voiceOverrides: {} }).state.voices), ["Bob", "jan", "Ana"]);
+});

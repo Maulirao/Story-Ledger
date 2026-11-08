@@ -108,3 +108,9 @@ test("trailingTagAt finds a literal tag the browser left as text before a quote"
     assert.equal(trailingTagAt("plain words"), null);
     assert.equal(trailingTagAt("a <b> then more"), null);
 });
+
+test("markdown emphasis between the tag and the quote does not hide the tag", () => {
+    const one = t => readVoiceTags(t).map(({ voices, tone, quote }) => ({ voices, tone, quote }));
+    assert.deepEqual(one('<Bob+jan+mind:whisper>*"Papibaquígrafo".*</mind>'), [{ voices: ["Bob", "jan", "mind"], tone: "whisper", quote: '"Papibaquígrafo"' }]);
+    for (const t of ['<jim>**"Down!"**', '<jim>_"Psst."_', '<jim>***"No."***', '<jim> * "Easy." *']) assert.equal(one(t).length, 1, t);
+});

@@ -676,7 +676,7 @@ function matchQuotes(planned, onScreen) {
   });
 }
 var NAME = String.raw`[\p{L}\p{N}][\p{L}\p{N} '’_-]{0,39}`;
-var TAG2 = new RegExp(String.raw`<\s*(?:(?:color|gradient|kinetic)\s*:\s*)?(${NAME}(?:\s*\+\s*${NAME})*)((?:\s*:\s*[a-z][a-z0-9_-]{0,24})*)\s*>\s*("[^"\n]{1,2000}?"|“[^”\n]{1,2000}?”)(?:\s*<\s*\/[^<>\n\r]{0,40}>)?`, "giu");
+var TAG2 = new RegExp(String.raw`<\s*(?:(?:color|gradient|kinetic)\s*:\s*)?(${NAME}(?:\s*\+\s*${NAME})*)((?:\s*:\s*[a-z][a-z0-9_-]{0,24})*)\s*>\s*(?:[*_~]{1,3}\s*)?("[^"\n]{1,2000}?"|“[^”\n]{1,2000}?”)(?:\s*<\s*\/[^<>\n\r]{0,40}>)?`, "giu");
 var toneOf = (segments) => {
   for (const raw of segments.split(":").map((s) => s.trim().toLowerCase()).filter(Boolean)) {
     if (TONES.includes(raw)) return raw;
