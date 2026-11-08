@@ -18,7 +18,7 @@ test("the reader's colour wins on screen and in the prompt, and goes into the ne
     ];
     const chatData = core.normalizeChatData({ storyLedger: { voiceOverrides: { Jim: "orchid" } } });
     assert.deepEqual(core.voiceList({ chat, settings, chatData, userName: "Jan" }).Jim, { colour: "orchid", hex: "#da70d6", source: "you" });
-    assert.match(core.ledgerPromptParts(chat, config, chatData, settings).statePrompt, /Jim orchid/);
+    assert.match(core.ledgerPromptParts(chat, config, chatData, settings).statePrompt, /<Jim> orchid/);
     const out = core.rebuildMessage({ chat, index: 1, settings, chatData, userName: "Jan" });
     assert.match(out.mes, /<b>Jim<\/b> \| orchid \| you/);
 });

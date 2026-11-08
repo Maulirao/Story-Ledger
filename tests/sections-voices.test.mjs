@@ -84,7 +84,19 @@ test("the template, rules and prompt carry Voices", () => {
     const sec = sectionByKey("voices");
     assert.equal(sec.prompt({}), "");
     assert.equal(sec.prompt({ Jim: { colour: "#3fa7a0", source: "model" }, Anna: { colour: "orchid", source: "you" } }),
-        "Voices (each speaker keeps their colour; give a new speaker one far from these): Jim #3fa7a0 · Anna orchid");
+        "Voices (tag each line with the speaker's tag below, never with the colour; each speaker keeps their colour; give a new speaker one far from these): <Jim> #3fa7a0 · <Anna> orchid");
+});
+
+test("the prompt shows the tag to write, with the underscore for a name that is an HTML tag", () => {
+    const p = sectionByKey("voices").prompt({ Mark: { colour: "gold", source: "model" }, "Old Tom": { colour: "plum", source: "auto" } });
+    assert.match(p, /<Mark_> gold · <Old Tom> plum$/);
+});
+
+test("the rules say the tag is the name, never the colour, and old colour tags are not copied", () => {
+    const rules = sectionByKey("voices").rules({});
+    assert.match(rules, /always the speaker's name, never a colour/);
+    assert.match(rules, /<gold>"…"/);
+    assert.match(rules, /old format/);
 });
 
 test("a lone tone tag is never filled in as a character", () => {

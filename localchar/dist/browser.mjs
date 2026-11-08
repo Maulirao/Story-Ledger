@@ -709,7 +709,8 @@ var COMMANDS5 = [
 ];
 var LINE = /^(.+?)\s*[:=]\s*(\S+)$/;
 var SOURCES = /* @__PURE__ */ new Set(["model", "auto", "you"]);
-var RULES = `Voices: tag every line of spoken dialogue with who says it, right before the opening quote: <Name>"…"</Name>. A name that is also an HTML tag (Mark, Ruby, Em) takes an underscore: <Mark_>. When it matters who is addressed, as in a group scene, name the speaker first and the listener second: <Speaker+Listener>"…". Telepathy uses the reserved voice mind, never a character's name: it marks words sent silently from one mind straight into another, heard only by the receiver and by no one else present. Write <Speaker+mind>"…" when it is clear who receives it, <Speaker+Listener+mind>"…" to name the receiver, or <mind>"…" when the sender is unknown. A character's own unspoken thoughts, which nobody receives, are not mind lines. Add a tone only when the delivery needs it: <Name:whisper>, <Name:shout>, <Name:measured>, <Name:tremble>, also after two voices (<Speaker+Listener:whisper>). The first time someone speaks, give them a colour under Voices: in the ledger comment: a CSS colour name or a #hex, readable on a dark background and far from the colours already taken. A speaker who already has a colour in earlier replies keeps it. A set colour never changes. These tags replace any other dialogue-colour instruction.`;
+var RULES = `Voices: tag every line of spoken dialogue with who says it, right before the opening quote: <Name>"…"</Name>. The tag is always the speaker's name, never a colour: <Ana>"…", never <gold>"…". Colour tags such as <gold>"…" in earlier replies are an old format; do not copy them. A name that is also an HTML tag (Mark, Ruby, Em) takes an underscore: <Mark_>. When it matters who is addressed, as in a group scene, name the speaker first and the listener second: <Speaker+Listener>"…". Telepathy uses the reserved voice mind, never a character's name: it marks words sent silently from one mind straight into another, heard only by the receiver and by no one else present. Write <Speaker+mind>"…" when it is clear who receives it, <Speaker+Listener+mind>"…" to name the receiver, or <mind>"…" when the sender is unknown. A character's own unspoken thoughts, which nobody receives, are not mind lines. Add a tone only when the delivery needs it: <Name:whisper>, <Name:shout>, <Name:measured>, <Name:tremble>, also after two voices (<Speaker+Listener:whisper>). The first time someone speaks, give them a colour under Voices: in the ledger comment, the only place a colour is written: a CSS colour name or a #hex, readable on a dark background and far from the colours already taken. A speaker who already has a colour in earlier replies keeps it. A set colour never changes. These tags replace any other dialogue-colour instruction.`;
+var tagFor = (name) => `<${HTML_TAGS.has(name.toLowerCase()) ? `${name}_` : name}>`;
 var hexesOf = (list) => Object.values(list || {}).filter((v) => v != null).map((v) => colourHex(typeof v === "string" ? v : v.colour)).filter(Boolean);
 var voices_default = {
   key: "voices",
@@ -777,8 +778,8 @@ var voices_default = {
     state.voices = withVoiceOverrides(state.voices, overrides);
   },
   prompt(value2) {
-    const rows = Object.entries(value2 || {}).map(([n, v]) => `${n} ${v.colour}`);
-    return rows.length ? `Voices (each speaker keeps their colour; give a new speaker one far from these): ${rows.join(" · ")}` : "";
+    const rows = Object.entries(value2 || {}).map(([n, v]) => `${tagFor(n)} ${v.colour}`);
+    return rows.length ? `Voices (tag each line with the speaker's tag below, never with the colour; each speaker keeps their colour; give a new speaker one far from these): ${rows.join(" · ")}` : "";
   },
   rules: () => RULES,
   commands: COMMANDS5,
