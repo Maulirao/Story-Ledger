@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import * as core from "../src/host/core.js";
 import { stripForPrompt, stripPromptText } from "../src/model/prompt.js";
 import { BLOCK_MARK } from "../src/model/block.js";
-import { intercedeInheritance, tailDiceRecord } from "../src/host/intercede.js";
+import { intercedeInheritance, tailDiceRecord, tailDiceUpdate } from "../src/host/intercede.js";
 
 const settings = core.normalizeSettings({});
 const INHERITED = { fate: { a: 3, b: 9, c: 14 }, world: 7, checks: [20, 3, 11] };
@@ -119,4 +119,18 @@ test("tailDiceRecord reads the dice from the reply's block", () => {
     const record = tailDiceRecord([reply(built.mes)], 0);
     assert.deepEqual(record, { index: 0, swipeId: 0, dice: INHERITED });
     assert.equal(tailDiceRecord([reply("No block.")], 0), null);
+});
+
+test("flipping back to an earlier swipe re-remembers that swipe's dice", () => {
+    const chatData = core.normalizeChatData({});
+    const built = core.rebuildMessage({
+        chat: [reply('"Hi."\n\n<!-- Story_Ledger\nNow: Day 1 08:00\n-->')], index: 0, settings, chatData, userName: "Jan",
+        pending: { index: 0, dice: INHERITED, fudges: null, fudged: [] },
+    });
+    const chat = [user("go"), { ...reply(built.mes), swipe_id: 0 }];
+    const stored = { tailDice: { index: 1, swipeId: 1, dice: OTHER } };
+    assert.deepEqual(tailDiceUpdate(chat, stored), { index: 1, swipeId: 0, dice: INHERITED });
+    assert.equal(tailDiceUpdate(chat, { tailDice: { index: 1, swipeId: 0, dice: INHERITED } }), null);
+    assert.equal(tailDiceUpdate([...chat, user("next")], stored), null);
+    assert.equal(tailDiceUpdate([user("go"), reply("A fresh swipe, not yet written.")], stored), null);
 });

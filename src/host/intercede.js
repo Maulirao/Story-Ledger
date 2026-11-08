@@ -24,6 +24,21 @@ export function tailDiceRecord(chat, index) {
 }
 
 /**
+ * The tailDice record to store now, or null when nothing changed: the newest message is a reply
+ * with a block and its dice or swipe differ from what is stored. For the moments no block is
+ * written — flipping to an existing swipe, opening a chat — so Intercede always finds the dice
+ * of the swipe on screen.
+ */
+export function tailDiceUpdate(chat, chatData) {
+    const record = tailDiceRecord(chat, (chat?.length || 0) - 1);
+    if (!record) return null;
+    const stored = chatData?.tailDice;
+    const same = stored && stored.index === record.index && stored.swipeId === record.swipeId
+        && JSON.stringify(stored.dice) === JSON.stringify(record.dice);
+    return same ? null : record;
+}
+
+/**
  * The dice a generation building on `chat.slice(0, base)` inherits from a reply Intercede cut,
  * as { dice, interjectDice } (interjectDice is what the host stores), or null when this is not
  * an Intercede rewrite or the cut reply's dice are not known.

@@ -20,7 +20,7 @@ import { SECTIONS } from "./src/model/sections/registry.js";
 import { rollTurnDice, withFudges, parseDiceCommand, parseForceCommand } from "./src/model/dice.js";
 import { BLOCK_MARK } from "./src/model/block.js";
 import * as core from "./src/host/core.js";
-import { intercedeInheritance, tailDiceRecord } from "./src/host/intercede.js";
+import { intercedeInheritance, tailDiceRecord, tailDiceUpdate } from "./src/host/intercede.js";
 import * as frankensteinTheme from "./src/ui/themes/frankenstein.js";
 import * as solaTheme from "./src/ui/themes/sola.js";
 import * as meguminTheme from "./src/ui/themes/megumin.js";
@@ -169,6 +169,16 @@ async function rebuildMessage(i, { collect = true, config: given = null } = {}) 
     decorateAll();
     if (out.chatDataPatch) await saveChatData(d => Object.assign(d, out.chatDataPatch));
     for (const n of out.notices) notice(n.kind, n.text, n.title);
+}
+
+function rememberTailDice() {
+    try {
+        if (!settings().enabled) return;
+        const record = tailDiceUpdate(ctx().chat || [], chatData());
+        if (record) saveChatData(d => { d.tailDice = record; }).catch(e => console.error("[Story Ledger] could not remember the reply's dice", e));
+    } catch (e) {
+        console.error("[Story Ledger] could not remember the reply's dice", e);
+    }
 }
 
 async function onMessageReceived(id, type) {
@@ -683,6 +693,10 @@ function init() {
     }
     for (const ev of [t.CHAT_CHANGED, t.MORE_MESSAGES_LOADED]) if (ev) c.eventSource.on(ev, () => setTimeout(decorateAll, 0));
     if (t.CHAT_CHANGED) c.eventSource.on(t.CHAT_CHANGED, () => { pendingTurn = null; if (fixupRun) fixupRun.abandoned = true; });
+    // Intercede keeps the dice of the swipe on screen: remember them when no block is written —
+    // flipping to an existing swipe, opening a chat. (A new swipe has no block yet; its block is
+    // remembered when it arrives.)
+    for (const ev of [t.CHAT_CHANGED, t.MESSAGE_SWIPED]) if (ev) c.eventSource.on(ev, () => setTimeout(rememberTailDice, 0));
     for (const ev of [t.CHAT_CHANGED, t.OAI_PRESET_CHANGED_AFTER]) if (ev) c.eventSource.on(ev, () => setTimeout(checkPresetColours, 0));
     if (t.GENERATION_STOPPED) c.eventSource.on(t.GENERATION_STOPPED, () => { if (fixupRun?.mode === "full") fixupRun.stopped = true; });
     if (t.STREAM_TOKEN_RECEIVED) c.eventSource.on(t.STREAM_TOKEN_RECEIVED, () => hideStreamingLedger());
