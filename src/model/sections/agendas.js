@@ -199,18 +199,21 @@ export default {
     },
     facts(state, ctx) {
         const out = [];
+        // With a clock the ledger cannot know ahead how much time the reply covers, so an off-screen
+        // finish is told after it happens, with its effect. Without one it is told ahead, as before,
+        // and the effect is asked for only then.
+        const clock = parseStoryTime(state.scene.now) !== null;
         for (const [n, a] of Object.entries(state.agendas)) {
             if (ctx.userName && hasName([ctx.userName], n)) continue;
             if (!a.task.trim()) {
                 out.push(`${n} has no agenda — write an Agendas new line with a concrete goal and 1–3 steps drawn from the story.`);
             } else if (!(a.max > 0)) {
                 out.push(`${n}'s agenda "${a.task}" cannot advance without steps — write an Agendas new line with valid progress, or done and a new agenda if the story already finished it.`);
-            } else if (a.step >= a.max) out.push(offScreen(state, n)
+            } else if (a.step >= a.max) out.push(clock && offScreen(state, n)
                 ? `${n} finished "${a.task}" off-screen — apply its effect and give ${n} a new agenda.`
                 : `${n}'s agenda "${a.task}" is finished — give ${n} a new one.`);
             else if (overdue(a.task, state.scene.now)) out.push(`${n}'s agenda "${a.task}" was due by ${overdue(a.task, state.scene.now)} and the story time is past it — write done for it, or a new agenda that fits what ${n} is doing now; do not steer the scene back toward the old deadline.`);
-            // With a clock the ledger cannot know ahead how much time the reply covers: the finish is told after it happens.
-            else if (offScreen(state, n) && a.step + 1 >= a.max && !parseStoryTime(state.scene.now)) out.push(`${n} finishes "${a.task}" off-screen this turn — apply its effect and give ${n} a new agenda.`);
+            else if (!clock && offScreen(state, n) && a.step + 1 >= a.max) out.push(`${n} finishes "${a.task}" off-screen this turn — apply its effect and give ${n} a new agenda.`);
         }
         return out;
     },

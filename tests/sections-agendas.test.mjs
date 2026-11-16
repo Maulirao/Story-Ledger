@@ -316,3 +316,9 @@ test("the rules and the template teach takes, with the configured slice", () => 
     assert.doesNotMatch(renderRules(C), /advance on their own/);
     assert.ok(buildTemplate(C).includes('- Name: new "task" 0/N @ place, takes 2h'));
 });
+
+test("without a clock a finished off-screen agenda, already announced ahead, is not asked for its effect again", () => {
+    const told = preTurnFacts(at("evening", { Ana: agenda("close the café", 2, 2) }), C).join("\n");
+    assert.match(told, /Ana's agenda "close the café" is finished — give Ana a new one\./);
+    assert.doesNotMatch(told, /apply its effect/);
+});
