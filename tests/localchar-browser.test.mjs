@@ -317,3 +317,9 @@ test("LocalChar paints listener telepathy as the eclipse ring when the setting s
     log.hooks.at(-1)(el, { id: "m1", revision: "r", content: '<You+Jim+mind>"Hi."' });
     assert.match(q.painted.children[0].className, /\bsl-voice-ring\b/);
 });
+
+test("the minutes per agenda step travel through the config form", () => {
+    assert.equal(configFromForm({}, configFormFromControls({ agendaStep: "45" })).sectionConfig.agendaStepMinutes, 45);
+    assert.equal(configFromForm({}, configFormFromControls({})).sectionConfig.agendaStepMinutes, 30);
+    assert.equal(configFromForm({}, configFormFromControls({ agendaStep: "abc" })).sectionConfig.agendaStepMinutes, 30);
+});

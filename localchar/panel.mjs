@@ -39,6 +39,7 @@ function readConfigControls(root) {
         fate: all("[data-fate]").map(el => [el.dataset.fate, el.value]),
         titles: all("[data-titles]").map(el => [el.dataset.titles, el.value]),
         threadLimit: root.querySelector("[data-threads]")?.value,
+        agendaStep: root.querySelector("[data-agenda-step]")?.value,
     });
 }
 

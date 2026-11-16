@@ -1,7 +1,7 @@
 // The panel's form reading, kept free of the DOM: panel.mjs lifts plain values out of the controls and
 // these turn them into what the actions take. (index.js reads the same controls through jQuery.)
 
-import { resolveConfig, sanitizeChekhov, sanitizeFate, sanitizeTitles, sanitizeThreadLimit } from "../src/model/config.js";
+import { resolveConfig, sanitizeChekhov, sanitizeFate, sanitizeTitles, sanitizeThreadLimit, sanitizeAgendaStep } from "../src/model/config.js";
 
 const validDie = value => Number.isInteger(Number(value)) && String(value).trim() !== "" && Number(value) >= 1 && Number(value) <= 20;
 
@@ -32,7 +32,7 @@ export function fudgeFromControls({ dice = {}, checks = { locked: false, values:
  * [[key, value], ...] straight off the data- attributes, values still strings (the action converts and
  * sanitizes).
  */
-export function configFormFromControls({ cfg = [], gate = [], phi = [], axes = [], decay = [], skip = undefined, chekhov = [], firing = "model", fate = [], titles = [], threadLimit = undefined } = {}) {
+export function configFormFromControls({ cfg = [], gate = [], phi = [], axes = [], decay = [], skip = undefined, chekhov = [], firing = "model", fate = [], titles = [], threadLimit = undefined, agendaStep = undefined } = {}) {
     const pairs = list => Object.fromEntries(list);
     const nested = {};
     for (const [key, field, value] of axes) (nested[key] ||= {})[field] = value;
@@ -42,6 +42,7 @@ export function configFormFromControls({ cfg = [], gate = [], phi = [], axes = [
     };
     if (skip !== undefined) form.skip = skip;
     if (threadLimit !== undefined) form.threadLimit = threadLimit;
+    if (agendaStep !== undefined) form.agendaStep = agendaStep;
     return form;
 }
 
@@ -69,5 +70,6 @@ export function configFromForm(current, form = {}) {
     c.sectionConfig.fate = sanitizeFate(form.fate || {}, c.sectionConfig.fate);
     c.sectionConfig.titles = sanitizeTitles(form.titles || {}, c.sectionConfig.titles);
     c.sectionConfig.threadLimit = sanitizeThreadLimit(form.threadLimit, c.sectionConfig.threadLimit);
+    c.sectionConfig.agendaStepMinutes = sanitizeAgendaStep(form.agendaStep, c.sectionConfig.agendaStepMinutes);
     return c;
 }

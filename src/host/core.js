@@ -608,7 +608,7 @@ export function popupHtml(tab, view, previewBaseDice = null) {
             <div class="sl-grid">${[["deferredExpire", "Deferred expiry"], ["worldKeep", "World entries kept"], ["reach1Drop", "Drop Reach 1 at age"], ["pursuitLimit", "Pursuit limit"], ["residueKeep", "Residue lines kept"]]
                 .map(([k, label]) => `<label>${label} <input type="number" min="1" class="text_pole sl-num" data-fate="${k}" value="${cf.sectionConfig.fate[k]}"></label>`).join("")}</div>
             <h4>🧵 Threads</h4>
-            <div class="sl-grid"><label>Max open threads (0 = no limit) <input type="number" min="0" max="99" class="text_pole sl-num" data-threads="threadLimit" value="${cf.sectionConfig.threadLimit}"></label></div>
+            <div class="sl-grid"><label>Max open threads (0 = no limit) <input type="number" min="0" max="99" class="text_pole sl-num" data-threads="threadLimit" value="${cf.sectionConfig.threadLimit}"></label><label title="Story minutes one agenda step takes when the model gives no length">Minutes per agenda step <input type="number" min="1" max="1440" class="text_pole sl-num" data-agenda-step value="${cf.sectionConfig.agendaStepMinutes}"></label></div>
             <h4>🎖️ Titles</h4>
             <div class="sl-grid">${[["softCap", "Soft cap", 0, 20], ["hardCap", "Hard cap", 0, 20], ["situationalMax", "Situational max", 0, 5], ["retrofitBatch", "Retrofit per turn", 1, 30]]
                 .map(([k, label, min, max]) => `<label>${label} <input type="number" min="${min}" max="${max}" class="text_pole sl-num" data-titles="${k}" value="${cf.sectionConfig.titles[k]}"></label>`).join("")}</div>

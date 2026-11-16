@@ -39,7 +39,7 @@ the reply — FF's `<internal_states>` layout, folded under **🎬 INTERNAL STAT
 - Swipes, deletes and branches work like FF's block: each reply carries its own state.
 - Blocks and old comments are stripped from the prompt; the current state is injected once.
 - The block's sections: 🕰️ Scene · 👥 Scene cast · 💞 Relationships · 📓 Notebook ·
-  👤 NPC agendas (off-screen ones advance a step per turn on their own) · 👤 NPC locations ·
+  👤 NPC agendas (off-screen ones advance with the story's clock) · 👤 NPC locations ·
   🏳️ Factions · 📜 Quests (finished ones stay) · 🎒 Inventory ({{user}} only) · 🧾 Last beats ·
   and, for that reply only, 🧠 Thoughts · 🎲 Checks · 🌌 Physics. The model reports only
   changes; the extension rolls Fate's A/B/C dice, World Sim's d20 and three check dice,
@@ -53,6 +53,19 @@ the reply — FF's `<internal_states>` layout, folded under **🎬 INTERNAL STAT
   reply which are due. **Settings → Who fires bullets** chooses Fate's pick by default or the
   model's timing. All engine numbers, including how many fired bullets the block keeps (0 = all),
   are in Settings.
+- 👤 **NPC agendas**: off-screen agendas move with the story's clock, not with the number of
+  replies. The model may end a `new` line with how long the whole task takes
+  (`Ana: new "mend the nets" 0/2 @ the harbour, takes 2h`), in minutes, hours, days or weeks
+  (`m`/`min`, `h`/`hr`, `d`, `w`, or the full words; parts combine, as in `1h 30m`), and the
+  ledger spreads it evenly over the steps. Without a length each step takes 30 minutes of
+  story time; **Settings → Minutes per agenda step** changes it (1–1440). Time adds up across
+  replies and pauses while the person is on-screen, and progress inside a step shows on the
+  row as `(Step 1/2 · 20m of 1h)`. A big jump can pass several steps at once. A finish is
+  announced on the turn after it happens, asking for its effect and a new agenda. When the
+  Now line has no time of day, an off-screen agenda advances one step per reply and its
+  finish is announced ahead, as before. Without day numbers only the clock is compared, so a
+  jump of more than a day reads as less than one, and a small step back (`10:20` then
+  `10:10`) counts as no time.
 - **🎲 Next turn** in the popup or the newest block's header: lock dice, force a tier/source,
   choose Calm or a bullet, and preview the next turn. Swipes and continues reuse the controls;
   they stay active across turns until changed or cleared. Slash commands: `/ledger-dice fate.a=20 world=7 checks=20,3,11`,

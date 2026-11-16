@@ -5119,7 +5119,7 @@ function popupHtml(tab, view, previewBaseDice = null) {
             <h4>🎲 Fate & World Sim</h4>
             <div class="sl-grid">${[["deferredExpire", "Deferred expiry"], ["worldKeep", "World entries kept"], ["reach1Drop", "Drop Reach 1 at age"], ["pursuitLimit", "Pursuit limit"], ["residueKeep", "Residue lines kept"]].map(([k, label]) => `<label>${label} <input type="number" min="1" class="text_pole sl-num" data-fate="${k}" value="${cf.sectionConfig.fate[k]}"></label>`).join("")}</div>
             <h4>🧵 Threads</h4>
-            <div class="sl-grid"><label>Max open threads (0 = no limit) <input type="number" min="0" max="99" class="text_pole sl-num" data-threads="threadLimit" value="${cf.sectionConfig.threadLimit}"></label></div>
+            <div class="sl-grid"><label>Max open threads (0 = no limit) <input type="number" min="0" max="99" class="text_pole sl-num" data-threads="threadLimit" value="${cf.sectionConfig.threadLimit}"></label><label title="Story minutes one agenda step takes when the model gives no length">Minutes per agenda step <input type="number" min="1" max="1440" class="text_pole sl-num" data-agenda-step value="${cf.sectionConfig.agendaStepMinutes}"></label></div>
             <h4>🎖️ Titles</h4>
             <div class="sl-grid">${[["softCap", "Soft cap", 0, 20], ["hardCap", "Hard cap", 0, 20], ["situationalMax", "Situational max", 0, 5], ["retrofitBatch", "Retrofit per turn", 1, 30]].map(([k, label, min, max]) => `<label>${label} <input type="number" min="${min}" max="${max}" class="text_pole sl-num" data-titles="${k}" value="${cf.sectionConfig.titles[k]}"></label>`).join("")}</div>
             <div class="sl-btns"><button class="menu_button" id="sl-save-config">Save engine numbers</button><button class="menu_button" id="sl-reset-config">Reset to defaults</button></div>`;
@@ -5584,7 +5584,7 @@ function fudgeFromControls({ dice = {}, checks = { locked: false, values: [] }, 
   if (fire) fudge.fire = fire;
   return fudge;
 }
-function configFormFromControls({ cfg = [], gate = [], phi = [], axes = [], decay = [], skip = void 0, chekhov: chekhov2 = [], firing = "model", fate: fate2 = [], titles = [], threadLimit = void 0 } = {}) {
+function configFormFromControls({ cfg = [], gate = [], phi = [], axes = [], decay = [], skip = void 0, chekhov: chekhov2 = [], firing = "model", fate: fate2 = [], titles = [], threadLimit = void 0, agendaStep = void 0 } = {}) {
   const pairs2 = (list) => Object.fromEntries(list);
   const nested = {};
   for (const [key2, field3, value2] of axes) (nested[key2] ||= {})[field3] = value2;
@@ -5600,6 +5600,7 @@ function configFormFromControls({ cfg = [], gate = [], phi = [], axes = [], deca
   };
   if (skip !== void 0) form.skip = skip;
   if (threadLimit !== void 0) form.threadLimit = threadLimit;
+  if (agendaStep !== void 0) form.agendaStep = agendaStep;
   return form;
 }
 function settingFromControl({ type, checked, value: value2 }) {
@@ -5620,6 +5621,7 @@ function configFromForm(current, form = {}) {
   c.sectionConfig.fate = sanitizeFate(form.fate || {}, c.sectionConfig.fate);
   c.sectionConfig.titles = sanitizeTitles(form.titles || {}, c.sectionConfig.titles);
   c.sectionConfig.threadLimit = sanitizeThreadLimit(form.threadLimit, c.sectionConfig.threadLimit);
+  c.sectionConfig.agendaStepMinutes = sanitizeAgendaStep(form.agendaStep, c.sectionConfig.agendaStepMinutes);
   return c;
 }
 
@@ -5655,7 +5657,8 @@ function readConfigControls(root) {
     firing: String(root.querySelector("[data-chk-firing]")?.value || "model"),
     fate: all("[data-fate]").map((el) => [el.dataset.fate, el.value]),
     titles: all("[data-titles]").map((el) => [el.dataset.titles, el.value]),
-    threadLimit: root.querySelector("[data-threads]")?.value
+    threadLimit: root.querySelector("[data-threads]")?.value,
+    agendaStep: root.querySelector("[data-agenda-step]")?.value
   });
 }
 function mountLedger({ host, body, startTab = "rules", fixedTab = null, ready = async () => {

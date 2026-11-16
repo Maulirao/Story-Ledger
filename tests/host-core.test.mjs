@@ -413,3 +413,8 @@ test("the core imports no host: no SillyTavern, no DOM, no jQuery, no toastr", (
         assert.doesNotMatch(code, forbidden, String(forbidden));
     }
 });
+
+test("the settings tab shows the minutes per agenda step", () => {
+    const view = { chat: [], settings: core.normalizeSettings({}), chatData: core.normalizeChatData({}), userName: "Jan" };
+    assert.match(core.popupHtml("settings", view), /data-agenda-step value="30"/);
+});

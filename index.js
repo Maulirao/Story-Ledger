@@ -12,7 +12,7 @@
 
 import { setSend } from "./src/model/sections/quests.js";
 import { applyDecision, importFromLegacyNotebook, storyTime } from "./src/model/notebook.js";
-import { resolveConfig, sanitizeChekhov, sanitizeFate, sanitizeTitles, sanitizeThreadLimit } from "./src/model/config.js";
+import { resolveConfig, sanitizeChekhov, sanitizeFate, sanitizeTitles, sanitizeThreadLimit, sanitizeAgendaStep } from "./src/model/config.js";
 import { latestState, stripBlocks, rewriteNewestSection } from "./src/model/turn.js";
 import { stripForPrompt, stripPromptText, renderTurnFacts } from "./src/model/prompt.js";
 import { buildLeanPrompt } from "./src/model/lean-prompt.js";
@@ -574,6 +574,7 @@ export async function openLedgerPopup(startTab = "rules") {
         $root.find("[data-titles]").each((_, el) => { titlesForm[el.dataset.titles] = el.value; });
         c.sectionConfig.titles = sanitizeTitles(titlesForm, c.sectionConfig.titles);
         c.sectionConfig.threadLimit = sanitizeThreadLimit($root.find("[data-threads]").val(), c.sectionConfig.threadLimit);
+        c.sectionConfig.agendaStepMinutes = sanitizeAgendaStep($root.find("[data-agenda-step]").val(), c.sectionConfig.agendaStepMinutes);
         settings().config = c;
         saveSettings();
         done("Engine numbers saved. They apply from the next reply on.");
