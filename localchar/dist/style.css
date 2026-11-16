@@ -98,9 +98,30 @@
 /* relationship rows: bars replace the raw numbers on screen; the raw rows stay in the message */
 .sl-theme-frankenstein .sl-fk-has-bars > :not(summary):not(.sl-fk-pairs) { display: none; }
 .sl-fk-pair { margin: 4px 0 8px; }
-.sl-fk-self { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; margin: 4px 0 8px; }
+.sl-fk-self {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 4px 12px;
+    width: fit-content;
+    max-width: 100%;
+    box-sizing: border-box;
+    margin: 4px 0 12px;
+    padding: 7px 12px;
+    border: 1px solid color-mix(in srgb, var(--sl-fk-teal) 27%, transparent);
+    border-inline-start: 3px solid var(--sl-fk-teal);
+    border-radius: 8px;
+    background: linear-gradient(110deg, color-mix(in srgb, var(--sl-fk-teal) 13%, transparent), rgb(0 0 0 / 12%));
+    overflow-wrap: anywhere;
+}
 .sl-fk-self > b { color: var(--sl-fk-gold); }
-.sl-fk-self small { opacity: 0.8; }
+.sl-fk-self strong { color: var(--sl-fk-teal); font-variant-numeric: tabular-nums; }
+.sl-fk-self small {
+    padding: 1px 7px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--sl-fk-teal) 10%, transparent);
+    font-variant-numeric: tabular-nums;
+}
 .sl-fk-pair-name { color: var(--sl-fk-gold); font-weight: 600; margin-bottom: 2px; }
 .sl-fk-pair-note { font-size: 0.85em; font-style: italic; opacity: 0.85; margin: 0 0 4px; }
 .sl-fk-row { display: grid; grid-template-columns: minmax(90px, 1fr) 1fr 1fr minmax(90px, 1fr); gap: 6px; align-items: center; margin: 2px 0; }
