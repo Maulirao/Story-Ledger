@@ -1,7 +1,7 @@
 // 👤 NPC AGENDAS — off-screen lives. Run: node --test tests/*.test.mjs
 import test from "node:test";
 import assert from "node:assert/strict";
-import { resolveConfig } from "../src/model/config.js";
+import { resolveConfig, sanitizeAgendaStep } from "../src/model/config.js";
 import { emptyState } from "../src/model/state.js";
 import { parseChanges } from "../src/model/changes.js";
 import { renderBlock, parseBlock } from "../src/model/block.js";
@@ -214,4 +214,73 @@ test("an overdue agenda is not flagged when the story time has no clock", () => 
     s.scene.now = "Day 3 — afternoon | the truck";
     s.agendas.Emilia = agenda("Home before noon", 0, 3);
     assert.doesNotMatch(preTurnFacts(s, C).join("\n"), /Emilia/);
+});
+
+const at = (now, agendas, present = []) => { const s = emptyState(); s.scene.now = now; s.scene.present = present; s.agendas = agendas; return s; };
+
+test("takes sets how long each step is; an unreadable length is warned about and the agenda still given", () => {
+    const r = postTurn(emptyState(), ch('Agendas:\n- Ana: new "mend the nets" 0/2 @ the harbour, takes 2h\n- Tom: new "ride to the capital" 0/3, takes 3 days\n- Eva: new "wait" 0/1 @ the inn, takes a while\n- Kai: new "bake" 0/2 takes 1h @ the mill'), C);
+    assert.deepEqual(r.state.agendas.Ana, agenda("mend the nets", 0, 2, { pace: 60 }));
+    assert.deepEqual(r.state.agendas.Tom, agenda("ride to the capital", 0, 3, { pace: 1440 }));
+    assert.deepEqual(r.state.agendas.Eva, agenda("wait", 0, 1));
+    assert.deepEqual(r.state.agendas.Kai, agenda("bake", 0, 2, { pace: 30 }));
+    assert.deepEqual(r.state.locations, { Ana: "the harbour", Eva: "the inn", Kai: "the mill" });
+    assert.deepEqual(r.warnings.map(w => w.text), ['Eva "wait": could not read the length "a while" — each step takes 30m.']);
+    assert.deepEqual(r.unparsed, []);
+});
+
+test("small amounts of story time add up, and a jump can pass several steps", () => {
+    const s = at("Day 3 — 10:00", { Ana: agenda("mend the nets", 0, 3, { pace: 60 }), Tom: agenda("sweep", 0, 2) });
+    const a = postTurn(s, ch("Now: Day 3 — 10:20"), C).state;
+    assert.deepEqual(a.agendas.Ana, agenda("mend the nets", 0, 3, { pace: 60, spent: 20 }));
+    assert.deepEqual(a.agendas.Tom, agenda("sweep", 0, 2, { pace: 30, spent: 20 }));
+    const b = postTurn(a, ch("Now: Day 3 — 10:45"), C).state;
+    assert.deepEqual(b.agendas.Ana, agenda("mend the nets", 0, 3, { pace: 60, spent: 45 }));
+    assert.deepEqual(b.agendas.Tom, agenda("sweep", 1, 2, { pace: 30, spent: 15 }));
+    const c = postTurn(b, ch("Now: Day 4 — 08:00"), C).state;
+    assert.deepEqual(c.agendas.Ana, agenda("mend the nets", 3, 3, { pace: 60 }));
+    assert.deepEqual(c.agendas.Tom, agenda("sweep", 2, 2, { pace: 30 }));
+});
+
+test("time on-screen does not count, and what was spent before is kept", () => {
+    const s = at("Day 3 — 10:00", { Ana: agenda("mend the nets", 0, 2, { pace: 60, spent: 40 }) }, ["Ana"]);
+    const here = postTurn(s, ch("Now: Day 3 — 12:00"), C).state;
+    assert.deepEqual(here.agendas.Ana, agenda("mend the nets", 0, 2, { pace: 60, spent: 40 }));
+    const gone = postTurn(here, ch("Now: Day 3 — 12:30\nPresent: Jan"), C).state;
+    assert.deepEqual(gone.agendas.Ana, agenda("mend the nets", 1, 2, { pace: 60, spent: 10 }));
+});
+
+test("without a time of day an agenda gains one step per reply; a clock that went backwards adds nothing", () => {
+    const vague = at("morning", { Ana: agenda("t", 0, 3, { pace: 60, spent: 20 }) });
+    assert.deepEqual(postTurn(vague, ch("Now: later that morning"), C).state.agendas.Ana, agenda("t", 1, 3, { pace: 60, spent: 20 }));
+    const back = at("Day 3 — 10:00", { Ana: agenda("t", 0, 3, { pace: 60, spent: 20 }) });
+    assert.deepEqual(postTurn(back, ch("Now: Day 3 — 09:00"), C).state.agendas.Ana, agenda("t", 0, 3, { pace: 60, spent: 20 }));
+});
+
+test("done, a new agenda and a written progress line clear what was spent", () => {
+    const row = () => agenda("a", 1, 3, { pace: 60, spent: 20 });
+    const s = at("Day 3 — 10:00", { Ana: row(), Tom: row(), Eva: row() });
+    const { state } = postTurn(s, ch('Agendas:\n- Ana: done "a"\n- Tom: new "d" 0/2\n- Eva: a (2/3)'), C);
+    assert.deepEqual(state.agendas.Ana, agenda("", 0, 0));
+    assert.deepEqual(state.agendas.Tom, agenda("d", 0, 2));
+    assert.deepEqual(state.agendas.Eva, agenda("a", 2, 3, { pace: 60 }));
+});
+
+test("a plain row reads and writes as before, and a timed row round-trips", () => {
+    const s = emptyState();
+    s.agendas = { Ana: agenda("mend the nets", 1, 2, { pace: 60, spent: 20 }), Tom: agenda("sweep", 0, 2), Eva: agenda("ride", 0, 3, { pace: 1440 }) };
+    const txt = renderBlock(s, { rules: [], config: C, sections: {} });
+    assert.ok(txt.includes("| Agenda: mend the nets | (Step 1/2 · 20m of 1h) |"));
+    assert.ok(txt.includes("| Agenda: sweep | (Step 0/2) |"));
+    assert.ok(txt.includes("| Agenda: ride | (Step 0/3 · 0m of 1d) |"));
+    assert.deepEqual(parseBlock(txt, { config: C }).state.agendas, s.agendas);
+});
+
+test("the slice is a number from 1 to 1440 that a saved config can change", () => {
+    assert.equal(resolveConfig().sectionConfig.agendaStepMinutes, 30);
+    assert.equal(resolveConfig({ sectionConfig: { agendaStepMinutes: 45 } }).sectionConfig.agendaStepMinutes, 45);
+    assert.deepEqual(["90", "", "abc", "0", "2000"].map(v => sanitizeAgendaStep(v, 30)), [90, 30, 30, 1, 1440]);
+    const cfg = { ...C, sectionConfig: { ...C.sectionConfig, agendaStepMinutes: 10 } };
+    const s = at("Day 3 — 10:00", { Tom: agenda("sweep", 0, 2) });
+    assert.deepEqual(postTurn(s, ch("Now: Day 3 — 10:15"), cfg).state.agendas.Tom, agenda("sweep", 1, 2, { pace: 10, spent: 5 }));
 });

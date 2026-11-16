@@ -1,19 +1,31 @@
 // ──────────────────────────────────────────────────────────────────────────────
 // 👤 NPC AGENDAS — what each named person is doing with their own life. Off-screen
-// agendas advance one step per turn on their own; the model is told before a reply
-// when one finishes, applies its effect and gives the person a new agenda. Pure.
+// agendas advance by the story time each reply covers (one step per reply when the Now
+// line has no time of day); the model is told when one finishes, applies its effect and
+// gives the person a new agenda. Pure.
 // ──────────────────────────────────────────────────────────────────────────────
 
 import { esc, unesc, ROW, fieldsOf } from "../text.js";
 import { findName, hasName } from "./people.js";
 import { locationLine, setLocation } from "./locations.js";
 import { commandTemplate } from "../commands.js";
-import { parseStoryTime } from "../storytime.js";
+import { parseStoryTime, elapsedMinutes, parseDuration, formatDuration } from "../storytime.js";
+import { DEFAULT_SECTION_CONFIG, sanitizeAgendaStep } from "../config.js";
 
 const FIELDS = ["aware", "fibs", "circle", "body"];
 const blank = () => ({ task: "", step: 0, max: 0, aware: "", fibs: "", circle: "", body: "" });
 const show = v => (v ? esc(v) : "—");
 const read = v => { const t = unesc(v); return t === "—" ? "" : t; };
+
+/** Story minutes one agenda step takes when the model gave no length: the configured slice. */
+export const stepMinutesOf = ctx =>
+    sanitizeAgendaStep(ctx?.config?.sectionConfig?.agendaStepMinutes, DEFAULT_SECTION_CONFIG.agendaStepMinutes);
+
+// `new "task" 0/N`, then an optional length (`takes 2h`, or `take`) before `@ place` or at the very end, after an optional comma.
+const NEW_LINE = /^(.+?)\s*:\s*new\s+"([^"]+)"\s+(\d+)\s*\/\s*(\d+)\s*(?:,?\s*\btakes?\s+([^@]+?)\s*)?(?:@\s*(.+?))?(?:\s*,?\s*\btakes?\s+(.+?))?\s*$/i;
+// `(Step 1/2)`, or `(Step 1/2 · 20m of 1h)` when the row carries timing: time spent, then the step's length.
+const STEP = /\(\s*Step\s+(\d+)\s*\/\s*(\d+)\s*(?:·\s*(\S+)\s+of\s+(\S+)\s*)?\)/i;
+const stepText = a => `(Step ${a.step}/${a.max}${a.pace ? ` · ${formatDuration(a.spent || 0)} of ${formatDuration(a.pace)}` : ""})`;
 
 function fieldLine(line, normalized) {
     return line.match(normalized
@@ -88,16 +100,19 @@ export default {
     carried: true,
     empty: () => ({}),
     render: value => Object.entries(value).map(([n, a]) =>
-        `- <b>${esc(n)}</b> | Agenda: ${show(a.task)} | (Step ${a.step}/${a.max}) | Aware: ${show(a.aware)} | Fibs: ${show(a.fibs)} | Circle: ${show(a.circle)} | Body: ${show(a.body)}`),
+        `- <b>${esc(n)}</b> | Agenda: ${show(a.task)} | ${stepText(a)} | Aware: ${show(a.aware)} | Fibs: ${show(a.fibs)} | Circle: ${show(a.circle)} | Body: ${show(a.body)}`),
     parse(rows, prevValue) {
         const value = {}, errors = [];
         for (const row of rows) {
             const m = row.match(ROW);
-            const step = m && m[2].match(/\(\s*Step\s+(\d+)\s*\/\s*(\d+)\s*\)/i);
+            const step = m && m[2].match(STEP);
             const f = m && fieldsOf(m[2]);
             if (m && step && f && "agenda" in f) {
                 const a = { task: read(f.agenda), step: Number(step[1]), max: Number(step[2]) };
                 for (const k of FIELDS) a[k] = read(f[k] ?? "");
+                const pace = step[4] ? parseDuration(step[4]) : null, spent = pace ? parseDuration(step[3]) : null;
+                if (pace) a.pace = pace;
+                if (spent) a.spent = spent;
                 value[unesc(m[1])] = a;
             } else {
                 errors.push(row);
@@ -122,12 +137,19 @@ export default {
                 }
             }
             let m;
-            if ((m = line.match(/^(.+?)\s*:\s*new\s+"([^"]+)"\s+(\d+)\s*\/\s*(\d+)\s*(?:@\s*(.+))?$/i))) {
+            if ((m = line.match(NEW_LINE))) {
                 const step = Number(m[3]), max = Number(m[4]);
                 if (max <= 0 || step > max) { unparsed.push(line); continue; }   // impossible progress: change nothing
                 const [n, a] = entry(state, m[1]);
                 Object.assign(a, { task: m[2].trim(), step, max });
-                if (m[5]) setLocation(state, n, m[5].trim());
+                delete a.pace; delete a.spent;
+                const takes = (m[5] || m[7] || "").trim();
+                if (takes) {
+                    const length = parseDuration(takes);
+                    if (length) a.pace = Math.max(1, Math.round(length / max));
+                    else ctx.warnings.push({ section: "Agendas", text: `${n} "${a.task}": could not read the length "${takes}" — each step takes ${formatDuration(stepMinutesOf(ctx))}.` });
+                }
+                if (m[6]) setLocation(state, n, m[6].trim());
                 ctx.touched.add(n.toLowerCase());
             } else if ((m = line.match(/^(.+?)\s*:\s*done\b/i))) {
                 // Only the task ends: what the person knows, their lies, circle and body stay.
@@ -138,7 +160,10 @@ export default {
                     // saved. There is nothing to clear; effects use other lines.
                     if (!ctx.normalizedChanges || !/^.+?\s*:\s*done\s+"[^"\s][^"]*"\s*(?:→\s*\S.*)?$/i.test(line)) unparsed.push(line);
                 }
-                else if (!ctx.touched.has(n.toLowerCase())) Object.assign(state.agendas[n], { task: "", step: 0, max: 0 });
+                else if (!ctx.touched.has(n.toLowerCase())) {
+                    Object.assign(state.agendas[n], { task: "", step: 0, max: 0 });
+                    delete state.agendas[n].pace; delete state.agendas[n].spent;
+                }
             } else if ((m = fieldLine(line, ctx.normalizedChanges))) {
                 const [, a] = entry(state, m[1]);
                 const field = { knows: "aware", fib: "fibs", fibs: "fibs", circle: "circle", body: "body" }[m[2].toLowerCase()];
@@ -148,6 +173,7 @@ export default {
                 // A task/progress recap is an explicit update; keep its note and do not auto-tick it again.
                 const [n, a] = entry(state, m.name);
                 Object.assign(a, { task: m.task, step: m.step, max: m.max });
+                delete a.spent;   // a written step starts fresh; its length stays
                 ctx.touched.add(n.toLowerCase());
             } else if (/@/.test(line) && locationLine(line, { normalized: ctx.normalizedChanges })) {
                 const [n, place] = locationLine(line, { normalized: ctx.normalizedChanges });
@@ -157,8 +183,18 @@ export default {
         return unparsed;
     },
     after(state, ctx) {
+        const elapsed = elapsedMinutes(ctx.prevNow, state.scene.now);
         for (const [n, a] of Object.entries(state.agendas)) {
-            if (a.max > 0 && a.step < a.max && offScreen(state, n) && !ctx.touched.has(n.toLowerCase())) a.step += 1;
+            if (!(a.max > 0 && a.step < a.max && offScreen(state, n) && !ctx.touched.has(n.toLowerCase()))) continue;
+            if (elapsed === null) { a.step += 1; continue; }   // no time of day: one step per reply
+            // The story minutes this reply covered go into the current step; each full step's length moves it on.
+            const pace = a.pace || stepMinutesOf(ctx);
+            let spent = (a.spent || 0) + elapsed;
+            const steps = Math.min(a.max - a.step, Math.floor(spent / pace));
+            a.step += steps;
+            spent -= steps * pace;
+            if (a.step >= a.max || spent <= 0) delete a.spent;
+            else Object.assign(a, { pace, spent });   // fixes a default-length step's length the first time time goes into it
         }
     },
     facts(state, ctx) {

@@ -243,6 +243,284 @@ function isAtOrPast(now, at) {
   if (!atDay) return now.minutes >= at.minutes;
   return now.day > at.day || now.day === at.day && now.minutes >= at.minutes;
 }
+function elapsedMinutes(prevNow, now) {
+  const a = parseStoryTime(prevNow), b = parseStoryTime(now);
+  if (!a || !b) return null;
+  if (a.day !== null && b.day !== null) return Math.max(0, (b.day - a.day) * 1440 + b.minutes - a.minutes);
+  if (b.minutes >= a.minutes) return b.minutes - a.minutes;
+  const wrapped = 1440 + b.minutes - a.minutes;
+  return wrapped >= 18 * 60 ? 0 : wrapped;
+}
+var UNIT_MINUTES = {
+  w: 10080,
+  wk: 10080,
+  wks: 10080,
+  week: 10080,
+  weeks: 10080,
+  d: 1440,
+  day: 1440,
+  days: 1440,
+  h: 60,
+  hr: 60,
+  hrs: 60,
+  hour: 60,
+  hours: 60,
+  m: 1,
+  min: 1,
+  mins: 1,
+  minute: 1,
+  minutes: 1
+};
+var DURATION_PART = /\s*(\d+(?:\.\d+)?)\s*([a-z]+)?/iy;
+function parseDuration(text) {
+  const t = String(text ?? "").trim();
+  let total = 0, at = 0, parts = 0, last = null;
+  while (at < t.length) {
+    DURATION_PART.lastIndex = at;
+    const m = DURATION_PART.exec(t);
+    if (!m) return null;
+    const unit = m[2] ? UNIT_MINUTES[m[2].toLowerCase()] : last === 60 ? 1 : void 0;
+    if (!unit) return null;
+    total += Number(m[1]) * unit;
+    last = unit;
+    at = DURATION_PART.lastIndex;
+    parts++;
+  }
+  const minutes = Math.round(total);
+  return parts && minutes > 0 ? minutes : null;
+}
+function formatDuration(minutes) {
+  const n = Math.max(0, Math.round(Number(minutes) || 0));
+  const d = Math.floor(n / 1440), h = Math.floor(n % 1440 / 60), m = n % 60;
+  return `${d ? `${d}d` : ""}${h ? `${h}h` : ""}${m ? `${m}m` : ""}` || "0m";
+}
+
+// src/model/config.js
+var DEFAULT_AXES = [
+  { key: "E", name: "Eros", kind: "fond", mirror: "M", period: 5, threshold: 10, meaning: "romantic fondness" },
+  { key: "M", name: "Misos", kind: "friction", mirror: "E", period: 5, threshold: 10, meaning: "romantic friction" },
+  { key: "L", name: "Ludus", kind: "fond", mirror: "Er", period: 3, threshold: 8, meaning: "playful fondness" },
+  { key: "Er", name: "Eris", kind: "friction", mirror: "L", period: 3, threshold: 8, meaning: "playful friction" },
+  { key: "Ph", name: "Philia", kind: "fond", mirror: "Ec", period: 5, threshold: 10, meaning: "friendship fondness" },
+  { key: "Ec", name: "Echthros", kind: "friction", mirror: "Ph", period: 5, threshold: 10, meaning: "friendship friction" },
+  { key: "Pr", name: "Pragma", kind: "fond", mirror: "St", period: 7, threshold: 12, meaning: "practical fondness" },
+  { key: "St", name: "Stasis", kind: "friction", mirror: "Pr", period: 7, threshold: 12, meaning: "practical friction" },
+  { key: "Sg", name: "Storge", kind: "fond", mirror: "Ad", period: 11, threshold: 12, meaning: "familial fondness" },
+  { key: "Ad", name: "Adiaphora", kind: "friction", mirror: "Sg", period: 11, threshold: 12, meaning: "familial friction" },
+  { key: "Ag", name: "Agape", kind: "fond", mirror: "Pt", period: 7, threshold: 10, meaning: "selfless fondness" },
+  { key: "Pt", name: "Phthonos", kind: "friction", mirror: "Ag", period: 7, threshold: 10, meaning: "giving friction / resentment" }
+];
+var DEFAULT_RELATION_CONFIG = {
+  axes: DEFAULT_AXES,
+  axisMin: 1,
+  // "NEVER 0"
+  axisMax: 20,
+  tickCap: 2,
+  // +2 per accumulator per turn
+  directMax: 2,
+  // DIRECT_SHIFT is +1 or +2
+  phi: { min: -20, max: 20, accCap: 30, period: 23, threshold: 12 },
+  // MIRROR DECAY: on each period, if the gap between a pair is ≥ lead, the trailing
+  // axis loses 1, never below floor = min(floorMax, max(1, ⌈leading / floorDivisor⌉)).
+  decay: [
+    { pair: ["L", "Er"], period: 6 },
+    { pair: ["E", "M"], period: 10 },
+    { pair: ["Ph", "Ec"], period: 10 },
+    { pair: ["Ag", "Pt"], period: 14 },
+    { pair: ["Pr", "St"], period: 14 },
+    { pair: ["Sg", "Ad"], period: 22 }
+  ],
+  decayLead: 5,
+  floorDivisor: 4,
+  floorMax: 4,
+  offstageSkip: [4, 8, 12, 15],
+  // trailing value at which an offstage pair does not decay
+  wallMin: 5,
+  // WALL: tied pair, both ≥ this → conversion and decay freeze
+  gravityMin: 6,
+  // GRAVITY WELL: fondness converts while its mirror ≥ this → mirror acc +1
+  romanceGate: { E: 6, L: 6 },
+  // romantic/sexual initiation allowed when E or L reaches these
+  tiers: [
+    { min: 1, max: 5, fond: "Fond", friction: "Distant" },
+    { min: 6, max: 10, fond: "Affectionate", friction: "Cold" },
+    { min: 11, max: 15, fond: "Devoted", friction: "Hostile" },
+    { min: 16, max: 20, fond: "Ultimate", friction: "Murderous" }
+  ]
+};
+var DEFAULT_SECTION_CONFIG = {
+  lastBeats: 3,
+  // 🧾 LAST keeps this many newest beats
+  threadLimit: 12,
+  // open [T] threads past this are flagged for retiring; 0 = no limit
+  agendaStepMinutes: 30,
+  // story minutes one agenda step takes when the model gives no length; 1–1440
+  chekhov: {
+    eligibleAge: 6,
+    // a bullet may fire from this age
+    pruneAge: 12,
+    // unfired bullets this old are pruned to Fired
+    cap: 20,
+    // at most this many active bullets
+    maxLoadsPerTurn: 1,
+    // more loads in one reply are kept but warned about
+    firedKeep: 10,
+    // Fired keeps this many newest; 0 = all
+    firing: "fate"
+    // Fate's pick; "model" keeps the reader-selected timing.
+  },
+  fate: {
+    modifiers: { recentMajor: -3, deferred3: 4, deferred12: 2, public: 2 },
+    ladder: [{ q: 0, minor: 16, major: 20 }, { q: 3, minor: 12, major: 19 }, { q: 7, minor: 8, major: 17 }],
+    newsMax: 6,
+    trueFloor: 3,
+    hpLadder: [{ hp: 1, weighted: 14 }, { hp: 3, weighted: 9 }, { hp: 5, weighted: 5 }],
+    collision: { minorDefer: 12, majorComplicate: 10 },
+    dangerC: 20,
+    deferredExpire: 6,
+    worldKeep: 5,
+    reach1Drop: 15,
+    minorWorld: { reach: 2, age: 4 },
+    majorWorld: { reach: 3, age: 8 },
+    ripe: { reach: 3, age: 12 },
+    pursuitLimit: 8,
+    residueKeep: 12
+  },
+  titles: {
+    softCap: 3,
+    // title bonuses above this are soft-capped
+    hardCap: 6,
+    // no title bonus may exceed this
+    situationalMax: 2,
+    // max |n| of the one situational bonus on a check line
+    retrofitBatch: 10
+    // titles retrofitted per batch
+  },
+  worldsim: {
+    standard: [
+      { from: 1, to: 2, name: "CALM", text: "The wider world goes on without a notable interruption" },
+      { from: 3, to: 4, name: "GOOD NEWS", text: "A community gets a small relief or useful opening" },
+      { from: 5, to: 6, name: "BAD NEWS", text: "A shortage, closure, or loss adds ordinary pressure somewhere nearby" },
+      { from: 7, to: 8, name: "RUMOUR", text: "A rumor spreads, mixing one true detail with speculation" },
+      { from: 9, to: 10, name: "OPPORTUNITY", text: "A trade, job, or request offers a practical chance" },
+      { from: 11, to: 12, name: "DISRUPTION", text: "Weather, transit, or a service interrupts someone's plans" },
+      { from: 13, to: 14, name: "CONFLICT", text: "A dispute between groups becomes public" },
+      { from: 15, to: 16, name: "ARRIVAL", text: "A newcomer or convoy brings unfamiliar needs or news" },
+      { from: 17, to: 18, name: "CRISIS", text: "A regional incident calls for an immediate response" },
+      { from: 19, to: 20, name: "CALM", text: "The wider world goes on without a notable interruption" }
+    ],
+    duo: [
+      { from: 1, to: 2, name: "CALM", text: "Nothing outside the moment demands their attention" },
+      { from: 3, to: 4, name: "GOOD NEWS", text: "A small kindness or success eases their day" },
+      { from: 5, to: 6, name: "MISUNDERSTANDING", text: "A comment lands badly and needs clarification" },
+      { from: 7, to: 8, name: "INTERRUPTION", text: "A personal errand or small need complicates the moment" },
+      { from: 9, to: 10, name: "OPENING", text: "A shared interest or offer creates a chance to connect" },
+      { from: 11, to: 12, name: "TENSION", text: "A private worry or unmet need surfaces between them" },
+      { from: 13, to: 14, name: "COMPLICATION", text: "Something they planned goes wrong and needs coordination" },
+      { from: 15, to: 16, name: "REVELATION", text: "Someone shares a small personal detail they may keep private" },
+      { from: 17, to: 18, name: "PRESSURE", text: "A difficult personal choice or boundary lands in the moment" },
+      { from: 19, to: 20, name: "CALM", text: "Nothing outside the moment demands their attention" }
+    ]
+  }
+};
+function resolveConfig(overrides) {
+  const base = JSON.parse(JSON.stringify(DEFAULT_RELATION_CONFIG));
+  base.sectionConfig = JSON.parse(JSON.stringify(DEFAULT_SECTION_CONFIG));
+  const sc = overrides && typeof overrides === "object" ? overrides.sectionConfig : null;
+  if (sc && typeof sc === "object") {
+    for (const [k, v] of Object.entries(sc)) {
+      if (k === "chekhov" && v && typeof v === "object") base.sectionConfig.chekhov = validChekhov(v, base.sectionConfig.chekhov);
+      else if (k === "fate" && v && typeof v === "object") base.sectionConfig.fate = mergeKnown(base.sectionConfig.fate, v);
+      else if (k === "worldsim" && v && typeof v === "object") base.sectionConfig.worldsim = mergeKnown(base.sectionConfig.worldsim, v);
+      else if (k === "titles" && v && typeof v === "object") base.sectionConfig.titles = sanitizeTitles(v, base.sectionConfig.titles);
+      else if (k === "threadLimit") base.sectionConfig.threadLimit = sanitizeThreadLimit(v, base.sectionConfig.threadLimit);
+      else if (k === "agendaStepMinutes") base.sectionConfig.agendaStepMinutes = sanitizeAgendaStep(v, base.sectionConfig.agendaStepMinutes);
+      else if (k in base.sectionConfig && typeof v === typeof base.sectionConfig[k]) base.sectionConfig[k] = v;
+    }
+  }
+  if (!overrides || typeof overrides !== "object") return base;
+  for (const [k, v] of Object.entries(overrides)) {
+    if (!(k in base)) continue;
+    if (k === "sectionConfig") continue;
+    if (Array.isArray(base[k])) base[k] = Array.isArray(v) ? JSON.parse(JSON.stringify(v)) : base[k];
+    else if (base[k] && typeof base[k] === "object") base[k] = { ...base[k], ...v || {} };
+    else if (typeof v === typeof base[k]) base[k] = v;
+  }
+  return base;
+}
+var axisByKey = (config, key2) => config.axes.find((a) => a.key === key2);
+function mergeKnown(defaults, input) {
+  const out = JSON.parse(JSON.stringify(defaults));
+  for (const [key2, value2] of Object.entries(input || {})) {
+    if (!(key2 in defaults)) continue;
+    const initial = defaults[key2];
+    if (Array.isArray(initial)) {
+      if (Array.isArray(value2)) out[key2] = JSON.parse(JSON.stringify(value2));
+    } else if (initial && typeof initial === "object") {
+      if (value2 && typeof value2 === "object" && !Array.isArray(value2)) out[key2] = mergeKnown(initial, value2);
+    } else if (typeof value2 === typeof initial && (typeof value2 !== "number" || Number.isFinite(value2))) out[key2] = value2;
+  }
+  return out;
+}
+function validChekhov(v, defaults) {
+  const out = { ...defaults };
+  const MIN = { eligibleAge: 0, pruneAge: 1, cap: 1, maxLoadsPerTurn: 1, firedKeep: 0 };
+  for (const [k, min] of Object.entries(MIN)) {
+    const n = v[k];
+    if (typeof n === "number" && Number.isInteger(n) && n >= min) out[k] = n;
+  }
+  if (v.firing === "model" || v.firing === "fate") out.firing = v.firing;
+  if (out.pruneAge <= out.eligibleAge) out.pruneAge = defaults.pruneAge > out.eligibleAge ? defaults.pruneAge : out.eligibleAge + 1;
+  return out;
+}
+function sanitizeChekhov(input, prev) {
+  const num = (k, min) => {
+    const raw = input[k];
+    if (raw === void 0 || raw === null || String(raw).trim() === "" || !Number.isFinite(Number(raw))) return prev[k];
+    return Math.max(min, Math.round(Number(raw)));
+  };
+  const out = {
+    eligibleAge: num("eligibleAge", 0),
+    pruneAge: num("pruneAge", 1),
+    cap: num("cap", 1),
+    maxLoadsPerTurn: num("maxLoadsPerTurn", 1),
+    firedKeep: num("firedKeep", 0),
+    firing: input.firing === "fate" ? "fate" : "model"
+  };
+  if (out.pruneAge <= out.eligibleAge) out.pruneAge = out.eligibleAge + 1;
+  return out;
+}
+function sanitizeTitles(input = {}, prev = DEFAULT_SECTION_CONFIG.titles) {
+  const num = (k, min, max) => {
+    const raw = input[k];
+    if (raw === void 0 || raw === null || String(raw).trim() === "" || !Number.isFinite(Number(raw))) return prev[k];
+    return Math.min(max, Math.max(min, Math.round(Number(raw))));
+  };
+  const hardCap = num("hardCap", 0, 20);
+  return {
+    softCap: Math.min(num("softCap", 0, 20), hardCap),
+    hardCap,
+    situationalMax: num("situationalMax", 0, 5),
+    retrofitBatch: num("retrofitBatch", 1, 30)
+  };
+}
+function sanitizeFate(input = {}, prev = DEFAULT_SECTION_CONFIG.fate) {
+  const out = JSON.parse(JSON.stringify(prev));
+  for (const key2 of ["deferredExpire", "worldKeep", "reach1Drop", "pursuitLimit", "residueKeep"]) {
+    const raw = input[key2];
+    if (raw === void 0 || raw === null || String(raw).trim() === "" || !Number.isFinite(Number(raw))) continue;
+    out[key2] = Math.max(1, Math.round(Number(raw)));
+  }
+  return out;
+}
+function sanitizeThreadLimit(raw, prev = DEFAULT_SECTION_CONFIG.threadLimit) {
+  if (raw === void 0 || raw === null || String(raw).trim() === "" || !Number.isFinite(Number(raw))) return prev;
+  return Math.min(99, Math.max(0, Math.round(Number(raw))));
+}
+function sanitizeAgendaStep(raw, prev = DEFAULT_SECTION_CONFIG.agendaStepMinutes) {
+  if (raw === void 0 || raw === null || String(raw).trim() === "" || !Number.isFinite(Number(raw))) return prev;
+  return Math.min(1440, Math.max(1, Math.round(Number(raw))));
+}
 
 // src/model/sections/agendas.js
 var FIELDS2 = ["aware", "fibs", "circle", "body"];
@@ -252,6 +530,10 @@ var read2 = (v) => {
   const t = unesc(v);
   return t === "—" ? "" : t;
 };
+var stepMinutesOf = (ctx) => sanitizeAgendaStep(ctx?.config?.sectionConfig?.agendaStepMinutes, DEFAULT_SECTION_CONFIG.agendaStepMinutes);
+var NEW_LINE = /^(.+?)\s*:\s*new\s+"([^"]+)"\s+(\d+)\s*\/\s*(\d+)\s*(?:,?\s*\btakes?\s+([^@]+?)\s*)?(?:@\s*(.+?))?(?:\s*,?\s*\btakes?\s+(.+?))?\s*$/i;
+var STEP = /\(\s*Step\s+(\d+)\s*\/\s*(\d+)\s*(?:·\s*(\S+)\s+of\s+(\S+)\s*)?\)/i;
+var stepText = (a) => `(Step ${a.step}/${a.max}${a.pace ? ` · ${formatDuration(a.spent || 0)} of ${formatDuration(a.pace)}` : ""})`;
 function fieldLine(line, normalized) {
   return line.match(normalized ? /^(.+?)(?:\s*:\s*|\s+)(knows|fibs?|circle|body)\s*:\s*(.+)$/i : /^(.+?)\s+(knows|fibs?|circle|body)\s*:\s*(.+)$/i);
 }
@@ -307,16 +589,19 @@ var agendas_default = {
   aliases: ["NPC Agendas", "Agenda"],
   carried: true,
   empty: () => ({}),
-  render: (value2) => Object.entries(value2).map(([n, a]) => `- <b>${esc(n)}</b> | Agenda: ${show2(a.task)} | (Step ${a.step}/${a.max}) | Aware: ${show2(a.aware)} | Fibs: ${show2(a.fibs)} | Circle: ${show2(a.circle)} | Body: ${show2(a.body)}`),
+  render: (value2) => Object.entries(value2).map(([n, a]) => `- <b>${esc(n)}</b> | Agenda: ${show2(a.task)} | ${stepText(a)} | Aware: ${show2(a.aware)} | Fibs: ${show2(a.fibs)} | Circle: ${show2(a.circle)} | Body: ${show2(a.body)}`),
   parse(rows, prevValue) {
     const value2 = {}, errors = [];
     for (const row of rows) {
       const m = row.match(ROW);
-      const step = m && m[2].match(/\(\s*Step\s+(\d+)\s*\/\s*(\d+)\s*\)/i);
+      const step = m && m[2].match(STEP);
       const f = m && fieldsOf(m[2]);
       if (m && step && f && "agenda" in f) {
         const a = { task: read2(f.agenda), step: Number(step[1]), max: Number(step[2]) };
         for (const k of FIELDS2) a[k] = read2(f[k] ?? "");
+        const pace = step[4] ? parseDuration(step[4]) : null, spent = pace ? parseDuration(step[3]) : null;
+        if (pace) a.pace = pace;
+        if (spent) a.spent = spent;
         value2[unesc(m[1])] = a;
       } else {
         errors.push(row);
@@ -338,7 +623,7 @@ var agendas_default = {
         }
       }
       let m;
-      if (m = line.match(/^(.+?)\s*:\s*new\s+"([^"]+)"\s+(\d+)\s*\/\s*(\d+)\s*(?:@\s*(.+))?$/i)) {
+      if (m = line.match(NEW_LINE)) {
         const step = Number(m[3]), max = Number(m[4]);
         if (max <= 0 || step > max) {
           unparsed.push(line);
@@ -346,13 +631,25 @@ var agendas_default = {
         }
         const [n, a] = entry(state, m[1]);
         Object.assign(a, { task: m[2].trim(), step, max });
-        if (m[5]) setLocation(state, n, m[5].trim());
+        delete a.pace;
+        delete a.spent;
+        const takes = (m[5] || m[7] || "").trim();
+        if (takes) {
+          const length = parseDuration(takes);
+          if (length) a.pace = Math.max(1, Math.round(length / max));
+          else ctx.warnings.push({ section: "Agendas", text: `${n} "${a.task}": could not read the length "${takes}" — each step takes ${formatDuration(stepMinutesOf(ctx))}.` });
+        }
+        if (m[6]) setLocation(state, n, m[6].trim());
         ctx.touched.add(n.toLowerCase());
       } else if (m = line.match(/^(.+?)\s*:\s*done\b/i)) {
         const n = findName(Object.keys(state.agendas), m[1]);
         if (!state.agendas[n]) {
           if (!ctx.normalizedChanges || !/^.+?\s*:\s*done\s+"[^"\s][^"]*"\s*(?:→\s*\S.*)?$/i.test(line)) unparsed.push(line);
-        } else if (!ctx.touched.has(n.toLowerCase())) Object.assign(state.agendas[n], { task: "", step: 0, max: 0 });
+        } else if (!ctx.touched.has(n.toLowerCase())) {
+          Object.assign(state.agendas[n], { task: "", step: 0, max: 0 });
+          delete state.agendas[n].pace;
+          delete state.agendas[n].spent;
+        }
       } else if (m = fieldLine(line, ctx.normalizedChanges)) {
         const [, a] = entry(state, m[1]);
         const field3 = { knows: "aware", fib: "fibs", fibs: "fibs", circle: "circle", body: "body" }[m[2].toLowerCase()];
@@ -361,6 +658,7 @@ var agendas_default = {
       } else if (m = progressRecap(line, ctx.normalizedChanges)) {
         const [n, a] = entry(state, m.name);
         Object.assign(a, { task: m.task, step: m.step, max: m.max });
+        delete a.spent;
         ctx.touched.add(n.toLowerCase());
       } else if (/@/.test(line) && locationLine(line, { normalized: ctx.normalizedChanges })) {
         const [n, place] = locationLine(line, { normalized: ctx.normalizedChanges });
@@ -370,8 +668,20 @@ var agendas_default = {
     return unparsed;
   },
   after(state, ctx) {
+    const elapsed = elapsedMinutes(ctx.prevNow, state.scene.now);
     for (const [n, a] of Object.entries(state.agendas)) {
-      if (a.max > 0 && a.step < a.max && offScreen(state, n) && !ctx.touched.has(n.toLowerCase())) a.step += 1;
+      if (!(a.max > 0 && a.step < a.max && offScreen(state, n) && !ctx.touched.has(n.toLowerCase()))) continue;
+      if (elapsed === null) {
+        a.step += 1;
+        continue;
+      }
+      const pace = a.pace || stepMinutesOf(ctx);
+      let spent = (a.spent || 0) + elapsed;
+      const steps = Math.min(a.max - a.step, Math.floor(spent / pace));
+      a.step += steps;
+      spent -= steps * pace;
+      if (a.step >= a.max || spent <= 0) delete a.spent;
+      else Object.assign(a, { pace, spent });
     }
   },
   facts(state, ctx) {
@@ -1072,226 +1382,6 @@ function capBonus(raw, { softCap, hardCap }) {
   const reduced = softCap + Math.floor((raw - softCap) / 2);
   if (reduced > hardCap) return { value: hardCap, cap: "hard cap" };
   return { value: reduced, cap: "soft cap" };
-}
-
-// src/model/config.js
-var DEFAULT_AXES = [
-  { key: "E", name: "Eros", kind: "fond", mirror: "M", period: 5, threshold: 10, meaning: "romantic fondness" },
-  { key: "M", name: "Misos", kind: "friction", mirror: "E", period: 5, threshold: 10, meaning: "romantic friction" },
-  { key: "L", name: "Ludus", kind: "fond", mirror: "Er", period: 3, threshold: 8, meaning: "playful fondness" },
-  { key: "Er", name: "Eris", kind: "friction", mirror: "L", period: 3, threshold: 8, meaning: "playful friction" },
-  { key: "Ph", name: "Philia", kind: "fond", mirror: "Ec", period: 5, threshold: 10, meaning: "friendship fondness" },
-  { key: "Ec", name: "Echthros", kind: "friction", mirror: "Ph", period: 5, threshold: 10, meaning: "friendship friction" },
-  { key: "Pr", name: "Pragma", kind: "fond", mirror: "St", period: 7, threshold: 12, meaning: "practical fondness" },
-  { key: "St", name: "Stasis", kind: "friction", mirror: "Pr", period: 7, threshold: 12, meaning: "practical friction" },
-  { key: "Sg", name: "Storge", kind: "fond", mirror: "Ad", period: 11, threshold: 12, meaning: "familial fondness" },
-  { key: "Ad", name: "Adiaphora", kind: "friction", mirror: "Sg", period: 11, threshold: 12, meaning: "familial friction" },
-  { key: "Ag", name: "Agape", kind: "fond", mirror: "Pt", period: 7, threshold: 10, meaning: "selfless fondness" },
-  { key: "Pt", name: "Phthonos", kind: "friction", mirror: "Ag", period: 7, threshold: 10, meaning: "giving friction / resentment" }
-];
-var DEFAULT_RELATION_CONFIG = {
-  axes: DEFAULT_AXES,
-  axisMin: 1,
-  // "NEVER 0"
-  axisMax: 20,
-  tickCap: 2,
-  // +2 per accumulator per turn
-  directMax: 2,
-  // DIRECT_SHIFT is +1 or +2
-  phi: { min: -20, max: 20, accCap: 30, period: 23, threshold: 12 },
-  // MIRROR DECAY: on each period, if the gap between a pair is ≥ lead, the trailing
-  // axis loses 1, never below floor = min(floorMax, max(1, ⌈leading / floorDivisor⌉)).
-  decay: [
-    { pair: ["L", "Er"], period: 6 },
-    { pair: ["E", "M"], period: 10 },
-    { pair: ["Ph", "Ec"], period: 10 },
-    { pair: ["Ag", "Pt"], period: 14 },
-    { pair: ["Pr", "St"], period: 14 },
-    { pair: ["Sg", "Ad"], period: 22 }
-  ],
-  decayLead: 5,
-  floorDivisor: 4,
-  floorMax: 4,
-  offstageSkip: [4, 8, 12, 15],
-  // trailing value at which an offstage pair does not decay
-  wallMin: 5,
-  // WALL: tied pair, both ≥ this → conversion and decay freeze
-  gravityMin: 6,
-  // GRAVITY WELL: fondness converts while its mirror ≥ this → mirror acc +1
-  romanceGate: { E: 6, L: 6 },
-  // romantic/sexual initiation allowed when E or L reaches these
-  tiers: [
-    { min: 1, max: 5, fond: "Fond", friction: "Distant" },
-    { min: 6, max: 10, fond: "Affectionate", friction: "Cold" },
-    { min: 11, max: 15, fond: "Devoted", friction: "Hostile" },
-    { min: 16, max: 20, fond: "Ultimate", friction: "Murderous" }
-  ]
-};
-var DEFAULT_SECTION_CONFIG = {
-  lastBeats: 3,
-  // 🧾 LAST keeps this many newest beats
-  threadLimit: 12,
-  // open [T] threads past this are flagged for retiring; 0 = no limit
-  chekhov: {
-    eligibleAge: 6,
-    // a bullet may fire from this age
-    pruneAge: 12,
-    // unfired bullets this old are pruned to Fired
-    cap: 20,
-    // at most this many active bullets
-    maxLoadsPerTurn: 1,
-    // more loads in one reply are kept but warned about
-    firedKeep: 10,
-    // Fired keeps this many newest; 0 = all
-    firing: "fate"
-    // Fate's pick; "model" keeps the reader-selected timing.
-  },
-  fate: {
-    modifiers: { recentMajor: -3, deferred3: 4, deferred12: 2, public: 2 },
-    ladder: [{ q: 0, minor: 16, major: 20 }, { q: 3, minor: 12, major: 19 }, { q: 7, minor: 8, major: 17 }],
-    newsMax: 6,
-    trueFloor: 3,
-    hpLadder: [{ hp: 1, weighted: 14 }, { hp: 3, weighted: 9 }, { hp: 5, weighted: 5 }],
-    collision: { minorDefer: 12, majorComplicate: 10 },
-    dangerC: 20,
-    deferredExpire: 6,
-    worldKeep: 5,
-    reach1Drop: 15,
-    minorWorld: { reach: 2, age: 4 },
-    majorWorld: { reach: 3, age: 8 },
-    ripe: { reach: 3, age: 12 },
-    pursuitLimit: 8,
-    residueKeep: 12
-  },
-  titles: {
-    softCap: 3,
-    // title bonuses above this are soft-capped
-    hardCap: 6,
-    // no title bonus may exceed this
-    situationalMax: 2,
-    // max |n| of the one situational bonus on a check line
-    retrofitBatch: 10
-    // titles retrofitted per batch
-  },
-  worldsim: {
-    standard: [
-      { from: 1, to: 2, name: "CALM", text: "The wider world goes on without a notable interruption" },
-      { from: 3, to: 4, name: "GOOD NEWS", text: "A community gets a small relief or useful opening" },
-      { from: 5, to: 6, name: "BAD NEWS", text: "A shortage, closure, or loss adds ordinary pressure somewhere nearby" },
-      { from: 7, to: 8, name: "RUMOUR", text: "A rumor spreads, mixing one true detail with speculation" },
-      { from: 9, to: 10, name: "OPPORTUNITY", text: "A trade, job, or request offers a practical chance" },
-      { from: 11, to: 12, name: "DISRUPTION", text: "Weather, transit, or a service interrupts someone's plans" },
-      { from: 13, to: 14, name: "CONFLICT", text: "A dispute between groups becomes public" },
-      { from: 15, to: 16, name: "ARRIVAL", text: "A newcomer or convoy brings unfamiliar needs or news" },
-      { from: 17, to: 18, name: "CRISIS", text: "A regional incident calls for an immediate response" },
-      { from: 19, to: 20, name: "CALM", text: "The wider world goes on without a notable interruption" }
-    ],
-    duo: [
-      { from: 1, to: 2, name: "CALM", text: "Nothing outside the moment demands their attention" },
-      { from: 3, to: 4, name: "GOOD NEWS", text: "A small kindness or success eases their day" },
-      { from: 5, to: 6, name: "MISUNDERSTANDING", text: "A comment lands badly and needs clarification" },
-      { from: 7, to: 8, name: "INTERRUPTION", text: "A personal errand or small need complicates the moment" },
-      { from: 9, to: 10, name: "OPENING", text: "A shared interest or offer creates a chance to connect" },
-      { from: 11, to: 12, name: "TENSION", text: "A private worry or unmet need surfaces between them" },
-      { from: 13, to: 14, name: "COMPLICATION", text: "Something they planned goes wrong and needs coordination" },
-      { from: 15, to: 16, name: "REVELATION", text: "Someone shares a small personal detail they may keep private" },
-      { from: 17, to: 18, name: "PRESSURE", text: "A difficult personal choice or boundary lands in the moment" },
-      { from: 19, to: 20, name: "CALM", text: "Nothing outside the moment demands their attention" }
-    ]
-  }
-};
-function resolveConfig(overrides) {
-  const base = JSON.parse(JSON.stringify(DEFAULT_RELATION_CONFIG));
-  base.sectionConfig = JSON.parse(JSON.stringify(DEFAULT_SECTION_CONFIG));
-  const sc = overrides && typeof overrides === "object" ? overrides.sectionConfig : null;
-  if (sc && typeof sc === "object") {
-    for (const [k, v] of Object.entries(sc)) {
-      if (k === "chekhov" && v && typeof v === "object") base.sectionConfig.chekhov = validChekhov(v, base.sectionConfig.chekhov);
-      else if (k === "fate" && v && typeof v === "object") base.sectionConfig.fate = mergeKnown(base.sectionConfig.fate, v);
-      else if (k === "worldsim" && v && typeof v === "object") base.sectionConfig.worldsim = mergeKnown(base.sectionConfig.worldsim, v);
-      else if (k === "titles" && v && typeof v === "object") base.sectionConfig.titles = sanitizeTitles(v, base.sectionConfig.titles);
-      else if (k === "threadLimit") base.sectionConfig.threadLimit = sanitizeThreadLimit(v, base.sectionConfig.threadLimit);
-      else if (k in base.sectionConfig && typeof v === typeof base.sectionConfig[k]) base.sectionConfig[k] = v;
-    }
-  }
-  if (!overrides || typeof overrides !== "object") return base;
-  for (const [k, v] of Object.entries(overrides)) {
-    if (!(k in base)) continue;
-    if (k === "sectionConfig") continue;
-    if (Array.isArray(base[k])) base[k] = Array.isArray(v) ? JSON.parse(JSON.stringify(v)) : base[k];
-    else if (base[k] && typeof base[k] === "object") base[k] = { ...base[k], ...v || {} };
-    else if (typeof v === typeof base[k]) base[k] = v;
-  }
-  return base;
-}
-var axisByKey = (config, key2) => config.axes.find((a) => a.key === key2);
-function mergeKnown(defaults, input) {
-  const out = JSON.parse(JSON.stringify(defaults));
-  for (const [key2, value2] of Object.entries(input || {})) {
-    if (!(key2 in defaults)) continue;
-    const initial = defaults[key2];
-    if (Array.isArray(initial)) {
-      if (Array.isArray(value2)) out[key2] = JSON.parse(JSON.stringify(value2));
-    } else if (initial && typeof initial === "object") {
-      if (value2 && typeof value2 === "object" && !Array.isArray(value2)) out[key2] = mergeKnown(initial, value2);
-    } else if (typeof value2 === typeof initial && (typeof value2 !== "number" || Number.isFinite(value2))) out[key2] = value2;
-  }
-  return out;
-}
-function validChekhov(v, defaults) {
-  const out = { ...defaults };
-  const MIN = { eligibleAge: 0, pruneAge: 1, cap: 1, maxLoadsPerTurn: 1, firedKeep: 0 };
-  for (const [k, min] of Object.entries(MIN)) {
-    const n = v[k];
-    if (typeof n === "number" && Number.isInteger(n) && n >= min) out[k] = n;
-  }
-  if (v.firing === "model" || v.firing === "fate") out.firing = v.firing;
-  if (out.pruneAge <= out.eligibleAge) out.pruneAge = defaults.pruneAge > out.eligibleAge ? defaults.pruneAge : out.eligibleAge + 1;
-  return out;
-}
-function sanitizeChekhov(input, prev) {
-  const num = (k, min) => {
-    const raw = input[k];
-    if (raw === void 0 || raw === null || String(raw).trim() === "" || !Number.isFinite(Number(raw))) return prev[k];
-    return Math.max(min, Math.round(Number(raw)));
-  };
-  const out = {
-    eligibleAge: num("eligibleAge", 0),
-    pruneAge: num("pruneAge", 1),
-    cap: num("cap", 1),
-    maxLoadsPerTurn: num("maxLoadsPerTurn", 1),
-    firedKeep: num("firedKeep", 0),
-    firing: input.firing === "fate" ? "fate" : "model"
-  };
-  if (out.pruneAge <= out.eligibleAge) out.pruneAge = out.eligibleAge + 1;
-  return out;
-}
-function sanitizeTitles(input = {}, prev = DEFAULT_SECTION_CONFIG.titles) {
-  const num = (k, min, max) => {
-    const raw = input[k];
-    if (raw === void 0 || raw === null || String(raw).trim() === "" || !Number.isFinite(Number(raw))) return prev[k];
-    return Math.min(max, Math.max(min, Math.round(Number(raw))));
-  };
-  const hardCap = num("hardCap", 0, 20);
-  return {
-    softCap: Math.min(num("softCap", 0, 20), hardCap),
-    hardCap,
-    situationalMax: num("situationalMax", 0, 5),
-    retrofitBatch: num("retrofitBatch", 1, 30)
-  };
-}
-function sanitizeFate(input = {}, prev = DEFAULT_SECTION_CONFIG.fate) {
-  const out = JSON.parse(JSON.stringify(prev));
-  for (const key2 of ["deferredExpire", "worldKeep", "reach1Drop", "pursuitLimit", "residueKeep"]) {
-    const raw = input[key2];
-    if (raw === void 0 || raw === null || String(raw).trim() === "" || !Number.isFinite(Number(raw))) continue;
-    out[key2] = Math.max(1, Math.round(Number(raw)));
-  }
-  return out;
-}
-function sanitizeThreadLimit(raw, prev = DEFAULT_SECTION_CONFIG.threadLimit) {
-  if (raw === void 0 || raw === null || String(raw).trim() === "" || !Number.isFinite(Number(raw))) return prev;
-  return Math.min(99, Math.max(0, Math.round(Number(raw))));
 }
 
 // src/model/sections/inventory.js

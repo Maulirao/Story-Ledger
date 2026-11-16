@@ -56,6 +56,7 @@ export const DEFAULT_RELATION_CONFIG = {
 export const DEFAULT_SECTION_CONFIG = {
     lastBeats: 3,   // 🧾 LAST keeps this many newest beats
     threadLimit: 12, // open [T] threads past this are flagged for retiring; 0 = no limit
+    agendaStepMinutes: 30, // story minutes one agenda step takes when the model gives no length; 1–1440
     chekhov: {
         eligibleAge: 6,     // a bullet may fire from this age
         pruneAge: 12,       // unfired bullets this old are pruned to Fired
@@ -127,6 +128,7 @@ export function resolveConfig(overrides) {
             else if (k === "worldsim" && v && typeof v === "object") base.sectionConfig.worldsim = mergeKnown(base.sectionConfig.worldsim, v);
             else if (k === "titles" && v && typeof v === "object") base.sectionConfig.titles = sanitizeTitles(v, base.sectionConfig.titles);
             else if (k === "threadLimit") base.sectionConfig.threadLimit = sanitizeThreadLimit(v, base.sectionConfig.threadLimit);
+            else if (k === "agendaStepMinutes") base.sectionConfig.agendaStepMinutes = sanitizeAgendaStep(v, base.sectionConfig.agendaStepMinutes);
             else if (k in base.sectionConfig && typeof v === typeof base.sectionConfig[k]) base.sectionConfig[k] = v;
         }
     }
@@ -228,4 +230,10 @@ export function sanitizeFate(input = {}, prev = DEFAULT_SECTION_CONFIG.fate) {
 export function sanitizeThreadLimit(raw, prev = DEFAULT_SECTION_CONFIG.threadLimit) {
     if (raw === undefined || raw === null || String(raw).trim() === "" || !Number.isFinite(Number(raw))) return prev;
     return Math.min(99, Math.max(0, Math.round(Number(raw))));
+}
+
+/** Minutes per agenda step from the Settings form or saved config: a blank or non-number keeps `prev`; else 1 to 1440. */
+export function sanitizeAgendaStep(raw, prev = DEFAULT_SECTION_CONFIG.agendaStepMinutes) {
+    if (raw === undefined || raw === null || String(raw).trim() === "" || !Number.isFinite(Number(raw))) return prev;
+    return Math.min(1440, Math.max(1, Math.round(Number(raw))));
 }
