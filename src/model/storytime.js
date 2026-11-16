@@ -1,5 +1,6 @@
 // ──────────────────────────────────────────────────────────────────────────────
-// Story time as numbers, for Chekhov time locks: { day, minutes since midnight }.
+// Story time as numbers, for Chekhov time locks and agendas: { day, minutes since midnight },
+// the minutes between two Now lines, and lengths such as "2h" or "3 days".
 // Read from the free-text Now line or a header; null when it holds no clock time.
 // Pure.
 // ──────────────────────────────────────────────────────────────────────────────
@@ -50,4 +51,52 @@ export function isAtOrPast(now, at) {
     if (atDay && !nowDay) return false;   // a dated lock cannot be judged from a clock alone
     if (!atDay) return now.minutes >= at.minutes;
     return now.day > at.day || (now.day === at.day && now.minutes >= at.minutes);
+}
+
+/**
+ * Story minutes from one Now line to the next, never negative; null when either has no
+ * time of day. With a day number on both, days count too. Otherwise only the clocks are
+ * compared and an earlier clock means midnight passed once — unless that would make 18
+ * hours or more, which reads as a small correction of the clock and counts as no time.
+ */
+export function elapsedMinutes(prevNow, now) {
+    const a = parseStoryTime(prevNow), b = parseStoryTime(now);
+    if (!a || !b) return null;
+    if (a.day !== null && b.day !== null) return Math.max(0, (b.day - a.day) * 1440 + b.minutes - a.minutes);
+    if (b.minutes >= a.minutes) return b.minutes - a.minutes;
+    const wrapped = 1440 + b.minutes - a.minutes;
+    return wrapped >= 18 * 60 ? 0 : wrapped;
+}
+
+const UNIT_MINUTES = {
+    w: 10080, wk: 10080, wks: 10080, week: 10080, weeks: 10080,
+    d: 1440, day: 1440, days: 1440,
+    h: 60, hr: 60, hrs: 60, hour: 60, hours: 60,
+    m: 1, min: 1, mins: 1, minute: 1, minutes: 1,
+};
+const DURATION_PART = /\s*(\d+(?:\.\d+)?)\s*([a-z]+)?/iy;
+
+/** Whole minutes from a length like "2h", "1h 30m", "1h30", "3 days"; null when unreadable or not above zero. */
+export function parseDuration(text) {
+    const t = String(text ?? "").trim();
+    let total = 0, at = 0, parts = 0, last = null;
+    while (at < t.length) {
+        DURATION_PART.lastIndex = at;
+        const m = DURATION_PART.exec(t);
+        if (!m) return null;
+        // a bare number straight after an hours part is its minutes ("1h30")
+        const unit = m[2] ? UNIT_MINUTES[m[2].toLowerCase()] : (last === 60 ? 1 : undefined);
+        if (!unit) return null;
+        total += Number(m[1]) * unit;
+        last = unit; at = DURATION_PART.lastIndex; parts++;
+    }
+    const minutes = Math.round(total);
+    return parts && minutes > 0 ? minutes : null;
+}
+
+/** A length written short: "20m", "1h", "1h30m", "2d", "2d4h", "1d5m"; "0m" for zero. */
+export function formatDuration(minutes) {
+    const n = Math.max(0, Math.round(Number(minutes) || 0));
+    const d = Math.floor(n / 1440), h = Math.floor((n % 1440) / 60), m = n % 60;
+    return `${d ? `${d}d` : ""}${h ? `${h}h` : ""}${m ? `${m}m` : ""}` || "0m";
 }
