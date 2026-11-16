@@ -338,7 +338,7 @@ export const FIXTURES = {
         heading: "Agendas",
         expect(r) {
             clean(r);
-            assert.deepEqual(r.state.agendas, { Ana: { ...AGENDA, task: "mend the nets", step: 0, max: 2 } });
+            assert.deepEqual(r.state.agendas, { Ana: { ...AGENDA, task: "mend the nets", step: 0, max: 2, pace: 60 } });
             assert.deepEqual(r.state.locations, { Ana: "the harbour" });
         },
         // the misspelling drops "@ place", which would make it a location line

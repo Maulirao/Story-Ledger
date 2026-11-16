@@ -5,7 +5,9 @@ import { resolveConfig, sanitizeAgendaStep } from "../src/model/config.js";
 import { emptyState } from "../src/model/state.js";
 import { parseChanges } from "../src/model/changes.js";
 import { renderBlock, parseBlock } from "../src/model/block.js";
-import { postTurn, preTurnFacts } from "../src/model/turn.js";
+import { postTurn, preTurnFacts, sectionContext } from "../src/model/turn.js";
+import { sectionByKey } from "../src/model/sections/registry.js";
+import { renderRules, buildTemplate } from "../src/model/prompt.js";
 
 const C = { ...resolveConfig(), userName: "Jan", sections: {} };
 const ch = body => parseChanges(`<!-- Story_Ledger\n${body}\n-->`);
@@ -283,4 +285,34 @@ test("the slice is a number from 1 to 1440 that a saved config can change", () =
     const cfg = { ...C, sectionConfig: { ...C.sectionConfig, agendaStepMinutes: 10 } };
     const s = at("Day 3 — 10:00", { Tom: agenda("sweep", 0, 2) });
     assert.deepEqual(postTurn(s, ch("Now: Day 3 — 10:15"), cfg).state.agendas.Tom, agenda("sweep", 1, 2, { pace: 10, spent: 5 }));
+});
+
+test("with a clock the finish is announced after it happens, with its effect; without one it is announced ahead", () => {
+    const s = at("Day 3 — 10:00", { Ana: agenda("close the café", 1, 2), Tom: agenda("sweep", 2, 2) }, ["Tom"]);
+    const told = () => preTurnFacts(s, C).join("\n");
+    assert.doesNotMatch(told(), /this turn/);
+    assert.match(told(), /Tom's agenda "sweep" is finished — give Tom a new one\./);
+    s.agendas.Ana.step = 2;
+    assert.match(told(), /Ana finished "close the café" off-screen — apply its effect and give Ana a new agenda\./);
+    s.agendas.Ana.step = 1;
+    s.scene.now = "evening";
+    assert.match(told(), /Ana finishes "close the café" off-screen this turn/);
+});
+
+test("the model is shown about how much story time an off-screen task has left", () => {
+    const s = at("Day 3 — 10:00", { Ana: agenda("mend the nets", 1, 3, { pace: 60, spent: 20 }), Tom: agenda("sweep", 0, 2), Eva: agenda("rest", 0, 1) }, ["Eva"]);
+    const shown = () => sectionByKey("agendas").prompt(s.agendas, s, sectionContext(s, s.scene.present, C));
+    assert.match(shown(), /- Ana \(off-screen\) — mend the nets \(1\/3, about 1h40m left\)/);
+    assert.match(shown(), /- Tom \(off-screen\) — sweep \(0\/2, about 1h left\)/);
+    assert.match(shown(), /- Eva — rest \(0\/1\)/);
+    s.scene.now = "evening";
+    assert.match(shown(), /- Ana \(off-screen\) — mend the nets \(1\/3\)/);
+});
+
+test("the rules and the template teach takes, with the configured slice", () => {
+    assert.match(renderRules(C), /advance with the story's clock, not with each reply/);
+    assert.match(renderRules(C), /each step is about 30m of story time/);
+    assert.match(renderRules({ ...C, sectionConfig: { ...C.sectionConfig, agendaStepMinutes: 45 } }), /each step is about 45m of story time/);
+    assert.doesNotMatch(renderRules(C), /advance on their own/);
+    assert.ok(buildTemplate(C).includes('- Name: new "task" 0/N @ place, takes 2h'));
 });

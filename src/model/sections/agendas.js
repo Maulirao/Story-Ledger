@@ -44,7 +44,7 @@ function fieldCommands(raw, normalized) {
 }
 
 const COMMANDS = [
-    { id: "agendas.new", form: 'Name: new "task" 0/N @ place', example: 'Ana: new "mend the nets" 0/2 @ the harbour', keywords: ["new"] },
+    { id: "agendas.new", form: 'Name: new "task" 0/N @ place, takes 2h', example: 'Ana: new "mend the nets" 0/2 @ the harbour, takes 2h', keywords: ["new", "takes"] },
     { id: "agendas.done", form: 'Name: done "task" → effect', example: 'Ana: done "mend the nets" → the boat can sail', keywords: ["done"] },
     { id: "agendas.knows", form: "Name knows: …", example: "Ana knows: Mara took the key", keywords: ["knows"] },
     { id: "agendas.fib", form: "Name fib: …", example: "Ana fib: says she was home all night", keywords: ["fib"] },
@@ -205,25 +205,32 @@ export default {
                 out.push(`${n} has no agenda — write an Agendas new line with a concrete goal and 1–3 steps drawn from the story.`);
             } else if (!(a.max > 0)) {
                 out.push(`${n}'s agenda "${a.task}" cannot advance without steps — write an Agendas new line with valid progress, or done and a new agenda if the story already finished it.`);
-            } else if (a.step >= a.max) out.push(`${n}'s agenda "${a.task}" is finished — give ${n} a new one.`);
+            } else if (a.step >= a.max) out.push(offScreen(state, n)
+                ? `${n} finished "${a.task}" off-screen — apply its effect and give ${n} a new agenda.`
+                : `${n}'s agenda "${a.task}" is finished — give ${n} a new one.`);
             else if (overdue(a.task, state.scene.now)) out.push(`${n}'s agenda "${a.task}" was due by ${overdue(a.task, state.scene.now)} and the story time is past it — write done for it, or a new agenda that fits what ${n} is doing now; do not steer the scene back toward the old deadline.`);
-            else if (offScreen(state, n) && a.step + 1 >= a.max) out.push(`${n} finishes "${a.task}" off-screen this turn — apply its effect and give ${n} a new agenda.`);
+            // With a clock the ledger cannot know ahead how much time the reply covers: the finish is told after it happens.
+            else if (offScreen(state, n) && a.step + 1 >= a.max && !parseStoryTime(state.scene.now)) out.push(`${n} finishes "${a.task}" off-screen this turn — apply its effect and give ${n} a new agenda.`);
         }
         return out;
     },
-    prompt(value, state) {
+    prompt(value, state, ctx) {
+        const clock = parseStoryTime(state.scene.now) !== null;
         const rows = Object.entries(value)
             .sort(([a], [b]) => offScreen(state, b) - offScreen(state, a))
             .map(([n, a]) => {
-                const bits = [a.task ? `${a.task}${a.max ? ` (${a.step}/${a.max})` : ""}` : "no agenda"];
+                // about how much story time an off-screen task has left, so the prose can stay consistent with it
+                const left = clock && offScreen(state, n) && a.max > 0 && a.step < a.max
+                    ? `, about ${formatDuration((a.max - a.step) * (a.pace || stepMinutesOf(ctx)) - (a.spent || 0))} left` : "";
+                const bits = [a.task ? `${a.task}${a.max ? ` (${a.step}/${a.max}${left})` : ""}` : "no agenda"];
                 for (const k of FIELDS) if (a[k]) bits.push(`${k}: ${a[k]}`);
                 return `- ${n}${offScreen(state, n) ? " (off-screen)" : ""} — ${bits.join(" · ")}`;
             });
         return rows.length ? ["Agendas:", ...rows].join("\n") : "";
     },
-    rules: () => [
+    rules: ctx => [
         "Agendas: every named NPC has one, given on first appearance. Without a clear goal, give a mundane one of 1–3 steps drawn from the widest set that fits the person and setting (eating, cleaning, repairing, trading, training, studying, a shift, an errand, an animal, a debt, a visit, grooming, praying, gambling, drinking, arguing, resting, an idle habit); sleep and aimless wandering are last resorts.",
-        "When an NPC leaves the scene, replace their agenda from personality, recent events or whim. Off-screen agendas advance on their own; the ledger tells you when one finishes.",
+        `When an NPC leaves the scene, replace their agenda from personality, recent events or whim. Off-screen agendas advance with the story's clock, not with each reply. When a task is more than a short errand, end its \`new\` line with \`takes\` and how long the whole task needs (\`takes 2h\`, \`takes 3 days\`); without it each step is about ${formatDuration(stepMinutesOf(ctx))} of story time. The ledger tells you when one has finished.`,
         "When one finishes, apply its effect through the ledger's other lines — travel: a new location; research: load a Chekhov setup and tick fondness with whoever was involved; repair/build: an item on their Body; trade/errand: move an item between people; train: a skill noted on Body; social visit: relationship ticks between the two; rest: Body improves, a little self-regard; reconcile: a DIRECT fondness shift and a subdued repair talk; confront: friction ticks. A completion never walks into {{user}}'s scene on its own.",
         "On entering the scene: unfinished — distracted, mentions what is pending; finished and mundane — neutral; finished and significant — energised, wants to share if fond of the person.",
         "Write `new` for a new or replaced agenda and `done` for one that finished; knows, fib, circle and body lines only for what changed.",
