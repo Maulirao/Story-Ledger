@@ -98,6 +98,9 @@
 /* relationship rows: bars replace the raw numbers on screen; the raw rows stay in the message */
 .sl-theme-frankenstein .sl-fk-has-bars > :not(summary):not(.sl-fk-pairs) { display: none; }
 .sl-fk-pair { margin: 4px 0 8px; }
+.sl-fk-self { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; margin: 4px 0 8px; }
+.sl-fk-self > b { color: var(--sl-fk-gold); }
+.sl-fk-self small { opacity: 0.8; }
 .sl-fk-pair-name { color: var(--sl-fk-gold); font-weight: 600; margin-bottom: 2px; }
 .sl-fk-pair-note { font-size: 0.85em; font-style: italic; opacity: 0.85; margin: 0 0 4px; }
 .sl-fk-row { display: grid; grid-template-columns: minmax(90px, 1fr) 1fr 1fr minmax(90px, 1fr); gap: 6px; align-items: center; margin: 2px 0; }

@@ -29,7 +29,18 @@ test("sectionGroups puts every FF title in exactly one tab, in tab order", () =>
     assert.deepEqual(sectionGroups(["🕰️ SCENE"]).map(g => g.tab), ["Scene"], "empty tabs are left out");
 });
 
-import { pairRows } from "../src/ui/themes/layout.js";
+import { pairRows, selfRegardRows } from "../src/ui/themes/layout.js";
+
+test("self-regard rows keep the character's score and signed accumulator separate", () => {
+    assert.deepEqual(selfRegardRows([
+        "- Anna → Violet | E 17·0 | note: Φ 0·0",
+        "- Anna | Φ -3·12",
+        "Violet | Φ 2·-4",
+    ]), [
+        { who: "Anna", phi: -3, acc: 12 },
+        { who: "Violet", phi: 2, acc: -4 },
+    ]);
+});
 
 test("relationship bars read each pair row, with its description when there is one", () => {
     const rows = pairRows([

@@ -5210,6 +5210,14 @@ function pairRows(lines2) {
   }
   return rows;
 }
+function selfRegardRows(lines2) {
+  const rows = [];
+  for (const line of lines2) {
+    const match = String(line).match(/^\s*[-*•]?\s*([^|]+?)\s*\|\s*Φ\s+(-?\d+)·(-?\d+)\s*$/);
+    if (match) rows.push({ who: match[1].trim(), phi: Number(match[2]), acc: Number(match[3]) });
+  }
+  return rows;
+}
 
 // src/ui/themes/frankenstein.js
 var GROUPS = [
@@ -5231,7 +5239,8 @@ function relationBars(section2, config) {
     return el.textContent;
   });
   const rows = pairRows(lines2);
-  if (!rows.length) return null;
+  const selves = selfRegardRows(lines2);
+  if (!rows.length && !selves.length) return null;
   const max = config.axisMax || 20;
   const wrap = document.createElement("div");
   wrap.className = "sl-ui sl-fk-pairs";
@@ -5240,6 +5249,12 @@ function relationBars(section2, config) {
     const mirror = config.axes.find((a) => a.key === f.mirror);
     return `<div class="sl-fk-row"><span class="sl-fk-lab sl-fond">${escHtml(f.name)} <b>${fv.v}</b>${fv.acc ? `<small>+${fv.acc}</small>` : ""}</span><span class="sl-fk-bar sl-fond"><i style="width:${Math.max(0, Math.min(100, fv.v / max * 100))}%"></i></span><span class="sl-fk-bar sl-friction"><i style="width:${Math.max(0, Math.min(100, mv.v / max * 100))}%"></i></span><span class="sl-fk-lab sl-friction"><b>${mv.v}</b>${mv.acc ? `<small>+${mv.acc}</small>` : ""} ${escHtml(mirror ? mirror.name : f.mirror)}</span></div>`;
   }).join("")}</div>`).join("");
+  if (selves.length) {
+    const selfRows = selves.map(
+      ({ who, phi, acc }) => `<div class="sl-fk-self"><b>${escHtml(who)}</b> <span>Φ Self-regard <strong>${phi}</strong></span> <small>Accumulator ${acc > 0 ? "+" : ""}${acc}</small></div>`
+    ).join("");
+    wrap.insertAdjacentHTML("afterbegin", selfRows);
+  }
   return wrap;
 }
 function syncNextTurnButton(outer, isNewest) {
@@ -5302,6 +5317,13 @@ function decorateWith(root, { config, isNewest = false, fixup = null }, theme) {
     if (/RELATIONSHIPS/i.test(title)) {
       const bars = relationBars(d, config);
       if (bars) {
+        for (const node of [...d.childNodes]) {
+          if (node.nodeType !== 3 || !node.textContent.trim()) continue;
+          const span = document.createElement("span");
+          span.dataset.slWrap = node.textContent;
+          node.replaceWith(span);
+          span.append(node);
+        }
         d.classList.add("sl-fk-has-bars");
         s.insertAdjacentElement("afterend", bars);
       }

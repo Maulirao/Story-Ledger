@@ -51,3 +51,12 @@ export function pairRows(lines) {
     }
     return rows;
 }
+
+export function selfRegardRows(lines) {
+    const rows = [];
+    for (const line of lines) {
+        const match = String(line).match(/^\s*[-*•]?\s*([^|]+?)\s*\|\s*Φ\s+(-?\d+)·(-?\d+)\s*$/);
+        if (match) rows.push({ who: match[1].trim(), phi: Number(match[2]), acc: Number(match[3]) });
+    }
+    return rows;
+}

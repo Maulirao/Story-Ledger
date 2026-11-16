@@ -12,7 +12,7 @@ const GROUPS = [
 ];
 
 import { undecorate } from "./common.js";
-import { pairRows } from "./layout.js";
+import { pairRows, selfRegardRows } from "./layout.js";
 
 export { undecorate };
 
@@ -33,7 +33,8 @@ function relationBars(section, config) {
         return el.textContent;
     });
     const rows = pairRows(lines);
-    if (!rows.length) return null;
+    const selves = selfRegardRows(lines);
+    if (!rows.length && !selves.length) return null;
     const max = config.axisMax || 20;
     const wrap = document.createElement("div");
     wrap.className = "sl-ui sl-fk-pairs";
@@ -47,6 +48,12 @@ function relationBars(section, config) {
                 + `<span class="sl-fk-bar sl-friction"><i style="width:${Math.max(0, Math.min(100, mv.v / max * 100))}%"></i></span>`
                 + `<span class="sl-fk-lab sl-friction"><b>${mv.v}</b>${mv.acc ? `<small>+${mv.acc}</small>` : ""} ${escHtml(mirror ? mirror.name : f.mirror)}</span></div>`;
         }).join("")}</div>`).join("");
+    if (selves.length) {
+        const selfRows = selves.map(({ who, phi, acc }) =>
+            `<div class="sl-fk-self"><b>${escHtml(who)}</b> <span>Φ Self-regard <strong>${phi}</strong></span> <small>Accumulator ${acc > 0 ? "+" : ""}${acc}</small></div>`
+        ).join("");
+        wrap.insertAdjacentHTML("afterbegin", selfRows);
+    }
     return wrap;
 }
 
@@ -111,7 +118,18 @@ export function decorateWith(root, { config, isNewest = false, fixup = null }, t
         if (grp) d.classList.add("sl-fk-section", grp[1]);
         if (/RELATIONSHIPS/i.test(title)) {
             const bars = relationBars(d, config);
-            if (bars) { d.classList.add("sl-fk-has-bars"); s.insertAdjacentElement("afterend", bars); }
+            if (bars) {
+                // The theme's hide rule matches elements, so wrap bare row text too.
+                for (const node of [...d.childNodes]) {
+                    if (node.nodeType !== 3 || !node.textContent.trim()) continue;
+                    const span = document.createElement("span");
+                    span.dataset.slWrap = node.textContent;
+                    node.replaceWith(span);
+                    span.append(node);
+                }
+                d.classList.add("sl-fk-has-bars");
+                s.insertAdjacentElement("afterend", bars);
+            }
         }
         if (/NOTEBOOK/i.test(title)) {
             for (const node of [...d.querySelectorAll("li, p, span, div")].filter(n => !n.children.length || n.tagName === "LI")) {
