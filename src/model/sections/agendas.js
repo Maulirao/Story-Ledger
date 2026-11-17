@@ -21,8 +21,8 @@ const read = v => { const t = unesc(v); return t === "—" ? "" : t; };
 export const stepMinutesOf = ctx =>
     sanitizeAgendaStep(ctx?.config?.sectionConfig?.agendaStepMinutes, DEFAULT_SECTION_CONFIG.agendaStepMinutes);
 
-// `new "task" 0/N`, then an optional length (`takes 2h`, or `take`) before `@ place` or at the very end, after an optional comma.
-const NEW_LINE = /^(.+?)\s*:\s*new\s+"([^"]+)"\s+(\d+)\s*\/\s*(\d+)\s*(?:,?\s*\btakes?\s+([^@]+?)\s*)?(?:@\s*(.+?))?(?:\s*,?\s*\btakes?\s+(.+?))?\s*$/i;
+// A parenthesized step list after the count is descriptive. Length can appear before or after the location.
+const NEW_LINE = /^(.+?)\s*:\s*new\s+"([^"]+)"\s+(\d+)\s*\/\s*(\d+)(?:\s+\([^()]+\))?\s*(?:,?\s*\btakes?\s+([^@]+?)\s*)?(?:@\s*(.+?))?(?:\s*,?\s*\btakes?\s+(.+?))?\s*$/i;
 // `(Step 1/2)`, or `(Step 1/2 · 20m of 1h)` when the row carries timing: time spent, then the step's length.
 const STEP = /\(\s*Step\s+(\d+)\s*\/\s*(\d+)\s*(?:·\s*(\S+)\s+of\s+(\S+)\s*)?\)/i;
 const stepText = a => `(Step ${a.step}/${a.max}${a.pace ? ` · ${formatDuration(a.spent || 0)} of ${formatDuration(a.pace)}` : ""})`;

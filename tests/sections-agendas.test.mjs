@@ -13,6 +13,13 @@ const C = { ...resolveConfig(), userName: "Jan", sections: {} };
 const ch = body => parseChanges(`<!-- Story_Ledger\n${body}\n-->`);
 const agenda = (task, step, max, more = {}) => ({ task, step, max, aware: "", fibs: "", circle: "", body: "", ...more });
 
+test("new agendas accept a step list after the progress count", () => {
+    const line = 'Anna: new "Get clean and fed with Violet" 0/3 (bath, get dressed, go eat)';
+    const { state, unparsed } = postTurn(emptyState(), ch(`Agendas:\n- ${line}`), C);
+    assert.deepEqual(unparsed, []);
+    assert.deepEqual(state.agendas.Anna, agenda("Get clean and fed with Violet", 0, 3));
+});
+
 test("agendas round-trip, empty fields included", () => {
     const s = emptyState();
     s.agendas = { Ana: agenda("close the café | early", 1, 2, { aware: "Mara took the key" }) };

@@ -531,7 +531,7 @@ var read2 = (v) => {
   return t === "—" ? "" : t;
 };
 var stepMinutesOf = (ctx) => sanitizeAgendaStep(ctx?.config?.sectionConfig?.agendaStepMinutes, DEFAULT_SECTION_CONFIG.agendaStepMinutes);
-var NEW_LINE = /^(.+?)\s*:\s*new\s+"([^"]+)"\s+(\d+)\s*\/\s*(\d+)\s*(?:,?\s*\btakes?\s+([^@]+?)\s*)?(?:@\s*(.+?))?(?:\s*,?\s*\btakes?\s+(.+?))?\s*$/i;
+var NEW_LINE = /^(.+?)\s*:\s*new\s+"([^"]+)"\s+(\d+)\s*\/\s*(\d+)(?:\s+\([^()]+\))?\s*(?:,?\s*\btakes?\s+([^@]+?)\s*)?(?:@\s*(.+?))?(?:\s*,?\s*\btakes?\s+(.+?))?\s*$/i;
 var STEP = /\(\s*Step\s+(\d+)\s*\/\s*(\d+)\s*(?:·\s*(\S+)\s+of\s+(\S+)\s*)?\)/i;
 var stepText = (a) => `(Step ${a.step}/${a.max}${a.pace ? ` · ${formatDuration(a.spent || 0)} of ${formatDuration(a.pace)}` : ""})`;
 function fieldLine(line, normalized) {
